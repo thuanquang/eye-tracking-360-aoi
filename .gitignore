@@ -1,0 +1,7 @@
+node_modules/
+server.log
+server.err.log
+verification-*.png
+mediapipe/
+.DS_Store
+Thumbs.db

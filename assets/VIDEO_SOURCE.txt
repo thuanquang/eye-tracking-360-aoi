@@ -1,0 +1,5 @@
+Source URL: https://www.youtube.com/watch?v=iQvIVWmjoLM
+Title from yt-dlp: Video 360 | Di Tich Thap Ba Ponagar Nha Trang
+Downloaded format: 134 mp4 640x360 24fps video only, equi
+Downloaded file: assets/test-video.mp4
+Downloaded for local prototype testing on 2026-06-06.

@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>360 Webcam AOI Prototype</title>
+    <script>
+      if (window.location.hostname === '127.0.0.1') {
+        window.location.replace(
+          `http://localhost:${window.location.port}${window.location.pathname}${window.location.search}${window.location.hash}`,
+        );
+      }
+      window.__aoiBlockWebGazerMouseTraining = true;
+      window.addEventListener(
+        'mousemove',
+        (event) => {
+          if (window.__aoiBlockWebGazerMouseTraining) {
+            event.stopImmediatePropagation();
+          }
+        },
+        true,
+      );
+    </script>
+    <link rel="stylesheet" href="./styles.css?v=aoi-anchor-4" />
+    <script src="https://webgazer.cs.brown.edu/webgazer.js" defer></script>
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://cdn.jsdelivr.net/npm/three@0.167.1/build/three.module.js"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="viewer-section" aria-label="360 video viewer">
+        <div class="viewer-toolbar">
+          <div>
+            <p class="eyebrow">Dynamic AOI Lab</p>
+            <h1>360 gaze mapping test</h1>
+          </div>
+          <div class="toolbar-actions">
+            <button id="playVideoButton" type="button">Play</button>
+            <button id="resetViewButton" type="button">Reset View</button>
+          </div>
+        </div>
+
+        <div id="viewer" class="viewer" tabindex="0" aria-label="Drag to rotate the 360 scene">
+          <svg id="aoiOverlay" class="aoi-overlay" aria-hidden="true"></svg>
+          <div id="gazeDot" class="gaze-dot" aria-hidden="true"></div>
+          <div id="viewerNotice" class="viewer-notice">
+            Put a 360 MP4 at assets/test-video.mp4 or load a local video.
+          </div>
+          <div id="calibrationOverlay" class="calibration-overlay" hidden>
+            <div class="calibration-card">
+              <p class="eyebrow">Webcam calibration</p>
+              <strong id="calibrationProgress">Target 1 of 9</strong>
+              <span id="calibrationDescription">Look at the target, then click it.</span>
+              <button id="cancelCalibrationButton" type="button">Cancel</button>
+            </div>
+            <button id="calibrationTarget" class="calibration-target" type="button" aria-label="Calibration target"></button>
+          </div>
+        </div>
+
+        <video
+          id="sourceVideo"
+          class="source-video"
+          src="./assets/test-video.mp4"
+          crossorigin="anonymous"
+          playsinline
+          loop
+          muted
+          preload="metadata"
+        ></video>
+
+        <div class="timeline-strip">
+          <canvas id="miniMap" width="900" height="180" aria-label="Panorama AOI map"></canvas>
+        </div>
+      </section>
+
+      <aside class="control-panel" aria-label="Experiment controls">
+        <section class="panel-section">
+          <p class="section-label">Input</p>
+          <div class="segmented">
+            <button id="mouseModeButton" type="button">Mouse demo</button>
+            <button id="webcamModeButton" class="is-active" type="button">Webcam gaze</button>
+          </div>
+          <button id="calibrateButton" class="wide-action" type="button">Calibrate webcam</button>
+          <button id="accuracyButton" class="wide-action" type="button">Check accuracy</button>
+          <label class="file-loader">
+            <span>Load local video</span>
+            <input id="videoFileInput" type="file" accept="video/*" />
+          </label>
+          <label class="file-loader">
+            <span>Load AOI JSON</span>
+            <input id="aoiFileInput" type="file" accept="application/json,.json" />
+          </label>
+        </section>
+
+        <section class="panel-section">
+          <p class="section-label">Recording</p>
+          <div class="recording-actions">
+            <button id="recordButton" class="primary" type="button">Start Recording</button>
+            <button id="reviewButton" type="button" disabled>Review Recording</button>
+            <button id="clearButton" type="button">Clear</button>
+            <button id="exportButton" type="button">Export JSON</button>
+          </div>
+          <label class="file-loader">
+            <span>Load recording JSON</span>
+            <input id="recordingFileInput" type="file" accept="application/json,.json" />
+          </label>
+          <div class="status-grid">
+            <div>
+              <span>Samples</span>
+              <strong id="sampleCount">0</strong>
+            </div>
+            <div>
+              <span>Mode</span>
+              <strong id="modeLabel">webcam</strong>
+            </div>
+            <div>
+              <span>Webcam</span>
+              <strong id="webcamStatusLabel">idle</strong>
+            </div>
+            <div>
+              <span>Accuracy</span>
+              <strong id="accuracyStatusLabel">untested</strong>
+            </div>
+            <div>
+              <span>AOI Source</span>
+              <strong id="aoiSourceLabel">default</strong>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel-section">
+          <p class="section-label">Live Readout</p>
+          <dl class="readout">
+            <div>
+              <dt>Screen</dt>
+              <dd id="screenReadout">--</dd>
+            </div>
+            <div>
+              <dt>Camera</dt>
+              <dd id="cameraReadout">--</dd>
+            </div>
+            <div>
+              <dt>Panorama</dt>
+              <dd id="panoramaReadout">--</dd>
+            </div>
+            <div>
+              <dt>AOI Hit</dt>
+              <dd id="hitReadout">none</dd>
+            </div>
+          </dl>
+        </section>
+
+        <section class="panel-section">
+          <p class="section-label">AOIs</p>
+          <ul id="aoiList" class="aoi-list"></ul>
+        </section>
+      </aside>
+    </main>
+
+    <script type="module" src="./src/app.js?v=aoi-anchor-4"></script>
+  </body>
+</html>

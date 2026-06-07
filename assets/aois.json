@@ -1,0 +1,43 @@
+[
+  {
+    "id": "front-center",
+    "label": "Front center object (AOI JSON)",
+    "color": "#ffd166",
+    "yawMin": -18,
+    "yawMax": 18,
+    "pitchMin": -10,
+    "pitchMax": 16,
+    "keyframes": [
+      { "t": 0, "yawMin": -18, "yawMax": 18, "pitchMin": -10, "pitchMax": 16 },
+      { "t": 8, "yawMin": -4, "yawMax": 32, "pitchMin": -8, "pitchMax": 18 },
+      { "t": 16, "yawMin": -24, "yawMax": 12, "pitchMin": -12, "pitchMax": 14 }
+    ]
+  },
+  {
+    "id": "upper-left",
+    "label": "Upper left zone",
+    "color": "#5dd7c8",
+    "yawMin": -82,
+    "yawMax": -42,
+    "pitchMin": 4,
+    "pitchMax": 32
+  },
+  {
+    "id": "lower-right",
+    "label": "Lower right zone",
+    "color": "#ff8a5c",
+    "yawMin": 38,
+    "yawMax": 88,
+    "pitchMin": -38,
+    "pitchMax": -10
+  },
+  {
+    "id": "rear-seam",
+    "label": "Rear seam wraparound",
+    "color": "#8bd66f",
+    "yawMin": 165,
+    "yawMax": -165,
+    "pitchMin": -20,
+    "pitchMax": 20
+  }
+]
