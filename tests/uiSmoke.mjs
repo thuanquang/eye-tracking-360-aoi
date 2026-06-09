@@ -8,6 +8,12 @@ import { chromium } from 'playwright';
 
 const TARGET_URL = process.env.AOI_PROTOTYPE_URL || 'http://127.0.0.1:5179';
 
+function urlWithMode(mode) {
+  const url = new URL(TARGET_URL);
+  url.searchParams.set('mode', mode);
+  return url.toString();
+}
+
 function hasColorVariance(samples) {
   const uniqueColors = new Set();
 
@@ -46,13 +52,64 @@ try {
 
   const hasContent = await page.evaluate(() => document.body.innerText.trim().length > 0);
   assert.equal(hasContent, true, 'Page body should contain visible UI text.');
+  assert.equal(await page.locator('#controlPanel').isVisible(), true, 'Admin controls should be visible by default.');
+  assert.equal(await page.locator('#participantPanel').isVisible(), false, 'Participant panel should be hidden in admin mode.');
   assert.equal(await page.locator('#modeLabel').innerText(), 'webcam');
   assert.match(await page.locator('#screenReadout').innerText(), /waiting for webcam gaze|--/);
+  await assert.doesNotReject(
+    page.locator('#manualAoiPanel').waitFor({ state: 'visible', timeout: 1000 }),
+    'Admin should expose manual AOI authoring controls.',
+  );
+  await assert.doesNotReject(
+    page.locator('#cloudAoiPanel').waitFor({ state: 'visible', timeout: 1000 }),
+    'Admin should expose Google Colab auto-AOI controls.',
+  );
+  await assert.doesNotReject(
+    page.locator('#projectionSelect').waitFor({ state: 'visible', timeout: 1000 }),
+    'Admin should expose video projection metadata controls.',
+  );
+
+  const participantPage = await browser.newPage({
+    viewport: { width: 1366, height: 900 },
+  });
+  await participantPage.goto(urlWithMode('participant'), { waitUntil: 'networkidle' });
+  await participantPage.waitForSelector('#participantPanel');
+  assert.equal(await participantPage.locator('#controlPanel').isVisible(), false, 'Research controls should be hidden in participant mode.');
+  assert.equal(await participantPage.locator('#participantPanel').isVisible(), true, 'Participant panel should be visible in participant mode.');
+  assert.equal(await participantPage.locator('#participantStartButton').isEnabled(), false, 'Participant start should require required fields.');
+  await participantPage.locator('#participantIdInput').fill('P042');
+  await participantPage.locator('#participantNameInput').fill('Nguyen A');
+  await participantPage.locator('#participantAgeInput').fill('22');
+  await participantPage.locator('#participantConsentInput').check();
+  assert.equal(await participantPage.locator('#participantStartButton').isEnabled(), true, 'Participant start should enable after valid metadata.');
+  await participantPage.locator('#participantStartButton').click();
+  await participantPage.waitForFunction(() => document.querySelector('#participantStageLabel')?.textContent?.includes('Ready'));
+  assert.equal(await participantPage.locator('#modeLabel').innerText(), 'webcam');
+  await participantPage.close();
+
   await page.waitForFunction(() => document.querySelector('#aoiList')?.textContent?.includes('AOI JSON'));
   assert.equal(
     await page.locator('#aoiSourceLabel').innerText(),
     'assets/aois.json',
     'UI should show whether AOIs came from the editable JSON file.',
+  );
+  await page.locator('#projectionSelect').selectOption('flat');
+  await page.locator('#manualAoiLabelInput').fill('Manual flat AOI');
+  await page.locator('#manualAoiSizeInput').fill('24');
+  await page.locator('#addManualAoiButton').click();
+  await page.waitForFunction(() => document.querySelector('#aoiList')?.textContent?.includes('Manual flat AOI'));
+  await page.locator('#cloudAoiPromptsInput').fill('person\nscreen, sign');
+  await page.locator('#cloudAoiSampleIntervalInput').fill('0.75');
+  const colabJobDownloadPromise = page.waitForEvent('download');
+  await page.locator('#exportColabJobButton').click();
+  const colabJobDownload = await colabJobDownloadPromise;
+  const colabJob = JSON.parse(await readFile(await colabJobDownload.path(), 'utf8'));
+  assert.equal(colabJob.kind, 'aoi-colab-job', 'Colab job export should identify the job kind.');
+  assert.equal(colabJob.video.projection, 'flat', 'Colab job export should preserve selected projection metadata.');
+  assert.deepEqual(
+    colabJob.aoiPolicy.prompts,
+    ['person', 'screen', 'sign'],
+    'Colab job export should parse newline and comma separated AOI prompts.',
   );
   const tmpDir = await mkdtemp(join(tmpdir(), 'aoi-sidecar-'));
   const sidecarPath = join(tmpDir, 'test-video.aoi.json');
@@ -237,6 +294,23 @@ try {
     'object',
     'Export summary should include estimated likely-AOI dwell seconds.',
   );
+  assert.equal(typeof exportedJson.namedAoiMetrics, 'object', 'Export should include named AOI metrics.');
+  assert.equal(
+    exportedJson.namedAoiMetrics.perAoi['sidecar-center'].label,
+    'Sidecar center AOI',
+    'Named AOI metrics should retain AOI labels.',
+  );
+  assert.equal(
+    typeof exportedJson.namedAoiMetrics.perAoi['sidecar-center'].totalDwellSec,
+    'number',
+    'Named AOI metrics should include per-AOI dwell seconds.',
+  );
+  assert.equal(
+    typeof exportedJson.namedAoiMetrics.session.averageFixationDurationMs,
+    'number',
+    'Named AOI metrics should include session fixation metrics.',
+  );
+  assert.equal(exportedJson.participant, null, 'Admin/mouse demo exports should not invent participant metadata.');
   assert.equal(
     exportedJson.summary.durationSec > 0,
     true,

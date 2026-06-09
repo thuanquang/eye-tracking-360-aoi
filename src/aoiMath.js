@@ -189,21 +189,64 @@ function yawInRange(yaw, yawMin, yawMax) {
   return normalizedYaw >= min || normalizedYaw <= max;
 }
 
+export function screenPointToVideoPoint({ x, y, width, height }) {
+  if (width <= 0 || height <= 0) {
+    throw new Error('Viewport width and height must be positive.');
+  }
+
+  return {
+    x: clamp(x / width, 0, 1),
+    y: clamp(y / height, 0, 1),
+  };
+}
+
+function getAoiSpace(aoi) {
+  return aoi?.space === 'video' ? 'video' : 'panorama';
+}
+
+function hitTestPanoramaAoi(point, aoi) {
+  const pitchMin = Math.min(aoi.pitchMin, aoi.pitchMax);
+  const pitchMax = Math.max(aoi.pitchMin, aoi.pitchMax);
+
+  return (
+    Number.isFinite(point?.yaw) &&
+    Number.isFinite(point?.pitch) &&
+    yawInRange(point.yaw, aoi.yawMin, aoi.yawMax) &&
+    point.pitch >= pitchMin &&
+    point.pitch <= pitchMax
+  );
+}
+
+function hitTestVideoAoi(point, aoi) {
+  const xMin = Math.min(aoi.xMin, aoi.xMax);
+  const xMax = Math.max(aoi.xMin, aoi.xMax);
+  const yMin = Math.min(aoi.yMin, aoi.yMax);
+  const yMax = Math.max(aoi.yMin, aoi.yMax);
+
+  return (
+    Number.isFinite(point?.x) &&
+    Number.isFinite(point?.y) &&
+    point.x >= xMin &&
+    point.x <= xMax &&
+    point.y >= yMin &&
+    point.y <= yMax
+  );
+}
+
 export function hitTestAois(point, aois) {
   return aois.filter((aoi) => {
-    const pitchMin = Math.min(aoi.pitchMin, aoi.pitchMax);
-    const pitchMax = Math.max(aoi.pitchMin, aoi.pitchMax);
-
-    return (
-      yawInRange(point.yaw, aoi.yawMin, aoi.yawMax) &&
-      point.pitch >= pitchMin &&
-      point.pitch <= pitchMax
-    );
+    return getAoiSpace(aoi) === 'video'
+      ? hitTestVideoAoi(point, aoi)
+      : hitTestPanoramaAoi(point, aoi);
   });
 }
 
 function interpolateLinear(start, end, ratio) {
   return start + (end - start) * ratio;
+}
+
+function roundCoordinate(value) {
+  return Number(value.toFixed(6));
 }
 
 function interpolateYaw(start, end, ratio) {
@@ -250,6 +293,16 @@ function resolveDynamicAoiAtTime(aoi, timeSec) {
   const [start, end] = pair;
   const duration = end.t - start.t;
   const ratio = duration > 0 ? (timeSec - start.t) / duration : 0;
+
+  if (getAoiSpace(aoi) === 'video') {
+    return {
+      ...aoi,
+      xMin: roundCoordinate(interpolateLinear(start.xMin, end.xMin, ratio)),
+      xMax: roundCoordinate(interpolateLinear(start.xMax, end.xMax, ratio)),
+      yMin: roundCoordinate(interpolateLinear(start.yMin, end.yMin, ratio)),
+      yMax: roundCoordinate(interpolateLinear(start.yMax, end.yMax, ratio)),
+    };
+  }
 
   return {
     ...aoi,

@@ -2,12 +2,19 @@ import * as THREE from 'three';
 
 import {
   classifyAoisWithUncertainty,
+  hitTestAois,
   normalizeYaw,
   panoramaPointToScreen,
   resolveAoisAtTime,
+  screenPointToVideoPoint,
   screenPointToYawPitch,
   screenUncertaintyToYawPitch,
 } from './aoiMath.js?v=aoi-anchor-4';
+import { buildNamedAoiMetrics } from './analysisMetrics.js?v=ui-modes-1';
+import {
+  buildColabAoiJob,
+  normalizeAoiId,
+} from './aoiGeneration.js?v=colab-aoi-1';
 import {
   applyViewportCalibration,
   buildAccuracyCorrection,
@@ -79,6 +86,8 @@ let sourceVideoInfo = {
   type: 'video/mp4',
   size: null,
   lastModified: null,
+  projection: 'equirectangular',
+  stereoLayout: 'mono',
 };
 
 const SAMPLE_INTERVAL_MS = 150;
@@ -149,7 +158,9 @@ const REVIEW_GAZE_EDGE_PADDING_PX = 12;
 const REVIEW_LOOP_GRACE_SEC = 0.25;
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
+const appShell = document.querySelector('#appShell');
 const viewer = document.querySelector('#viewer');
+const viewerSection = document.querySelector('#viewerSection');
 const viewerNotice = document.querySelector('#viewerNotice');
 const aoiOverlay = document.querySelector('#aoiOverlay');
 const gazeDot = document.querySelector('#gazeDot');
@@ -163,6 +174,16 @@ const calibrateButton = document.querySelector('#calibrateButton');
 const accuracyButton = document.querySelector('#accuracyButton');
 const videoFileInput = document.querySelector('#videoFileInput');
 const aoiFileInput = document.querySelector('#aoiFileInput');
+const projectionSelect = document.querySelector('#projectionSelect');
+const stereoLayoutSelect = document.querySelector('#stereoLayoutSelect');
+const manualAoiLabelInput = document.querySelector('#manualAoiLabelInput');
+const manualAoiSizeInput = document.querySelector('#manualAoiSizeInput');
+const manualAoiColorInput = document.querySelector('#manualAoiColorInput');
+const addManualAoiButton = document.querySelector('#addManualAoiButton');
+const cloudAoiPromptsInput = document.querySelector('#cloudAoiPromptsInput');
+const cloudAoiSampleIntervalInput = document.querySelector('#cloudAoiSampleIntervalInput');
+const exportColabJobButton = document.querySelector('#exportColabJobButton');
+const cloudAoiResultInput = document.querySelector('#cloudAoiResultInput');
 const recordingFileInput = document.querySelector('#recordingFileInput');
 const recordButton = document.querySelector('#recordButton');
 const reviewButton = document.querySelector('#reviewButton');
@@ -178,6 +199,16 @@ const cameraReadout = document.querySelector('#cameraReadout');
 const panoramaReadout = document.querySelector('#panoramaReadout');
 const hitReadout = document.querySelector('#hitReadout');
 const aoiList = document.querySelector('#aoiList');
+const controlPanel = document.querySelector('#controlPanel');
+const participantPanel = document.querySelector('#participantPanel');
+const adminModeLink = document.querySelector('#adminModeLink');
+const participantModeLink = document.querySelector('#participantModeLink');
+const participantIdInput = document.querySelector('#participantIdInput');
+const participantNameInput = document.querySelector('#participantNameInput');
+const participantAgeInput = document.querySelector('#participantAgeInput');
+const participantConsentInput = document.querySelector('#participantConsentInput');
+const participantStartButton = document.querySelector('#participantStartButton');
+const participantStageLabel = document.querySelector('#participantStageLabel');
 const calibrationOverlay = document.querySelector('#calibrationOverlay');
 const calibrationTarget = document.querySelector('#calibrationTarget');
 const calibrationProgress = document.querySelector('#calibrationProgress');
@@ -219,6 +250,14 @@ const state = {
   liveGazeQuality: null,
   gazeDropReason: null,
   droppedGazeSamples: 0,
+  appMode: 'admin',
+  participant: {
+    id: '',
+    name: '',
+    age: null,
+    consent: false,
+    startedAt: null,
+  },
   calibrationIndex: 0,
   targetMode: 'calibration',
   targetCaptureInProgress: false,
@@ -254,6 +293,131 @@ function delay(ms) {
 function setNotice(message, visible = true) {
   viewerNotice.textContent = message;
   viewerNotice.classList.toggle('is-hidden', !visible);
+}
+
+function getCurrentProjection() {
+  return projectionSelect?.value || sourceVideoInfo.projection || 'equirectangular';
+}
+
+function getCurrentStereoLayout() {
+  return stereoLayoutSelect?.value || sourceVideoInfo.stereoLayout || 'mono';
+}
+
+function syncSourceVideoMetadataFromControls() {
+  sourceVideoInfo = {
+    ...sourceVideoInfo,
+    projection: getCurrentProjection(),
+    stereoLayout: getCurrentStereoLayout(),
+  };
+}
+
+function applyVideoMetadataControls(video = {}) {
+  if (video.projection && projectionSelect.querySelector(`option[value="${video.projection}"]`)) {
+    projectionSelect.value = video.projection;
+  }
+
+  if (video.stereoLayout && stereoLayoutSelect.querySelector(`option[value="${video.stereoLayout}"]`)) {
+    stereoLayoutSelect.value = video.stereoLayout;
+  }
+
+  syncSourceVideoMetadataFromControls();
+}
+
+function getRequestedAppMode() {
+  const mode = new URLSearchParams(window.location.search).get('mode');
+  return mode === 'participant' ? 'participant' : 'admin';
+}
+
+function setParticipantStage(message) {
+  participantStageLabel.textContent = message;
+}
+
+function collectParticipantMetadata() {
+  return {
+    id: participantIdInput.value.trim(),
+    name: participantNameInput.value.trim(),
+    age: Number(participantAgeInput.value),
+    consent: participantConsentInput.checked,
+  };
+}
+
+function isParticipantMetadataValid(metadata) {
+  return (
+    metadata.id.length > 0 &&
+    metadata.name.length > 0 &&
+    Number.isFinite(metadata.age) &&
+    metadata.age > 0 &&
+    metadata.age < 120 &&
+    metadata.consent
+  );
+}
+
+function updateParticipantStartState() {
+  if (state.appMode !== 'participant') {
+    return;
+  }
+
+  const metadata = collectParticipantMetadata();
+  participantStartButton.disabled = !isParticipantMetadataValid(metadata);
+}
+
+function applyAppMode(mode = getRequestedAppMode()) {
+  state.appMode = mode;
+  const isParticipant = mode === 'participant';
+
+  appShell.classList.toggle('is-participant-mode', isParticipant);
+  appShell.classList.toggle('is-admin-mode', !isParticipant);
+  participantPanel.hidden = !isParticipant;
+  controlPanel.hidden = isParticipant;
+  adminModeLink.classList.toggle('is-active', !isParticipant);
+  participantModeLink.classList.toggle('is-active', isParticipant);
+
+  if (isParticipant) {
+    setParticipantStage('Enter details');
+    updateParticipantStartState();
+    setNotice('Enter participant details, then start the session.', true);
+  }
+}
+
+async function requestParticipantFullscreen() {
+  if (!document.fullscreenEnabled || document.fullscreenElement) {
+    return;
+  }
+
+  try {
+    await viewerSection.requestFullscreen();
+  } catch (error) {
+    setNotice('Fullscreen was not started. Continue in the browser window or use your browser fullscreen control.', true);
+  }
+}
+
+async function startParticipantSession() {
+  const metadata = collectParticipantMetadata();
+
+  if (!isParticipantMetadataValid(metadata)) {
+    updateParticipantStartState();
+    return;
+  }
+
+  state.participant = {
+    ...metadata,
+    startedAt: new Date().toISOString(),
+  };
+  appShell.classList.add('is-participant-started');
+  selectWebcamMode();
+  setParticipantStage('Ready: calibrate webcam');
+  setNotice('Participant session ready. Calibrate webcam, check accuracy, then start recording.', true);
+  await requestParticipantFullscreen();
+}
+
+function getExportParticipantMetadata() {
+  if (state.appMode !== 'participant' || !state.participant.startedAt) {
+    return null;
+  }
+
+  return {
+    ...state.participant,
+  };
 }
 
 function getRenderableAois() {
@@ -394,6 +558,20 @@ function projectAoiRange(aoi, yawMin, yawMax, rect) {
   return clipped;
 }
 
+function projectVideoAoiRange(aoi, rect) {
+  const xMin = Math.min(aoi.xMin, aoi.xMax) * rect.width;
+  const xMax = Math.max(aoi.xMin, aoi.xMax) * rect.width;
+  const yMin = Math.min(aoi.yMin, aoi.yMax) * rect.height;
+  const yMax = Math.max(aoi.yMin, aoi.yMax) * rect.height;
+
+  return [
+    { x: xMin, y: yMin },
+    { x: xMax, y: yMin },
+    { x: xMax, y: yMax },
+    { x: xMin, y: yMax },
+  ];
+}
+
 function getAoiOverlayColor(aoi) {
   return typeof aoi.color === 'string' && window.CSS?.supports('color', aoi.color)
     ? aoi.color
@@ -416,6 +594,26 @@ function drawAoiOverlay() {
 
   getRenderableAois().forEach((aoi) => {
     const color = getAoiOverlayColor(aoi);
+
+    if (aoi.space === 'video') {
+      const corners = projectVideoAoiRange(aoi, rect);
+      const shape = document.createElementNS(SVG_NS, 'polygon');
+      shape.setAttribute('class', 'aoi-overlay-shape');
+      shape.setAttribute('points', corners.map((corner) => `${corner.x.toFixed(1)},${corner.y.toFixed(1)}`).join(' '));
+      shape.setAttribute('fill', color);
+      shape.setAttribute('fill-opacity', '0.16');
+      shape.setAttribute('stroke', color);
+      shape.dataset.aoiId = aoi.id;
+      fragment.appendChild(shape);
+
+      const label = document.createElementNS(SVG_NS, 'text');
+      label.setAttribute('class', 'aoi-overlay-label');
+      label.setAttribute('x', String(Math.round(Math.min(aoi.xMax, 0.96) * rect.width + 8)));
+      label.setAttribute('y', String(Math.round(Math.max(aoi.yMin, 0.04) * rect.height - 8)));
+      label.textContent = aoi.label;
+      fragment.appendChild(label);
+      return;
+    }
 
     splitAoiYawRanges(aoi).forEach(({ yawMin, yawMax }) => {
       const corners = projectAoiRange(aoi, yawMin, yawMax, rect);
@@ -460,8 +658,9 @@ function drawAoiOverlay() {
 function renderAoiList() {
   aoiSourceLabel.textContent = aoiSource;
   aoiList.innerHTML = activeAois.map((aoi) => {
-    const yawRange = `${aoi.yawMin} to ${aoi.yawMax}`;
-    const pitchRange = `${aoi.pitchMin} to ${aoi.pitchMax}`;
+    const bounds = aoi.space === 'video'
+      ? `x ${aoi.xMin} to ${aoi.xMax}, y ${aoi.yMin} to ${aoi.yMax}`
+      : `yaw ${aoi.yawMin} to ${aoi.yawMax}, pitch ${aoi.pitchMin} to ${aoi.pitchMax}`;
     const dynamicLabel = Array.isArray(aoi.keyframes) && aoi.keyframes.length ? ' (dynamic)' : '';
 
     return `
@@ -469,7 +668,7 @@ function renderAoiList() {
         <span class="swatch" style="background: ${aoi.color}"></span>
         <span>
           <strong>${aoi.label}${dynamicLabel}</strong>
-          <span>yaw ${yawRange}, pitch ${pitchRange}</span>
+          <span>${bounds}</span>
         </span>
       </li>
     `;
@@ -480,7 +679,20 @@ function isFiniteNumber(value) {
   return Number.isFinite(Number(value));
 }
 
-function isValidAoiBounds(aoi) {
+function getAoiSpace(aoi) {
+  return aoi?.space === 'video' ? 'video' : 'panorama';
+}
+
+function isValidVideoAoiBounds(aoi) {
+  return (
+    isFiniteNumber(aoi.xMin) &&
+    isFiniteNumber(aoi.xMax) &&
+    isFiniteNumber(aoi.yMin) &&
+    isFiniteNumber(aoi.yMax)
+  );
+}
+
+function isValidPanoramaAoiBounds(aoi) {
   return (
     isFiniteNumber(aoi.yawMin) &&
     isFiniteNumber(aoi.yawMax) &&
@@ -489,16 +701,24 @@ function isValidAoiBounds(aoi) {
   );
 }
 
+function isValidAoiBounds(aoi, space = getAoiSpace(aoi)) {
+  return space === 'video'
+    ? isValidVideoAoiBounds(aoi)
+    : isValidPanoramaAoiBounds(aoi);
+}
+
 function isValidAoiKeyframes(aoi) {
   if (!Array.isArray(aoi.keyframes)) {
     return true;
   }
 
+  const space = getAoiSpace(aoi);
+
   return (
     aoi.keyframes.length > 0 &&
     aoi.keyframes.every((keyframe) => (
       isFiniteNumber(keyframe.t) &&
-      isValidAoiBounds(keyframe)
+      isValidAoiBounds(keyframe, space)
     ))
   );
 }
@@ -561,6 +781,7 @@ function registerAois(aois, source) {
   activeAois = loadedAois;
   aoiSource = source;
   registeredProjectMetadata = extractProjectMetadataFromJson(aois);
+  applyVideoMetadataControls(registeredProjectMetadata.video || {});
   renderAoiList();
 }
 
@@ -576,6 +797,8 @@ async function loadAois() {
   } catch (error) {
     activeAois = DEFAULT_AOIS;
     aoiSource = 'default';
+    registeredProjectMetadata = {};
+    applyVideoMetadataControls(sourceVideoInfo);
     renderAoiList();
   }
 }
@@ -1595,6 +1818,24 @@ function getCurrentPanoramaPoint() {
       cameraPitch: state.cameraPitch,
       fov: camera.fov,
     }),
+    videoPoint: screenPointToVideoPoint({
+      x: gaze.x,
+      y: gaze.y,
+      width: rect.width,
+      height: rect.height,
+    }),
+  };
+}
+
+function classifyVideoAois(point, aois) {
+  const exactHits = hitTestAois(point, aois);
+
+  return {
+    exactHits,
+    likelyHits: exactHits,
+    possibleHits: exactHits,
+    ambiguousHits: [],
+    uncertainty: { yawRadius: 0, pitchRadius: 0 },
   };
 }
 
@@ -1655,7 +1896,10 @@ function updateReadout() {
       radiusPx: uncertaintyPx,
     })
     : { yawRadius: 0, pitchRadius: 0 };
-  const classification = classifyAoisWithUncertainty(current.point, current.aois, angularUncertainty);
+  const isFlatVideo = getCurrentProjection() === 'flat';
+  const classification = isFlatVideo
+    ? classifyVideoAois(current.videoPoint, current.aois)
+    : classifyAoisWithUncertainty(current.point, current.aois, angularUncertainty);
 
   state.latestPoint = current.point;
   state.latestHits = classification.exactHits;
@@ -1668,7 +1912,9 @@ function updateReadout() {
 
   gazeDot.style.transform = `translate(${current.gaze.x}px, ${current.gaze.y}px)`;
   screenReadout.textContent = `x ${Math.round(current.gaze.x)}, y ${Math.round(current.gaze.y)}`;
-  panoramaReadout.textContent = `yaw ${formatDegrees(current.point.yaw)}, pitch ${formatDegrees(current.point.pitch)}`;
+  panoramaReadout.textContent = isFlatVideo
+    ? `video x ${current.videoPoint.x.toFixed(3)}, y ${current.videoPoint.y.toFixed(3)}`
+    : `yaw ${formatDegrees(current.point.yaw)}, pitch ${formatDegrees(current.point.pitch)}`;
   hitReadout.textContent = formatAoiReadout(classification);
 }
 
@@ -1690,6 +1936,16 @@ function drawYawRange(ctx, canvasWidth, canvasHeight, aoi) {
   ctx.strokeRect(leftX, y, canvasWidth - leftX, height);
   ctx.fillRect(0, y, yawToX(aoi.yawMax), height);
   ctx.strokeRect(0, y, yawToX(aoi.yawMax), height);
+}
+
+function drawVideoRange(ctx, canvasWidth, canvasHeight, aoi) {
+  const x = Math.min(aoi.xMin, aoi.xMax) * canvasWidth;
+  const y = Math.min(aoi.yMin, aoi.yMax) * canvasHeight;
+  const width = Math.abs(aoi.xMax - aoi.xMin) * canvasWidth;
+  const height = Math.abs(aoi.yMax - aoi.yMin) * canvasHeight;
+
+  ctx.fillRect(x, y, width, height);
+  ctx.strokeRect(x, y, width, height);
 }
 
 function drawMiniMap() {
@@ -1720,7 +1976,11 @@ function drawMiniMap() {
     ctx.fillStyle = `${aoi.color}33`;
     ctx.strokeStyle = aoi.color;
     ctx.lineWidth = 2;
-    drawYawRange(ctx, width, height, aoi);
+    if (aoi.space === 'video') {
+      drawVideoRange(ctx, width, height, aoi);
+    } else {
+      drawYawRange(ctx, width, height, aoi);
+    }
   });
 
   if (state.latestPoint) {
@@ -2019,11 +2279,22 @@ function buildExportSummary() {
   };
 }
 
+function downloadJson(payload, fileName) {
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = fileName;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
 function buildVideoPackageMetadata() {
   const durationSec = Number.isFinite(sourceVideo.duration)
     ? Number(sourceVideo.duration.toFixed(3))
     : null;
   const sidecarVideo = registeredProjectMetadata.video || {};
+  syncSourceVideoMetadataFromControls();
 
   return {
     ...sidecarVideo,
@@ -2032,8 +2303,8 @@ function buildVideoPackageMetadata() {
       ? sourceVideoInfo.name
       : sidecarVideo.name || sourceVideoInfo.name || null,
     durationSec: durationSec ?? sidecarVideo.durationSec ?? null,
-    projection: sidecarVideo.projection || sourceVideoInfo.projection || 'equirectangular',
-    stereoLayout: sidecarVideo.stereoLayout || sourceVideoInfo.stereoLayout || 'mono',
+    projection: getCurrentProjection(),
+    stereoLayout: getCurrentStereoLayout(),
     src: sourceVideo.currentSrc || sourceVideo.src,
   };
 }
@@ -2052,12 +2323,15 @@ function buildProjectPackage() {
 }
 
 function exportSamples() {
+  const namedAoiMetrics = buildNamedAoiMetrics(state.samples, activeAois);
   const payload = {
     sourceVideo: sourceVideo.currentSrc || sourceVideo.src,
     exportedAt: new Date().toISOString(),
+    participant: getExportParticipantMetadata(),
     project: buildProjectPackage(),
     video: buildVideoPackageMetadata(),
     summary: buildExportSummary(),
+    namedAoiMetrics,
     aoiSource,
     aois: activeAois,
     accuracy: state.correctedAccuracySummary,
@@ -2071,13 +2345,105 @@ function exportSamples() {
     droppedGazeSamples: state.droppedGazeSamples,
     samples: state.samples,
   };
-  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = `aoi-samples-${Date.now()}.json`;
-  link.click();
-  URL.revokeObjectURL(url);
+  downloadJson(payload, `aoi-samples-${Date.now()}.json`);
+}
+
+function createUniqueAoiId(label) {
+  const base = normalizeAoiId(label, 'manual-aoi');
+  const existingIds = new Set(activeAois.map((aoi) => aoi.id));
+
+  if (!existingIds.has(base)) {
+    return base;
+  }
+
+  let suffix = 2;
+  while (existingIds.has(`${base}-${suffix}`)) {
+    suffix += 1;
+  }
+
+  return `${base}-${suffix}`;
+}
+
+function addManualAoi() {
+  const label = manualAoiLabelInput.value.trim() || 'Manual AOI';
+  const color = manualAoiColorInput.value || '#ffd166';
+  const size = Math.min(80, Math.max(4, Number(manualAoiSizeInput.value) || 24));
+  const timeSec = Number(sourceVideo.currentTime.toFixed(3)) || 0;
+  const projection = getCurrentProjection();
+  const id = createUniqueAoiId(label);
+  let aoi;
+
+  if (projection === 'flat') {
+    const half = size / 200;
+    aoi = {
+      id,
+      label,
+      color,
+      space: 'video',
+      xMin: Number(Math.max(0, 0.5 - half).toFixed(6)),
+      xMax: Number(Math.min(1, 0.5 + half).toFixed(6)),
+      yMin: Number(Math.max(0, 0.5 - half).toFixed(6)),
+      yMax: Number(Math.min(1, 0.5 + half).toFixed(6)),
+    };
+  } else {
+    const rect = viewer.getBoundingClientRect();
+    const center = screenPointToYawPitch({
+      x: rect.width / 2,
+      y: rect.height / 2,
+      width: rect.width,
+      height: rect.height,
+      cameraYaw: state.cameraYaw,
+      cameraPitch: state.cameraPitch,
+      fov: camera.fov,
+    });
+    const yawHalf = size / 2;
+    const pitchHalf = Math.max(3, size / 3);
+    aoi = {
+      id,
+      label,
+      color,
+      yawMin: normalizeYaw(center.yaw - yawHalf),
+      yawMax: normalizeYaw(center.yaw + yawHalf),
+      pitchMin: Number(Math.max(-90, center.pitch - pitchHalf).toFixed(3)),
+      pitchMax: Number(Math.min(90, center.pitch + pitchHalf).toFixed(3)),
+    };
+  }
+
+  aoi.keyframes = [{ t: timeSec, ...aoi }];
+  activeAois = [...activeAois, aoi];
+  aoiSource = 'manual';
+  renderAoiList();
+  drawAoiOverlay();
+  drawMiniMap();
+  setNotice(`Added AOI: ${label}`, true);
+}
+
+function exportColabAoiJob() {
+  const job = buildColabAoiJob({
+    video: buildVideoPackageMetadata(),
+    prompts: cloudAoiPromptsInput.value,
+    sampleIntervalSec: Number(cloudAoiSampleIntervalInput.value),
+  });
+
+  downloadJson(job, `colab-aoi-job-${Date.now()}.json`);
+  setNotice('Colab AOI job exported. Upload it with the video in the Colab notebook.', true);
+}
+
+async function loadCloudAoiResultFile(event) {
+  const file = event.target.files?.[0];
+
+  if (!file) {
+    return;
+  }
+
+  try {
+    registerAois(JSON.parse(await file.text()), file.name);
+    setNotice(`Imported Colab AOIs: ${file.name}`, false);
+  } catch (error) {
+    setNotice(`Could not import Colab AOIs: ${error.message}`);
+  } finally {
+    event.target.value = '';
+  }
 }
 
 function loadLocalVideo(event) {
@@ -2094,6 +2460,8 @@ function loadLocalVideo(event) {
     type: file.type || null,
     size: file.size,
     lastModified: file.lastModified || null,
+    projection: getCurrentProjection(),
+    stereoLayout: getCurrentStereoLayout(),
   };
   sourceVideo.load();
   setNotice(`Loaded local video: ${file.name}`);
@@ -2133,16 +2501,28 @@ clearButton.addEventListener('click', clearSamples);
 exportButton.addEventListener('click', exportSamples);
 videoFileInput.addEventListener('change', loadLocalVideo);
 aoiFileInput.addEventListener('change', loadAoiFile);
+projectionSelect.addEventListener('change', syncSourceVideoMetadataFromControls);
+stereoLayoutSelect.addEventListener('change', syncSourceVideoMetadataFromControls);
+addManualAoiButton.addEventListener('click', addManualAoi);
+exportColabJobButton.addEventListener('click', exportColabAoiJob);
+cloudAoiResultInput.addEventListener('change', loadCloudAoiResultFile);
 recordingFileInput.addEventListener('change', loadRecordingFile);
+participantIdInput.addEventListener('input', updateParticipantStartState);
+participantNameInput.addEventListener('input', updateParticipantStartState);
+participantAgeInput.addEventListener('input', updateParticipantStartState);
+participantConsentInput.addEventListener('change', updateParticipantStartState);
+participantStartButton.addEventListener('click', startParticipantSession);
 window.addEventListener('resize', handleResize);
 window.addEventListener('blur', handleWindowFocusLoss);
 document.addEventListener('visibilitychange', handleVisibilityChange);
 
 renderAoiList();
+applyVideoMetadataControls(sourceVideoInfo);
 void loadAois();
 resize();
 updateCamera();
 selectWebcamMode();
 setWebcamStatus('idle');
 syncVideoNotice();
+applyAppMode();
 animate();

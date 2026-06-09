@@ -21,7 +21,7 @@
         true,
       );
     </script>
-    <link rel="stylesheet" href="./styles.css?v=aoi-anchor-4" />
+    <link rel="stylesheet" href="./styles.css?v=ui-modes-1" />
     <script src="https://webgazer.cs.brown.edu/webgazer.js" defer></script>
     <script type="importmap">
       {
@@ -32,14 +32,16 @@
     </script>
   </head>
   <body>
-    <main class="app-shell">
-      <section class="viewer-section" aria-label="360 video viewer">
+    <main id="appShell" class="app-shell">
+      <section id="viewerSection" class="viewer-section" aria-label="360 video viewer">
         <div class="viewer-toolbar">
           <div>
             <p class="eyebrow">Dynamic AOI Lab</p>
             <h1>360 gaze mapping test</h1>
           </div>
           <div class="toolbar-actions">
+            <a id="adminModeLink" class="mode-link" href="./?mode=admin">Admin</a>
+            <a id="participantModeLink" class="mode-link" href="./?mode=participant">Participant</a>
             <button id="playVideoButton" type="button">Play</button>
             <button id="resetViewButton" type="button">Reset View</button>
           </div>
@@ -78,7 +80,38 @@
         </div>
       </section>
 
-      <aside class="control-panel" aria-label="Experiment controls">
+      <aside id="participantPanel" class="participant-panel" aria-label="Participant survey setup" hidden>
+        <section class="panel-section participant-card">
+          <p class="section-label">Participant Mode</p>
+          <h2>Survey setup</h2>
+          <p class="participant-copy">
+            Enter participant details, then continue to calibration and recording. Research controls stay hidden during the session.
+          </p>
+          <label class="field-stack">
+            <span>Participant ID</span>
+            <input id="participantIdInput" type="text" autocomplete="off" placeholder="P001" />
+          </label>
+          <label class="field-stack">
+            <span>Name</span>
+            <input id="participantNameInput" type="text" autocomplete="name" placeholder="Nguyen Van A" />
+          </label>
+          <label class="field-stack">
+            <span>Age</span>
+            <input id="participantAgeInput" type="number" min="1" max="120" placeholder="22" />
+          </label>
+          <label class="checkbox-row">
+            <input id="participantConsentInput" type="checkbox" />
+            <span>I consent to webcam gaze recording for this research session.</span>
+          </label>
+          <button id="participantStartButton" class="primary wide-action" type="button" disabled>Start Participant Session</button>
+          <div class="participant-status">
+            <span>Stage</span>
+            <strong id="participantStageLabel">Enter details</strong>
+          </div>
+        </section>
+      </aside>
+
+      <aside id="controlPanel" class="control-panel" aria-label="Experiment controls">
         <section class="panel-section">
           <p class="section-label">Input</p>
           <div class="segmented">
@@ -91,10 +124,68 @@
             <span>Load local video</span>
             <input id="videoFileInput" type="file" accept="video/*" />
           </label>
+          <div class="metadata-grid">
+            <label class="field-label compact-field">
+              <span>Projection</span>
+              <select id="projectionSelect">
+                <option value="equirectangular">360 equirectangular</option>
+                <option value="flat">2D flat</option>
+              </select>
+            </label>
+            <label class="field-label compact-field">
+              <span>Stereo</span>
+              <select id="stereoLayoutSelect">
+                <option value="mono">Mono</option>
+                <option value="side-by-side">Side by side</option>
+                <option value="top-bottom">Top bottom</option>
+              </select>
+            </label>
+          </div>
           <label class="file-loader">
             <span>Load AOI JSON</span>
             <input id="aoiFileInput" type="file" accept="application/json,.json" />
           </label>
+        </section>
+
+        <section id="manualAoiPanel" class="panel-section">
+          <p class="section-label">Manual AOI</p>
+          <label class="field-label">
+            <span>Label</span>
+            <input id="manualAoiLabelInput" type="text" placeholder="New AOI" />
+          </label>
+          <div class="metadata-grid">
+            <label class="field-label compact-field">
+              <span>Size</span>
+              <input id="manualAoiSizeInput" type="number" min="4" max="80" value="24" />
+            </label>
+            <label class="field-label compact-field">
+              <span>Color</span>
+              <input id="manualAoiColorInput" type="color" value="#ffd166" />
+            </label>
+          </div>
+          <button id="addManualAoiButton" class="wide-action" type="button">Add Center AOI</button>
+        </section>
+
+        <section id="cloudAoiPanel" class="panel-section">
+          <p class="section-label">Google Colab AOI</p>
+          <label class="field-label">
+            <span>Prompts</span>
+            <textarea id="cloudAoiPromptsInput" rows="3">person
+screen
+sign
+product</textarea>
+          </label>
+          <label class="field-label compact-field">
+            <span>Sample seconds</span>
+            <input id="cloudAoiSampleIntervalInput" type="number" min="0.25" step="0.25" value="1" />
+          </label>
+          <div class="recording-actions">
+            <button id="exportColabJobButton" type="button">Export Colab Job</button>
+            <label class="file-loader compact-loader">
+              <span>Import Colab AOIs</span>
+              <input id="cloudAoiResultInput" type="file" accept="application/json,.json" />
+            </label>
+          </div>
         </section>
 
         <section class="panel-section">
@@ -162,6 +253,6 @@
       </aside>
     </main>
 
-    <script type="module" src="./src/app.js?v=aoi-anchor-4"></script>
+    <script type="module" src="./src/app.js?v=ui-modes-1"></script>
   </body>
 </html>

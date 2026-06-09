@@ -7,6 +7,7 @@ import {
   normalizeYaw,
   panoramaPointToScreen,
   resolveAoisAtTime,
+  screenPointToVideoPoint,
   screenPointToYawPitch,
   screenUncertaintyToYawPitch,
 } from '../src/aoiMath.js';
@@ -190,6 +191,65 @@ test('resolves static and keyframed AOIs at a video time', () => {
       { id: 'moving', yawMin: 20, yawMax: 40, pitchMin: 0, pitchMax: 20 },
     ],
   );
+});
+
+test('maps screen gaze to normalized flat video coordinates', () => {
+  const point = screenPointToVideoPoint({
+    x: 640,
+    y: 360,
+    width: 1280,
+    height: 720,
+  });
+
+  assert.deepEqual(point, { x: 0.5, y: 0.5 });
+});
+
+test('detects normalized video-space AOI hits', () => {
+  const hits = hitTestAois({ x: 0.35, y: 0.25 }, [
+    {
+      id: 'logo',
+      label: 'Logo',
+      color: '#ffd166',
+      space: 'video',
+      xMin: 0.2,
+      xMax: 0.5,
+      yMin: 0.1,
+      yMax: 0.4,
+    },
+  ]);
+
+  assert.deepEqual(hits.map((aoi) => aoi.id), ['logo']);
+});
+
+test('resolves keyframed normalized video AOIs at a video time', () => {
+  const [resolved] = resolveAoisAtTime([
+    {
+      id: 'moving-flat',
+      label: 'Moving flat',
+      color: '#ffd166',
+      space: 'video',
+      xMin: 0.1,
+      xMax: 0.2,
+      yMin: 0.3,
+      yMax: 0.4,
+      keyframes: [
+        { t: 0, xMin: 0.1, xMax: 0.2, yMin: 0.3, yMax: 0.4 },
+        { t: 10, xMin: 0.3, xMax: 0.5, yMin: 0.5, yMax: 0.8 },
+      ],
+    },
+  ], 5);
+
+  assert.deepEqual({
+    xMin: resolved.xMin,
+    xMax: resolved.xMax,
+    yMin: resolved.yMin,
+    yMax: resolved.yMax,
+  }, {
+    xMin: 0.2,
+    xMax: 0.35,
+    yMin: 0.4,
+    yMax: 0.6,
+  });
 });
 
 test('interpolates dynamic AOI yaw across the panorama wraparound', () => {

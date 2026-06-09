@@ -2,7 +2,7 @@
 
 Small browser proof of concept for mapping webcam gaze onto a 360 video player, classifying AOI hits, and exporting sample data for analysis.
 
-AOIs can be static yaw/pitch boxes or simple time-keyframed boxes. The bundled `assets/aois.json` marks `Front center object` as dynamic so hit testing changes with the video timestamp.
+AOIs can be static or time-keyframed boxes. 360 AOIs use panorama yaw/pitch. 2D AOIs use normalized video `x/y`. The bundled `assets/aois.json` marks `Front center object` as dynamic so hit testing changes with the video timestamp.
 
 ## Run
 
@@ -13,6 +13,10 @@ npm run serve
 
 Open `http://localhost:5179`. Use `localhost`, not `127.0.0.1`, because WebGazer needs a secure context or localhost camera access.
 
+Use `http://localhost:5179/?mode=admin` for the researcher/admin view. This is the full setup and debugging interface: load video, load AOIs, calibrate, record, review, and export.
+
+Use `http://localhost:5179/?mode=participant` for the participant view. This hides the researcher controls, collects participant metadata, then guides the participant toward calibration, accuracy check, recording, and fullscreen viewing. Browsers require a user click before entering fullscreen, so the participant presses `Start Participant Session` first.
+
 The bundled test video is `assets/test-video.mp4`. You can also load any local MP4 from the file picker.
 
 AOI definitions live in `assets/aois.json`. Edit that file to match the test video instead of changing app code. If the file is missing or invalid, the prototype falls back to built-in demo AOIs.
@@ -20,6 +24,15 @@ AOI definitions live in `assets/aois.json`. Edit that file to match the test vid
 You can also load a local AOI sidecar with `Load AOI JSON`. The file can be either a bare AOI array or an exported project JSON with an `aois` array. This lets a local video and its AOI registration travel together without rebuilding the app.
 
 For 360 or stereo 3D video, dynamic AOIs are stored as panorama-space yaw/pitch boxes with optional time `keyframes`. Sidecar project JSON may include `video.projection` such as `equirectangular` and `video.stereoLayout` such as `mono`, `top-bottom`, or `side-by-side`. The MVP does not model depth meshes or per-eye occlusion; it tracks attention to regions on the rendered panorama.
+
+## Admin AOI Authoring
+
+Admin mode now has two AOI creation paths:
+
+1. `Manual AOI`: choose the video projection, label, size, and color, then add a centered AOI at the current view. For `2D flat`, this creates normalized `x/y` AOIs. For `360 equirectangular`, this creates yaw/pitch AOIs at the current camera center.
+2. `Google Colab AOI`: enter detection prompts such as `person`, `screen`, `sign`, or `product`, export a Colab job JSON, run `notebooks/google-colab-auto-aoi.ipynb` in Google Colab with the video and job JSON, then import the generated AOI JSON.
+
+The Colab notebook uses Florence-2 object detection on sampled video frames and writes ordinary AOI JSON. The generated AOIs are proposals: review labels, duplicates, missed objects, and low-quality tracks before recording participants.
 
 ## Accurate Webcam Test Protocol
 
@@ -58,9 +71,11 @@ The prototype pauses the video during calibration and accuracy checks so moving 
 Exported JSON contains:
 
 - `project`: lightweight package metadata tying the recording to video identity, AOI source, and AOI count. The export includes AOI definitions, but not the video binary.
+- `participant`: participant metadata when the recording was started from Participant mode; `null` for admin/debug exports.
 - `video`: current video metadata such as name, type, size, duration, and source URL/path.
 - `samples`: raw per-sample gaze, quality/trust metadata, panorama yaw/pitch, active AOI bounds, AOI hit ids, and uncertainty.
 - `aois`: AOI definitions, including optional dynamic `keyframes`.
+- `namedAoiMetrics`: named per-AOI and session-level research metrics derived from the sample stream.
 - `summary.totalSamples`: number of recorded samples.
 - `summary.durationSec`: estimated recording duration.
 - `summary.aoiHitCounts`: exact AOI hit counts.
@@ -71,6 +86,10 @@ Exported JSON contains:
 - `accuracy`: independent validation result after correction, including mean, median, p90, worst-target pixel error, and target-capture dispersion.
 - `accuracyValidated`: whether webcam data was trusted for recording.
 - `gazeUncertainty`: per-sample webcam uncertainty; after validation it grows near player regions that had larger local error or capture dispersion.
+
+`namedAoiMetrics.perAoi` is keyed by AOI id and keeps the human AOI label from the AOI JSON. Each AOI includes hit counts, likely/possible/ambiguous counts, dwell seconds, first hit time, simple fixation count, average fixation duration, time to first fixation, and percentage of viewing time.
+
+`namedAoiMetrics.session` includes total samples, total duration, total fixations, average fixation duration, average number of AOIs fixated, AOI coverage percent, and an MVP-level overall processing efficiency score based on time spent in AOIs. These fixation-style metrics are useful for the research demo, but with webcam tracking they should be described as approximations unless validated in a pilot.
 
 For the MVP demo, prefer `likelyAoiDwellSec` when webcam accuracy is noisy. Use exact `aoiDwellSec` for mouse-mode sanity checks or very good webcam validation.
 
