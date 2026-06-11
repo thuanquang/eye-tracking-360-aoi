@@ -252,6 +252,35 @@ test('resolves keyframed normalized video AOIs at a video time', () => {
   });
 });
 
+test('hit tests resolved polygon AOIs', () => {
+  const [resolved] = resolveAoisAtTime([
+    {
+      id: 'object',
+      label: 'Object',
+      color: '#ffd166',
+      space: 'video',
+      shape: 'polygon',
+      points: [
+        { x: 0.1, y: 0.1 },
+        { x: 0.3, y: 0.1 },
+        { x: 0.2, y: 0.3 },
+      ],
+      keyframes: [
+        {
+          t: 0,
+          points: [
+            { x: 0.1, y: 0.1 },
+            { x: 0.3, y: 0.1 },
+            { x: 0.2, y: 0.3 },
+          ],
+        },
+      ],
+    },
+  ], 0);
+
+  assert.deepEqual(hitTestAois({ x: 0.2, y: 0.18 }, [resolved]).map((aoi) => aoi.id), ['object']);
+});
+
 test('interpolates dynamic AOI yaw across the panorama wraparound', () => {
   const [resolved] = resolveAoisAtTime([
     {

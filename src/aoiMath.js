@@ -1,3 +1,8 @@
+import {
+  interpolatePolygonPoints,
+  pointHitsPolygonAoi,
+} from './aoiShapes.js';
+
 const HALF_TURN = 180;
 const FULL_TURN = 360;
 
@@ -235,6 +240,10 @@ function hitTestVideoAoi(point, aoi) {
 
 export function hitTestAois(point, aois) {
   return aois.filter((aoi) => {
+    if (aoi.shape === 'polygon') {
+      return pointHitsPolygonAoi(point, aoi);
+    }
+
     return getAoiSpace(aoi) === 'video'
       ? hitTestVideoAoi(point, aoi)
       : hitTestPanoramaAoi(point, aoi);
@@ -293,6 +302,13 @@ function resolveDynamicAoiAtTime(aoi, timeSec) {
   const [start, end] = pair;
   const duration = end.t - start.t;
   const ratio = duration > 0 ? (timeSec - start.t) / duration : 0;
+
+  if (aoi.shape === 'polygon') {
+    return {
+      ...aoi,
+      points: interpolatePolygonPoints(start.points || [], end.points || [], ratio),
+    };
+  }
 
   if (getAoiSpace(aoi) === 'video') {
     return {
