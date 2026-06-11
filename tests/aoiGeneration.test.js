@@ -206,6 +206,60 @@ test('groups polygon detections into generated AOIs', () => {
   assert.equal(aois[0].keyframes.length, 2);
 });
 
+test('splits same-label box and polygon detections into shape-specific AOIs', () => {
+  const aois = detectionsToAois({
+    detections: [
+      {
+        label: 'Person',
+        t: 0,
+        shape: 'polygon',
+        points: [
+          { x: 0.1, y: 0.1 },
+          { x: 0.2, y: 0.1 },
+          { x: 0.2, y: 0.3 },
+          { x: 0.1, y: 0.3 },
+        ],
+        confidence: 0.91,
+      },
+      {
+        label: 'Person',
+        t: 1,
+        box: { x: 100, y: 50, width: 200, height: 100 },
+        confidence: 0.87,
+      },
+      {
+        label: 'Person',
+        t: 2,
+        shape: 'polygon',
+        points: [
+          { x: 0.12, y: 0.12 },
+          { x: 0.23, y: 0.12 },
+          { x: 0.23, y: 0.32 },
+          { x: 0.12, y: 0.32 },
+        ],
+        confidence: 0.88,
+      },
+    ],
+    video: {
+      width: 1000,
+      height: 500,
+      projection: 'flat',
+      stereoLayout: 'mono',
+    },
+  });
+
+  assert.equal(aois.length, 2);
+  assert.deepEqual(aois.map((aoi) => aoi.id).sort(), ['person-box', 'person-polygon']);
+
+  const polygonAoi = aois.find((aoi) => aoi.shape === 'polygon');
+  const boxAoi = aois.find((aoi) => aoi.shape === 'box');
+
+  assert.equal(polygonAoi.keyframes.length, 2);
+  assert.equal(boxAoi.keyframes.length, 1);
+  assert.ok(polygonAoi.keyframes.every((keyframe) => Array.isArray(keyframe.points)));
+  assert.ok(boxAoi.keyframes.every((keyframe) => Number.isFinite(keyframe.xMin)));
+});
+
 test('converts equirectangular normalized polygon points to yaw and pitch', () => {
   const aois = detectionsToAois({
     detections: [

@@ -265,8 +265,11 @@ export function detectionsToAois({
     throw new Error('Video width and height are required to convert detections to AOIs.');
   }
 
+  const convertedDetections = [];
+
   (detections || []).forEach((detection) => {
     const isPolygon = detection?.shape === 'polygon';
+    const shape = isPolygon ? 'polygon' : 'box';
 
     if (!isPolygon && !detection?.box) {
       return;
@@ -289,24 +292,45 @@ export function detectionsToAois({
       return;
     }
 
-    const entry = grouped.get(id) || {
+    convertedDetections.push({
+      detection,
       id,
       label: detection.label || detection.className || id,
+      shape,
+      keyframe,
+    });
+  });
+
+  const shapesById = new Map();
+
+  convertedDetections.forEach(({ id, shape }) => {
+    const shapes = shapesById.get(id) || new Set();
+    shapes.add(shape);
+    shapesById.set(id, shapes);
+  });
+
+  convertedDetections.forEach(({ detection, id: baseId, label, shape, keyframe }) => {
+    const hasMixedShapes = (shapesById.get(baseId)?.size || 0) > 1;
+    const id = hasMixedShapes ? `${baseId}-${shape}` : baseId;
+    const groupKey = `${baseId}:${shape}`;
+    const entry = grouped.get(groupKey) || {
+      id,
+      label,
       color: GENERATED_COLORS[grouped.size % GENERATED_COLORS.length],
       space: projection === 'flat' ? 'video' : 'panorama',
-      shape: isPolygon ? 'polygon' : 'box',
+      shape,
       generated: {
         method: generatedBy,
         confidence: detection.confidence ?? null,
         projection,
         stereoLayout,
-        outputShape: isPolygon ? 'polygon' : 'box',
+        outputShape: shape,
       },
       keyframes: [],
     };
 
     entry.keyframes.push(keyframe);
-    grouped.set(id, entry);
+    grouped.set(groupKey, entry);
   });
 
   return [...grouped.values()].map((aoi) => {
