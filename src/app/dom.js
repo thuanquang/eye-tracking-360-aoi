@@ -1,0 +1,77 @@
+export function getRequiredElement(documentRef, selector) {
+  const element = documentRef.querySelector(selector);
+
+  if (!element) {
+    throw new Error(`Missing required DOM element: ${selector}`);
+  }
+
+  return element;
+}
+
+export function queryAppDom(documentRef = document) {
+  return {
+    appShell: getRequiredElement(documentRef, '#appShell'),
+    viewer: getRequiredElement(documentRef, '#viewer'),
+    viewerSection: getRequiredElement(documentRef, '#viewerSection'),
+    viewerNotice: getRequiredElement(documentRef, '#viewerNotice'),
+    aoiOverlay: getRequiredElement(documentRef, '#aoiOverlay'),
+    gazeDot: getRequiredElement(documentRef, '#gazeDot'),
+    sourceVideo: getRequiredElement(documentRef, '#sourceVideo'),
+    miniMap: getRequiredElement(documentRef, '#miniMap'),
+    playVideoButton: getRequiredElement(documentRef, '#playVideoButton'),
+    resetViewButton: getRequiredElement(documentRef, '#resetViewButton'),
+    mouseModeButton: getRequiredElement(documentRef, '#mouseModeButton'),
+    webcamModeButton: getRequiredElement(documentRef, '#webcamModeButton'),
+    calibrateButton: getRequiredElement(documentRef, '#calibrateButton'),
+    accuracyButton: getRequiredElement(documentRef, '#accuracyButton'),
+    videoFileInput: getRequiredElement(documentRef, '#videoFileInput'),
+    aoiFileInput: getRequiredElement(documentRef, '#aoiFileInput'),
+    projectionSelect: getRequiredElement(documentRef, '#projectionSelect'),
+    stereoLayoutSelect: getRequiredElement(documentRef, '#stereoLayoutSelect'),
+    manualAoiLabelInput: getRequiredElement(documentRef, '#manualAoiLabelInput'),
+    manualAoiSizeInput: getRequiredElement(documentRef, '#manualAoiSizeInput'),
+    manualAoiColorInput: getRequiredElement(documentRef, '#manualAoiColorInput'),
+    addManualAoiButton: getRequiredElement(documentRef, '#addManualAoiButton'),
+    cloudAoiPromptsInput: getRequiredElement(documentRef, '#cloudAoiPromptsInput'),
+    cloudAoiSampleIntervalInput: getRequiredElement(documentRef, '#cloudAoiSampleIntervalInput'),
+    exportColabJobButton: getRequiredElement(documentRef, '#exportColabJobButton'),
+    cloudAoiResultInput: getRequiredElement(documentRef, '#cloudAoiResultInput'),
+    recordingFileInput: getRequiredElement(documentRef, '#recordingFileInput'),
+    recordButton: getRequiredElement(documentRef, '#recordButton'),
+    reviewButton: getRequiredElement(documentRef, '#reviewButton'),
+    clearButton: getRequiredElement(documentRef, '#clearButton'),
+    exportButton: getRequiredElement(documentRef, '#exportButton'),
+    sampleCount: getRequiredElement(documentRef, '#sampleCount'),
+    modeLabel: getRequiredElement(documentRef, '#modeLabel'),
+    webcamStatusLabel: getRequiredElement(documentRef, '#webcamStatusLabel'),
+    accuracyStatusLabel: getRequiredElement(documentRef, '#accuracyStatusLabel'),
+    aoiSourceLabel: getRequiredElement(documentRef, '#aoiSourceLabel'),
+    screenReadout: getRequiredElement(documentRef, '#screenReadout'),
+    cameraReadout: getRequiredElement(documentRef, '#cameraReadout'),
+    panoramaReadout: getRequiredElement(documentRef, '#panoramaReadout'),
+    hitReadout: getRequiredElement(documentRef, '#hitReadout'),
+    aoiList: getRequiredElement(documentRef, '#aoiList'),
+    controlPanel: getRequiredElement(documentRef, '#controlPanel'),
+    participantPanel: getRequiredElement(documentRef, '#participantPanel'),
+    adminModeLink: getRequiredElement(documentRef, '#adminModeLink'),
+    participantModeLink: getRequiredElement(documentRef, '#participantModeLink'),
+    participantIdInput: getRequiredElement(documentRef, '#participantIdInput'),
+    participantNameInput: getRequiredElement(documentRef, '#participantNameInput'),
+    participantAgeInput: getRequiredElement(documentRef, '#participantAgeInput'),
+    participantConsentInput: getRequiredElement(documentRef, '#participantConsentInput'),
+    participantStartButton: getRequiredElement(documentRef, '#participantStartButton'),
+    participantStageLabel: getRequiredElement(documentRef, '#participantStageLabel'),
+    participantSessionPanel: getRequiredElement(documentRef, '#participantSessionPanel'),
+    participantSessionStatus: getRequiredElement(documentRef, '#participantSessionStatus'),
+    participantCalibrateButton: getRequiredElement(documentRef, '#participantCalibrateButton'),
+    participantAccuracyButton: getRequiredElement(documentRef, '#participantAccuracyButton'),
+    participantRecordButton: getRequiredElement(documentRef, '#participantRecordButton'),
+    participantExportButton: getRequiredElement(documentRef, '#participantExportButton'),
+    participantFlowSteps: Array.from(documentRef.querySelectorAll('#participantFlowRail .flow-step')),
+    calibrationOverlay: getRequiredElement(documentRef, '#calibrationOverlay'),
+    calibrationTarget: getRequiredElement(documentRef, '#calibrationTarget'),
+    calibrationProgress: getRequiredElement(documentRef, '#calibrationProgress'),
+    calibrationDescription: getRequiredElement(documentRef, '#calibrationDescription'),
+    cancelCalibrationButton: getRequiredElement(documentRef, '#cancelCalibrationButton'),
+  };
+}

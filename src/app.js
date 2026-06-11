@@ -49,6 +49,7 @@ import {
   createInitialAppState,
   createInitialVideoInfo,
 } from './app/state.js';
+import { queryAppDom } from './app/dom.js';
 
 let activeAois = createDefaultAois();
 let aoiSource = 'default';
@@ -118,69 +119,72 @@ const LIVE_QUALITY_MIN_EVENTS = LIVE_QUALITY.minEvents;
 const LIVE_QUALITY_MAX_BAD_RATE = LIVE_QUALITY.maxBadRate;
 const LIVE_QUALITY_MAX_CONSECUTIVE_BAD = LIVE_QUALITY.maxConsecutiveBad;
 
-const appShell = document.querySelector('#appShell');
-const viewer = document.querySelector('#viewer');
-const viewerSection = document.querySelector('#viewerSection');
-const viewerNotice = document.querySelector('#viewerNotice');
-const aoiOverlay = document.querySelector('#aoiOverlay');
-const gazeDot = document.querySelector('#gazeDot');
-const sourceVideo = document.querySelector('#sourceVideo');
-const miniMap = document.querySelector('#miniMap');
-const playVideoButton = document.querySelector('#playVideoButton');
-const resetViewButton = document.querySelector('#resetViewButton');
-const mouseModeButton = document.querySelector('#mouseModeButton');
-const webcamModeButton = document.querySelector('#webcamModeButton');
-const calibrateButton = document.querySelector('#calibrateButton');
-const accuracyButton = document.querySelector('#accuracyButton');
-const videoFileInput = document.querySelector('#videoFileInput');
-const aoiFileInput = document.querySelector('#aoiFileInput');
-const projectionSelect = document.querySelector('#projectionSelect');
-const stereoLayoutSelect = document.querySelector('#stereoLayoutSelect');
-const manualAoiLabelInput = document.querySelector('#manualAoiLabelInput');
-const manualAoiSizeInput = document.querySelector('#manualAoiSizeInput');
-const manualAoiColorInput = document.querySelector('#manualAoiColorInput');
-const addManualAoiButton = document.querySelector('#addManualAoiButton');
-const cloudAoiPromptsInput = document.querySelector('#cloudAoiPromptsInput');
-const cloudAoiSampleIntervalInput = document.querySelector('#cloudAoiSampleIntervalInput');
-const exportColabJobButton = document.querySelector('#exportColabJobButton');
-const cloudAoiResultInput = document.querySelector('#cloudAoiResultInput');
-const recordingFileInput = document.querySelector('#recordingFileInput');
-const recordButton = document.querySelector('#recordButton');
-const reviewButton = document.querySelector('#reviewButton');
-const clearButton = document.querySelector('#clearButton');
-const exportButton = document.querySelector('#exportButton');
-const sampleCount = document.querySelector('#sampleCount');
-const modeLabel = document.querySelector('#modeLabel');
-const webcamStatusLabel = document.querySelector('#webcamStatusLabel');
-const accuracyStatusLabel = document.querySelector('#accuracyStatusLabel');
-const aoiSourceLabel = document.querySelector('#aoiSourceLabel');
-const screenReadout = document.querySelector('#screenReadout');
-const cameraReadout = document.querySelector('#cameraReadout');
-const panoramaReadout = document.querySelector('#panoramaReadout');
-const hitReadout = document.querySelector('#hitReadout');
-const aoiList = document.querySelector('#aoiList');
-const controlPanel = document.querySelector('#controlPanel');
-const participantPanel = document.querySelector('#participantPanel');
-const adminModeLink = document.querySelector('#adminModeLink');
-const participantModeLink = document.querySelector('#participantModeLink');
-const participantIdInput = document.querySelector('#participantIdInput');
-const participantNameInput = document.querySelector('#participantNameInput');
-const participantAgeInput = document.querySelector('#participantAgeInput');
-const participantConsentInput = document.querySelector('#participantConsentInput');
-const participantStartButton = document.querySelector('#participantStartButton');
-const participantStageLabel = document.querySelector('#participantStageLabel');
-const participantSessionPanel = document.querySelector('#participantSessionPanel');
-const participantSessionStatus = document.querySelector('#participantSessionStatus');
-const participantCalibrateButton = document.querySelector('#participantCalibrateButton');
-const participantAccuracyButton = document.querySelector('#participantAccuracyButton');
-const participantRecordButton = document.querySelector('#participantRecordButton');
-const participantExportButton = document.querySelector('#participantExportButton');
-const participantFlowSteps = Array.from(document.querySelectorAll('#participantFlowRail .flow-step'));
-const calibrationOverlay = document.querySelector('#calibrationOverlay');
-const calibrationTarget = document.querySelector('#calibrationTarget');
-const calibrationProgress = document.querySelector('#calibrationProgress');
-const calibrationDescription = document.querySelector('#calibrationDescription');
-const cancelCalibrationButton = document.querySelector('#cancelCalibrationButton');
+const dom = queryAppDom(document);
+const {
+  appShell,
+  viewer,
+  viewerSection,
+  viewerNotice,
+  aoiOverlay,
+  gazeDot,
+  sourceVideo,
+  miniMap,
+  playVideoButton,
+  resetViewButton,
+  mouseModeButton,
+  webcamModeButton,
+  calibrateButton,
+  accuracyButton,
+  videoFileInput,
+  aoiFileInput,
+  projectionSelect,
+  stereoLayoutSelect,
+  manualAoiLabelInput,
+  manualAoiSizeInput,
+  manualAoiColorInput,
+  addManualAoiButton,
+  cloudAoiPromptsInput,
+  cloudAoiSampleIntervalInput,
+  exportColabJobButton,
+  cloudAoiResultInput,
+  recordingFileInput,
+  recordButton,
+  reviewButton,
+  clearButton,
+  exportButton,
+  sampleCount,
+  modeLabel,
+  webcamStatusLabel,
+  accuracyStatusLabel,
+  aoiSourceLabel,
+  screenReadout,
+  cameraReadout,
+  panoramaReadout,
+  hitReadout,
+  aoiList,
+  controlPanel,
+  participantPanel,
+  adminModeLink,
+  participantModeLink,
+  participantIdInput,
+  participantNameInput,
+  participantAgeInput,
+  participantConsentInput,
+  participantStartButton,
+  participantStageLabel,
+  participantSessionPanel,
+  participantSessionStatus,
+  participantCalibrateButton,
+  participantAccuracyButton,
+  participantRecordButton,
+  participantExportButton,
+  participantFlowSteps,
+  calibrationOverlay,
+  calibrationTarget,
+  calibrationProgress,
+  calibrationDescription,
+  cancelCalibrationButton,
+} = dom;
 
 const state = createInitialAppState();
 
