@@ -19,13 +19,17 @@ import {
   buildVideoPackageMetadata as createVideoPackageMetadata,
 } from './recording/recordingExport.js?v=recording-export-1';
 import {
+  findReviewSampleIndex,
+  getReviewTimeWindow,
+  prepareReviewSamples,
+} from './recording/replay.js?v=recording-replay-1';
+import {
   buildColabAoiJob,
   normalizeAoiId,
 } from './aois/aoiGeneration.js?v=colab-aoi-1';
 import {
   extractAoisFromJson,
   extractProjectMetadataFromJson,
-  isFiniteNumber,
   isValidAoi,
 } from './aois/aoiImport.js?v=aoi-schema-1';
 import { buildAoiOverlayModels } from './aois/aoiOverlay.js?v=aoi-overlay-1';
@@ -422,7 +426,7 @@ function getExportParticipantMetadata() {
 
 function getRenderableAois() {
   if (state.reviewActive && state.reviewSamples.length) {
-    const sampleIndex = findReviewSampleIndex(sourceVideo.currentTime || 0);
+    const sampleIndex = findReviewSampleIndex(state.reviewSamples, sourceVideo.currentTime || 0);
     const sample = state.reviewSamples[sampleIndex >= 0 ? sampleIndex : 0];
 
     if (Array.isArray(sample?.activeAois) && sample.activeAois.length) {
@@ -499,22 +503,6 @@ function renderAoiList() {
   }).join('');
 }
 
-function isValidReviewSample(sample) {
-  return (
-    isFiniteNumber(sample?.t) &&
-    isFiniteNumber(sample?.panorama?.yaw) &&
-    isFiniteNumber(sample?.panorama?.pitch)
-  );
-}
-
-function extractRecordingSamplesFromJson(json) {
-  if (Array.isArray(json?.samples)) {
-    return json.samples;
-  }
-
-  throw new Error('Recording JSON must be an exported object with a samples array.');
-}
-
 function registerAois(aois, source) {
   const loadedAois = extractAoisFromJson(aois);
 
@@ -571,9 +559,7 @@ function stopReviewMode() {
 }
 
 function registerRecording(json, source) {
-  const samples = extractRecordingSamplesFromJson(json)
-    .filter(isValidReviewSample)
-    .sort((a, b) => a.t - b.t);
+  const samples = prepareReviewSamples(json);
 
   if (!samples.length) {
     throw new Error('Recording JSON has no valid gaze samples.');
@@ -1366,53 +1352,12 @@ function clampReviewScreen(screen, rect) {
   };
 }
 
-function findReviewSampleIndex(timeSec) {
-  const samples = state.reviewSamples;
-
-  if (!samples.length) {
-    return -1;
-  }
-
-  if (!Number.isFinite(timeSec) || timeSec <= samples[0].t) {
-    return 0;
-  }
-
-  if (timeSec >= samples[samples.length - 1].t) {
-    return samples.length - 1;
-  }
-
-  let bestIndex = 0;
-  let bestDistance = Infinity;
-
-  for (let index = 0; index < samples.length; index += 1) {
-    const distance = Math.abs(samples[index].t - timeSec);
-
-    if (distance < bestDistance) {
-      bestDistance = distance;
-      bestIndex = index;
-    }
-  }
-
-  return bestIndex;
-}
-
-function getReviewTimeWindow() {
-  if (!state.reviewSamples.length) {
-    return null;
-  }
-
-  return {
-    start: state.reviewSamples[0].t,
-    end: state.reviewSamples[state.reviewSamples.length - 1].t,
-  };
-}
-
 function syncReviewPlaybackWindow() {
   if (!state.reviewActive || !Number.isFinite(sourceVideo.currentTime)) {
     return;
   }
 
-  const window = getReviewTimeWindow();
+  const window = getReviewTimeWindow(state.reviewSamples);
   if (!window) {
     return;
   }
@@ -1443,7 +1388,7 @@ function getFallbackReviewScreen(sample, rect) {
 
 function getCurrentReviewPanoramaPoint() {
   const rect = viewer.getBoundingClientRect();
-  const sampleIndex = findReviewSampleIndex(sourceVideo.currentTime || 0);
+  const sampleIndex = findReviewSampleIndex(state.reviewSamples, sourceVideo.currentTime || 0);
 
   if (sampleIndex < 0) {
     return null;
@@ -1922,7 +1867,7 @@ async function startReviewMode() {
   updateReadout();
   drawMiniMap();
 
-  const reviewWindow = getReviewTimeWindow();
+  const reviewWindow = getReviewTimeWindow(state.reviewSamples);
   const windowLabel = reviewWindow
     ? ` (${(reviewWindow.end - reviewWindow.start).toFixed(1)}s sample window)`
     : '';
