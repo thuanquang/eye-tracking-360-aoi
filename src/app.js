@@ -68,11 +68,13 @@ import {
   createInitialVideoInfo,
 } from './app/state.js';
 import { queryAppDom } from './app/dom.js';
+import { createWebGazerProvider } from './gaze/providers/webgazerProvider.js?v=gaze-providers-1';
 
 let activeAois = createDefaultAois();
 let aoiSource = 'default';
 let registeredProjectMetadata = {};
 let sourceVideoInfo = createInitialVideoInfo();
+let webcamProvider = null;
 
 const SAMPLE_INTERVAL_MS = RECORDING_SAMPLE_INTERVAL_MS;
 const GAZE_SMOOTHING_ALPHA = GAZE_SMOOTHING.alpha;
@@ -627,40 +629,8 @@ function disableWebGazerMouseTraining() {
   }
 }
 
-function disableWebGazerPersistence() {
-  if (window.webgazer?.saveDataAcrossSessions) {
-    window.webgazer.saveDataAcrossSessions(false);
-  }
-}
-
-function configureWebGazerForControlledCalibration() {
-  disableWebGazerPersistence();
-
-  if (window.webgazer?.setRegression) {
-    window.webgazer.setRegression('ridge');
-  }
-
-  if (window.webgazer?.setTracker) {
-    window.webgazer.setTracker('TFFacemesh');
-  }
-
-  if (window.webgazer?.applyKalmanFilter) {
-    window.webgazer.applyKalmanFilter(false);
-  }
-
-  if (window.webgazer?.showFaceOverlay) {
-    window.webgazer.showFaceOverlay(true);
-  }
-
-  if (window.webgazer?.showFaceFeedbackBox) {
-    window.webgazer.showFaceFeedbackBox(true);
-  }
-}
-
 async function resetWebcamCalibrationData() {
-  if (window.webgazer?.clearData) {
-    await window.webgazer.clearData();
-  }
+  await webcamProvider?.resetCalibration();
 
   state.gaze = createDefaultGaze();
   state.rawPageGaze = null;
@@ -961,19 +931,18 @@ async function ensureWebcamGaze() {
 
   setWebcamStatus('starting');
 
-  configureWebGazerForControlledCalibration();
-  window.webgazer.showVideoPreview(true);
-  window.webgazer.showPredictionPoints(false);
-  window.webgazer.setGazeListener((data) => {
-    if (!data || state.mode !== 'webcam') {
-      return;
-    }
-
-    processWebcamGaze(data);
-  });
-
   try {
-    await window.webgazer.begin();
+    webcamProvider = createWebGazerProvider({
+      webgazer: window.webgazer,
+      onGaze: (data) => {
+        if (state.mode !== 'webcam') {
+          return;
+        }
+
+        processWebcamGaze(data);
+      },
+    });
+    await webcamProvider.start();
     state.webcamStarted = true;
     disableWebGazerMouseTraining();
     setWebcamStatus('active');
@@ -1081,7 +1050,7 @@ async function captureCalibrationPoint() {
     return;
   }
 
-  if (!window.webgazer?.recordScreenPosition) {
+  if (!webcamProvider?.recordCalibrationPoint) {
     setWebcamStatus('no api');
     return;
   }
@@ -1096,7 +1065,7 @@ async function captureCalibrationPoint() {
 
   for (let sample = 0; sample < CALIBRATION_SAMPLES_PER_POINT; sample += 1) {
     calibrationProgress.textContent = `Target ${state.calibrationIndex + 1} of ${CALIBRATION_POINTS.length} - training ${sample + 1}`;
-    window.webgazer.recordScreenPosition(x, y, 'click');
+    webcamProvider.recordCalibrationPoint({ x, y });
     await delay(TARGET_SAMPLE_DELAY_MS);
   }
 
