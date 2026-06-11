@@ -273,6 +273,7 @@ const state = {
     mode: 'idle',
     points: [],
     dragIndex: null,
+    space: null,
   },
 };
 
@@ -676,14 +677,14 @@ function screenToAoiSpacePoint(screenPoint, space) {
 function screenToCurrentAoiPoint(screenPoint) {
   return screenToAoiSpacePoint(
     screenPoint,
-    getCurrentProjection() === 'flat' ? 'video' : 'panorama',
+    state.manualAnnotation.space || (getCurrentProjection() === 'flat' ? 'video' : 'panorama'),
   );
 }
 
 function getDraftScreenPoints(rect) {
   const points = state.manualAnnotation.points || [];
 
-  if (getCurrentProjection() === 'flat') {
+  if ((state.manualAnnotation.space || (getCurrentProjection() === 'flat' ? 'video' : 'panorama')) === 'video') {
     return points.map((point) => ({ x: point.x * rect.width, y: point.y * rect.height }));
   }
 
@@ -868,31 +869,47 @@ function getAoiBoundsLabel(aoi) {
     : `yaw ${aoi.yawMin} to ${aoi.yawMax}, pitch ${aoi.pitchMin} to ${aoi.pitchMax}`;
 }
 
-function renderAoiList() {
+function focusAoiListButton(aoiId) {
+  const button = Array.from(aoiList.querySelectorAll('.aoi-list-button'))
+    .find((candidate) => candidate.dataset.aoiId === aoiId);
+
+  button?.focus({ preventScroll: true });
+}
+
+function renderAoiList({ focusAoiId = null } = {}) {
   aoiSourceLabel.textContent = aoiSource;
   const items = activeAois.map((aoi) => {
     const bounds = getAoiBoundsLabel(aoi);
     const dynamicLabel = Array.isArray(aoi.keyframes) && aoi.keyframes.length ? ' (dynamic)' : '';
+    const selected = aoi.id === state.selectedAoiId;
     const item = document.createElement('li');
+    const button = document.createElement('button');
     const swatch = document.createElement('span');
     const content = document.createElement('span');
     const label = document.createElement('strong');
     const boundsLabel = document.createElement('span');
 
-    item.dataset.aoiId = aoi.id;
-    item.classList.toggle('is-selected', aoi.id === state.selectedAoiId);
-    item.tabIndex = 0;
+    item.classList.toggle('is-selected', selected);
+    button.type = 'button';
+    button.className = 'aoi-list-button';
+    button.dataset.aoiId = aoi.id;
+    button.setAttribute('aria-pressed', String(selected));
     swatch.className = 'swatch';
+    swatch.setAttribute('aria-hidden', 'true');
     swatch.style.background = aoi.color;
     label.textContent = `${aoi.label}${dynamicLabel}`;
     boundsLabel.textContent = bounds;
     content.append(label, boundsLabel);
-    item.append(swatch, content);
+    button.append(swatch, content);
+    item.append(button);
 
     return item;
   });
 
   aoiList.replaceChildren(...items);
+  if (focusAoiId) {
+    focusAoiListButton(focusAoiId);
+  }
 }
 
 function isFiniteNumber(value) {
@@ -2641,7 +2658,7 @@ function createUniqueAoiId(label) {
 }
 
 function setManualAnnotationIdle(message = 'Click Draw Polygon, then click around the object edge.') {
-  state.manualAnnotation = { mode: 'idle', points: [], dragIndex: null };
+  state.manualAnnotation = { mode: 'idle', points: [], dragIndex: null, space: null };
   drawPolygonAoiButton.disabled = false;
   finishPolygonAoiButton.disabled = true;
   cancelPolygonAoiButton.disabled = true;
@@ -2651,7 +2668,12 @@ function setManualAnnotationIdle(message = 'Click Draw Polygon, then click aroun
 
 function startPolygonAnnotation() {
   state.selectedAoiId = null;
-  state.manualAnnotation = { mode: 'drawing', points: [], dragIndex: null };
+  state.manualAnnotation = {
+    mode: 'drawing',
+    points: [],
+    dragIndex: null,
+    space: getCurrentProjection() === 'flat' ? 'video' : 'panorama',
+  };
   drawPolygonAoiButton.disabled = true;
   finishPolygonAoiButton.disabled = true;
   cancelPolygonAoiButton.disabled = false;
@@ -2690,7 +2712,7 @@ function finishPolygonAnnotation() {
 
   const label = manualAoiLabelInput.value.trim() || 'Manual polygon AOI';
   const id = createUniqueAoiId(label);
-  const space = getCurrentProjection() === 'flat' ? 'video' : 'panorama';
+  const space = state.manualAnnotation.space || (getCurrentProjection() === 'flat' ? 'video' : 'panorama');
   const points = cloneAoiPoints(state.manualAnnotation.points);
   const aoi = {
     id,
@@ -2719,7 +2741,7 @@ function getActiveAoiById(aoiId) {
   return activeAois.find((aoi) => aoi.id === aoiId);
 }
 
-function selectAoiForEditing(aoiId) {
+function selectAoiForEditing(aoiId, { restoreFocus = false } = {}) {
   const selectedAoi = getActiveAoiById(aoiId);
 
   if (!selectedAoi) {
@@ -2731,6 +2753,7 @@ function selectAoiForEditing(aoiId) {
     mode: selectedAoi.shape === 'polygon' ? 'editing' : 'idle',
     points: [],
     dragIndex: null,
+    space: null,
   };
   drawPolygonAoiButton.disabled = false;
   finishPolygonAoiButton.disabled = true;
@@ -2739,27 +2762,15 @@ function selectAoiForEditing(aoiId) {
   manualAoiStatus.textContent = selectedAoi.shape === 'polygon'
     ? 'Drag polygon vertices to refine the selected AOI.'
     : 'Selected AOI. Polygon vertices are editable for polygon AOIs.';
-  renderAoiList();
+  renderAoiList({ focusAoiId: restoreFocus ? selectedAoi.id : null });
   drawAoiOverlay();
 }
 
 function handleAoiListClick(event) {
-  const item = event.target.closest('[data-aoi-id]');
+  const button = event.target.closest('.aoi-list-button[data-aoi-id]');
 
-  if (item) {
-    selectAoiForEditing(item.dataset.aoiId);
-  }
-}
-
-function handleAoiListKeydown(event) {
-  if (event.key !== 'Enter' && event.key !== ' ') {
-    return;
-  }
-
-  const item = event.target.closest('[data-aoi-id]');
-  if (item) {
-    event.preventDefault();
-    selectAoiForEditing(item.dataset.aoiId);
+  if (button) {
+    selectAoiForEditing(button.dataset.aoiId, { restoreFocus: true });
   }
 }
 
@@ -2869,7 +2880,7 @@ function startVertexHandleDrag(event) {
   }
 
   state.selectedAoiId = handle.dataset.aoiId;
-  state.manualAnnotation = { mode: 'editing', points: [], dragIndex };
+  state.manualAnnotation = { mode: 'editing', points: [], dragIndex, space: null };
   aoiOverlay.setPointerCapture(event.pointerId);
   manualAoiStatus.textContent = 'Dragging polygon vertex.';
   renderAoiList();
@@ -3044,6 +3055,7 @@ aoiOverlay.addEventListener('pointerdown', startVertexHandleDrag);
 aoiOverlay.addEventListener('pointermove', dragSelectedVertex);
 aoiOverlay.addEventListener('pointerup', finishVertexHandleDrag);
 aoiOverlay.addEventListener('pointercancel', finishVertexHandleDrag);
+aoiOverlay.addEventListener('lostpointercapture', finishVertexHandleDrag);
 viewer.addEventListener('pointerdown', startDrag);
 viewer.addEventListener('pointermove', drag);
 viewer.addEventListener('pointerup', endDrag);
@@ -3069,7 +3081,6 @@ drawPolygonAoiButton.addEventListener('click', startPolygonAnnotation);
 finishPolygonAoiButton.addEventListener('click', finishPolygonAnnotation);
 cancelPolygonAoiButton.addEventListener('click', cancelPolygonAnnotation);
 aoiList.addEventListener('click', handleAoiListClick);
-aoiList.addEventListener('keydown', handleAoiListKeydown);
 exportColabJobButton.addEventListener('click', exportColabAoiJob);
 cloudAoiResultInput.addEventListener('change', loadCloudAoiResultFile);
 recordingFileInput.addEventListener('change', loadRecordingFile);

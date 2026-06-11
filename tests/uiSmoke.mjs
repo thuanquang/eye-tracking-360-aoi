@@ -122,7 +122,22 @@ try {
     1,
     'Drawn polygon AOIs should appear on the overlay.',
   );
-  await page.locator('#aoiList li').filter({ hasText: 'Drawn object' }).click();
+  const drawnAoiButton = page.locator('#aoiList button[data-aoi-id="drawn-object"]');
+  await drawnAoiButton.focus();
+  await page.keyboard.press('Enter');
+  await page.waitForFunction(() => (
+    document.activeElement?.matches('#aoiList button[data-aoi-id="drawn-object"][aria-pressed="true"]')
+  ));
+  assert.equal(
+    await drawnAoiButton.getAttribute('aria-pressed'),
+    'true',
+    'Keyboard-selected AOIs should expose selected state on the list button.',
+  );
+  assert.equal(
+    await page.locator(':focus').getAttribute('data-aoi-id'),
+    'drawn-object',
+    'Keyboard AOI selection should keep focus on the selected AOI button after rerender.',
+  );
   const firstHandle = page.locator('#aoiOverlay .aoi-vertex-handle').first();
   const before = await firstHandle.boundingBox();
   await page.mouse.move(before.x + before.width / 2, before.y + before.height / 2);
@@ -132,6 +147,47 @@ try {
   const after = await firstHandle.boundingBox();
   assert.notEqual(Math.round(after.x), Math.round(before.x));
 
+  const drawnExportPromise = page.waitForEvent('download');
+  await page.locator('#exportButton').click();
+  const drawnExportDownload = await drawnExportPromise;
+  const drawnExportJson = JSON.parse(await readFile(await drawnExportDownload.path(), 'utf8'));
+  const drawnAoi = drawnExportJson.aois.find((aoi) => aoi.id === 'drawn-object');
+  assert.equal(drawnAoi.shape, 'polygon', 'Manual drawn AOIs should export as polygons.');
+  assert.equal(drawnAoi.space, 'video', 'Manual flat drawn AOIs should export in video space.');
+  assert.equal(drawnAoi.points.length >= 4, true, 'Manual drawn polygon AOIs should export vertex points.');
+  assert.equal(
+    drawnAoi.keyframes[0].points.length,
+    drawnAoi.points.length,
+    'Manual drawn polygon AOIs should export matching keyframe points.',
+  );
+
+  await page.locator('#projectionSelect').selectOption('flat');
+  await page.locator('#manualAoiLabelInput').fill('Locked projection polygon');
+  await page.locator('#drawPolygonAoiButton').click();
+  const lockedBox = await page.locator('#viewer').boundingBox();
+  await page.mouse.click(lockedBox.x + lockedBox.width * 0.24, lockedBox.y + lockedBox.height * 0.24);
+  await page.locator('#projectionSelect').selectOption('equirectangular');
+  await page.mouse.click(lockedBox.x + lockedBox.width * 0.42, lockedBox.y + lockedBox.height * 0.25);
+  await page.mouse.click(lockedBox.x + lockedBox.width * 0.40, lockedBox.y + lockedBox.height * 0.42);
+  await page.mouse.dblclick(lockedBox.x + lockedBox.width * 0.23, lockedBox.y + lockedBox.height * 0.40);
+  await page.waitForFunction(() => document.querySelector('#aoiList')?.textContent?.includes('Locked projection polygon'));
+  const lockedExportPromise = page.waitForEvent('download');
+  await page.locator('#exportButton').click();
+  const lockedExportDownload = await lockedExportPromise;
+  const lockedExportJson = JSON.parse(await readFile(await lockedExportDownload.path(), 'utf8'));
+  const lockedAoi = lockedExportJson.aois.find((aoi) => aoi.id === 'locked-projection-polygon');
+  assert.equal(
+    lockedAoi.space,
+    'video',
+    'Polygon drawing should keep the AOI coordinate space chosen when drawing started.',
+  );
+  assert.equal(
+    lockedAoi.points.every((point) => Number.isFinite(point.x) && Number.isFinite(point.y) && point.yaw === undefined && point.pitch === undefined),
+    true,
+    'Projection changes during drawing should not mix video and panorama point formats.',
+  );
+
+  await page.locator('#projectionSelect').selectOption('flat');
   await page.locator('#manualAoiLabelInput').fill('Manual flat AOI');
   await page.locator('#manualAoiSizeInput').fill('24');
   await page.locator('#addManualAoiButton').click();
@@ -567,7 +623,7 @@ try {
   await page.locator('#sourceVideo').evaluate((video) => {
     video.currentTime = 0;
   });
-  await page.locator('#aoiList li').filter({ hasText: 'Dynamic polygon object' }).click();
+  await page.locator('#aoiList button[data-aoi-id="dynamic-polygon-object"]').click();
   const dynamicHandle = page.locator('#aoiOverlay .aoi-vertex-handle').first();
   const dynamicBefore = await dynamicHandle.boundingBox();
   await page.mouse.move(dynamicBefore.x + dynamicBefore.width / 2, dynamicBefore.y + dynamicBefore.height / 2);

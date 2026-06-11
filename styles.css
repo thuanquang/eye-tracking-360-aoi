@@ -531,13 +531,36 @@ h1 {
 }
 
 .aoi-list li {
+  padding: 0;
+  border-radius: 6px;
+}
+
+.aoi-list-button {
+  width: 100%;
+  min-height: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
   display: grid;
   grid-template-columns: 14px minmax(0, 1fr);
   gap: 10px;
   align-items: start;
   padding: 9px 0;
-  border-radius: 6px;
+  text-align: left;
   cursor: pointer;
+}
+
+.aoi-list-button:hover {
+  background: transparent;
+}
+
+.aoi-list-button:active {
+  transform: none;
+}
+
+.aoi-list-button:focus-visible {
+  outline: 2px solid var(--accent-2);
+  outline-offset: 2px;
 }
 
 .aoi-list li.is-selected {
