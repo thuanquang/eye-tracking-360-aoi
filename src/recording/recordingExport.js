@@ -1,3 +1,5 @@
+import { summarizeGazeStreamQuality } from '../gaze/qualityMonitor.js';
+
 function countValues(samples, getValues) {
   return samples.reduce((counts, sample) => {
     const values = getValues(sample);
@@ -37,6 +39,8 @@ export function buildExportSummary(samples, stateLike, sampleIntervalMs = 150) {
   const durationSec = getSampleDurations(samples, sampleIntervalMs)
     .reduce((sum, duration) => sum + duration, 0);
   const correctedAccuracySummary = stateLike.correctedAccuracySummary;
+  const gazeStreamQuality = stateLike.gazeStreamQuality
+    ?? summarizeGazeStreamQuality(stateLike.gazeStreamStats);
 
   return {
     totalSamples: samples.length,
@@ -57,6 +61,7 @@ export function buildExportSummary(samples, stateLike, sampleIntervalMs = 150) {
     accuracyP90DispersionPx: correctedAccuracySummary?.p90DispersionPx ?? null,
     accuracyMaxDispersionPx: correctedAccuracySummary?.maxDispersionPx ?? null,
     droppedGazeSamples: stateLike.droppedGazeSamples,
+    gazeStreamQuality,
   };
 }
 
@@ -143,6 +148,9 @@ export function buildExportPayload({
     accuracyValidated: state.accuracyValidated,
     accuracyInvalidationReason: state.accuracyInvalidationReason,
     liveGazeQuality: state.liveGazeQuality,
+    gazeStreamQuality: state.gazeStreamQuality
+      ?? summary?.gazeStreamQuality
+      ?? summarizeGazeStreamQuality(state.gazeStreamStats),
     droppedGazeSamples: state.droppedGazeSamples,
     samples: state.samples,
   };

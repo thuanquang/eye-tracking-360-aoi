@@ -99,6 +99,7 @@ export function createInitialAppState() {
     accuracyValidatedAt: null,
     accuracyInvalidationReason: null,
     liveGazeQuality: null,
+    gazeStreamStats: null,
     gazeDropReason: null,
     droppedGazeSamples: 0,
     appMode: 'admin',

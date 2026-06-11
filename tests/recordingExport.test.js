@@ -25,6 +25,7 @@ test('builds recording samples with raw, corrected, AOI, and quality fields', ()
     },
     uncertainty: { px: 50, yawRadius: 2, pitchRadius: 1 },
     quality: { trustedForAoiAnalysis: true },
+    gazeStreamQuality: { effectiveHz: 50, dataIntegrityPercent: 75 },
   });
 
   assert.equal(sample.t, 1.234);
@@ -33,6 +34,7 @@ test('builds recording samples with raw, corrected, AOI, and quality fields', ()
   assert.deepEqual(sample.hits, ['front']);
   assert.deepEqual(sample.likelyHits, ['front']);
   assert.equal(sample.quality.trustedForAoiAnalysis, true);
+  assert.equal(sample.quality.gazeStreamQuality.effectiveHz, 50);
 });
 
 test('builds summary counts and duration from samples', () => {
@@ -42,6 +44,13 @@ test('builds summary counts and duration from samples', () => {
   ], {
     accuracyValidated: false,
     correctedAccuracySummary: null,
+    gazeStreamStats: {
+      events: [
+        { atMs: 0, accepted: true },
+        { atMs: 20, accepted: false, reason: 'stale' },
+        { atMs: 40, accepted: true },
+      ],
+    },
   });
 
   assert.equal(summary.totalSamples, 2);
@@ -52,6 +61,8 @@ test('builds summary counts and duration from samples', () => {
   assert.equal(summary.possibleAoiHitCounts.logo, 1);
   assert.equal(summary.ambiguousSampleCount, 1);
   assert.equal(summary.trustedSampleCount, 2);
+  assert.equal(summary.gazeStreamQuality.effectiveHz, 50);
+  assert.equal(summary.gazeStreamQuality.droppedReasons.stale, 1);
 });
 
 test('builds video package metadata from source info and video element', () => {
@@ -88,6 +99,12 @@ test('builds export payload with state-derived accuracy and samples', () => {
       accuracyValidated: true,
       accuracyInvalidationReason: null,
       liveGazeQuality: { status: 'ready' },
+      gazeStreamStats: {
+        events: [
+          { atMs: 0, accepted: true },
+          { atMs: 50, accepted: true },
+        ],
+      },
       droppedGazeSamples: 0,
       samples: [{ t: 0 }],
     },
@@ -95,5 +112,6 @@ test('builds export payload with state-derived accuracy and samples', () => {
 
   assert.equal(payload.sourceVideo, 'blob:demo');
   assert.equal(payload.accuracy.meanPx, 8);
+  assert.equal(payload.gazeStreamQuality.effectiveHz, 20);
   assert.deepEqual(payload.samples, [{ t: 0 }]);
 });

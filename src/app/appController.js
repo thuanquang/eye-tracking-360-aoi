@@ -53,6 +53,10 @@ import {
   updateLiveGazeQuality,
 } from '../gaze/gazeQuality.js';
 import {
+  summarizeGazeStreamQuality,
+  updateGazeStreamStats,
+} from '../gaze/qualityMonitor.js';
+import {
   ACCURACY_REFINEMENT_POINTS,
   CALIBRATION_POINTS,
   VALIDATION_POINTS,
@@ -189,6 +193,11 @@ export function createAppController({
       }
 
       state.gaze = gaze;
+      registerGazeStreamEvent({
+        atMs: performance.now(),
+        accepted: true,
+        onScreen: true,
+      });
     },
   });
 
@@ -639,6 +648,7 @@ export function createAppController({
     clearAccuracyRefinement();
     state.gazeDropReason = null;
     state.droppedGazeSamples = 0;
+    state.gazeStreamStats = null;
   }
 
   function setAccuracySummary(summary) {
@@ -721,6 +731,23 @@ export function createAppController({
 
   function resetLiveGazeQuality() {
     state.liveGazeQuality = null;
+  }
+
+  function registerGazeStreamEvent(event) {
+    if (!state.isRecording || state.reviewActive) {
+      return;
+    }
+
+    state.gazeStreamStats = updateGazeStreamStats(state.gazeStreamStats, {
+      atMs: event.atMs ?? performance.now(),
+      accepted: event.accepted,
+      reason: event.reason,
+      onScreen: event.onScreen ?? null,
+    });
+  }
+
+  function getCurrentGazeStreamQuality() {
+    return summarizeGazeStreamQuality(state.gazeStreamStats);
   }
 
   function invalidateAccuracyForLiveGazeQuality(reason) {
@@ -868,17 +895,30 @@ export function createAppController({
       height: rect.height,
     };
     const viewerGaze = applyViewportCalibration(rawViewerGaze, state.gazeCorrection, viewport);
+    const rawOnScreen = isGazeInsideViewport(rawViewerGaze, viewport);
     const rawBoundsMargin = Math.max(rect.width, rect.height) * RAW_GAZE_BOUNDS_MARGIN_RATIO;
 
     if (!isGazeInsideViewport(rawViewerGaze, viewport, rawBoundsMargin)) {
       state.droppedGazeSamples += 1;
       if (canHoldLastWebcamGaze(now)) {
+        registerGazeStreamEvent({
+          atMs: now,
+          accepted: false,
+          reason: 'raw-out-of-bounds-held',
+          onScreen: rawOnScreen,
+        });
         holdLastWebcamGaze('raw-out-of-bounds');
         return;
       }
 
       state.gaze = createDefaultGaze();
       state.gazeDropReason = 'raw-out-of-bounds';
+      registerGazeStreamEvent({
+        atMs: now,
+        accepted: false,
+        reason: 'raw-out-of-bounds',
+        onScreen: rawOnScreen,
+      });
       registerLiveGazeQualityEvent({ accepted: false, reason: 'raw-out-of-bounds' });
       return;
     }
@@ -902,12 +942,24 @@ export function createAppController({
       state.droppedGazeSamples += 1;
       if (canHoldLastWebcamGaze(now)) {
         state.gaze = update.gaze.visible ? update.gaze : state.gaze;
+        registerGazeStreamEvent({
+          atMs: now,
+          accepted: false,
+          reason: `${update.reason}-held`,
+          onScreen: rawOnScreen,
+        });
         holdLastWebcamGaze(update.reason);
         return;
       }
 
       state.gaze = update.gaze;
       state.gazeDropReason = update.reason;
+      registerGazeStreamEvent({
+        atMs: now,
+        accepted: false,
+        reason: update.reason,
+        onScreen: rawOnScreen,
+      });
       registerLiveGazeQualityEvent({ accepted: false, reason: update.reason });
       return;
     }
@@ -915,6 +967,11 @@ export function createAppController({
     state.gaze = update.gaze;
     state.lastAcceptedGazeAt = now;
     state.gazeDropReason = null;
+    registerGazeStreamEvent({
+      atMs: now,
+      accepted: true,
+      onScreen: rawOnScreen,
+    });
     registerLiveGazeQualityEvent({ accepted: true, reason: null });
   }
 
@@ -1396,8 +1453,24 @@ export function createAppController({
 
     if (webcamGazeIsStale) {
       if (canHoldLastWebcamGaze(now)) {
+        if (state.gazeDropReason !== 'stale-held') {
+          registerGazeStreamEvent({
+            atMs: now,
+            accepted: false,
+            reason: 'stale-held',
+            onScreen: null,
+          });
+        }
         holdLastWebcamGaze('stale');
       } else {
+        if (state.gazeDropReason !== 'stale') {
+          registerGazeStreamEvent({
+            atMs: now,
+            accepted: false,
+            reason: 'stale',
+            onScreen: null,
+          });
+        }
         state.gaze = { ...state.gaze, visible: false, held: false };
         state.gazeDropReason = 'stale';
         registerLiveGazeQualityEvent({ accepted: false, reason: 'stale' });
@@ -1406,6 +1479,14 @@ export function createAppController({
     }
 
     if (state.gaze.held && !canHoldLastWebcamGaze(now)) {
+      if (state.gazeDropReason !== 'stale') {
+        registerGazeStreamEvent({
+          atMs: now,
+          accepted: false,
+          reason: 'stale',
+          onScreen: null,
+        });
+      }
       state.gaze = { ...state.gaze, visible: false };
       state.gazeDropReason = 'stale';
       registerLiveGazeQualityEvent({ accepted: false, reason: 'stale' });
@@ -1655,6 +1736,7 @@ export function createAppController({
         accuracyInvalidationReason: state.accuracyInvalidationReason,
         droppedGazeSamples: state.droppedGazeSamples,
       },
+      gazeStreamQuality: getCurrentGazeStreamQuality(),
       gaze: state.gaze,
       rawGaze: state.rawViewerGaze,
       camera: {
@@ -1769,6 +1851,12 @@ export function createAppController({
       return;
     }
 
+    const startingRecording = !state.isRecording;
+
+    if (startingRecording) {
+      state.gazeStreamStats = null;
+    }
+
     state.isRecording = !state.isRecording;
     recordButton.textContent = state.isRecording ? 'Stop Recording' : 'Start Recording';
     recordButton.classList.toggle('primary', !state.isRecording);
@@ -1777,6 +1865,7 @@ export function createAppController({
 
   function clearSamples() {
     state.samples = [];
+    state.gazeStreamStats = null;
     sampleCount.textContent = '0';
     syncParticipantSessionControls();
   }

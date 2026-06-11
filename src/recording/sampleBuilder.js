@@ -17,6 +17,17 @@ function buildActiveAoiSnapshot(aoi) {
   };
 }
 
+function buildSampleQuality(quality, gazeStreamQuality) {
+  if (!gazeStreamQuality) {
+    return quality;
+  }
+
+  return {
+    ...(quality || {}),
+    gazeStreamQuality,
+  };
+}
+
 export function buildRecordingSample({
   timeSec,
   source,
@@ -29,11 +40,12 @@ export function buildRecordingSample({
   classification = null,
   uncertainty = null,
   quality,
+  gazeStreamQuality = null,
 }) {
   return {
     t: roundNumber(timeSec),
     source,
-    quality,
+    quality: buildSampleQuality(quality, gazeStreamQuality),
     screen: {
       x: Math.round(gaze.x),
       y: Math.round(gaze.y),
