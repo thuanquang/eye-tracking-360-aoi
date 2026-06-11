@@ -2,7 +2,7 @@
 
 Small browser proof of concept for mapping webcam gaze onto a 360 video player, classifying AOI hits, and exporting sample data for analysis.
 
-AOIs can be static or time-keyframed boxes. 360 AOIs use panorama yaw/pitch. 2D AOIs use normalized video `x/y`. The bundled `assets/aois.json` marks `Front center object` as dynamic so hit testing changes with the video timestamp.
+AOIs can be static or time-keyframed boxes or polygons. 360 AOIs use panorama yaw/pitch. 2D AOIs use normalized video `x/y`. Polygon AOIs use a `shape: "polygon"` field with `points` in the same coordinate space. The bundled `assets/aois.json` marks `Front center object` as dynamic so hit testing changes with the video timestamp.
 
 ## Run
 
@@ -21,9 +21,9 @@ The bundled test video is `assets/test-video.mp4`. You can also load any local M
 
 AOI definitions live in `assets/aois.json`. Edit that file to match the test video instead of changing app code. If the file is missing or invalid, the prototype falls back to built-in demo AOIs.
 
-You can also load a local AOI sidecar with `Load AOI JSON`. The file can be either a bare AOI array or an exported project JSON with an `aois` array. This lets a local video and its AOI registration travel together without rebuilding the app.
+You can also load a local AOI sidecar with `Load AOI JSON`. The file can be either a bare AOI array or an exported project JSON with an `aois` array. Box AOIs use bounds such as `yawMin/yawMax` or normalized `xMin/xMax`; polygon AOIs use `shape: "polygon"` plus at least three `points`. This lets a local video and its AOI registration travel together without rebuilding the app.
 
-For 360 or stereo 3D video, dynamic AOIs are stored as panorama-space yaw/pitch boxes with optional time `keyframes`. Sidecar project JSON may include `video.projection` such as `equirectangular` and `video.stereoLayout` such as `mono`, `top-bottom`, or `side-by-side`. The MVP does not model depth meshes or per-eye occlusion; it tracks attention to regions on the rendered panorama.
+For 360 or stereo 3D video, dynamic AOIs are stored as panorama-space yaw/pitch boxes or polygons with optional time `keyframes`. Sidecar project JSON may include `video.projection` such as `equirectangular` and `video.stereoLayout` such as `mono`, `top-bottom`, or `side-by-side`. The MVP does not model depth meshes or per-eye occlusion; it tracks attention to regions on the rendered panorama.
 
 ## Admin AOI Authoring
 
@@ -73,8 +73,8 @@ Exported JSON contains:
 - `project`: lightweight package metadata tying the recording to video identity, AOI source, and AOI count. The export includes AOI definitions, but not the video binary.
 - `participant`: participant metadata when the recording was started from Participant mode; `null` for admin/debug exports.
 - `video`: current video metadata such as name, type, size, duration, and source URL/path.
-- `samples`: raw per-sample gaze, quality/trust metadata, panorama yaw/pitch, active AOI bounds, AOI hit ids, and uncertainty.
-- `aois`: AOI definitions, including optional dynamic `keyframes`.
+- `samples`: raw per-sample gaze, quality/trust metadata, panorama yaw/pitch, active AOI bounds or polygon points, AOI hit ids, and uncertainty.
+- `aois`: AOI definitions, including optional dynamic `keyframes` and polygon `points`.
 - `namedAoiMetrics`: named per-AOI and session-level research metrics derived from the sample stream.
 - `summary.totalSamples`: number of recorded samples.
 - `summary.durationSec`: estimated recording duration.

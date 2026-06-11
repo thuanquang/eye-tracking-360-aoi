@@ -572,10 +572,63 @@ function projectVideoAoiRange(aoi, rect) {
   ];
 }
 
+function projectVideoPolygon(aoi, rect) {
+  return (aoi.points || []).map((point) => ({
+    x: point.x * rect.width,
+    y: point.y * rect.height,
+  }));
+}
+
+function projectPanoramaPolygon(aoi, rect) {
+  const points = (aoi.points || []).map((point) => panoramaPointToScreen({
+    yaw: point.yaw,
+    pitch: point.pitch,
+    width: rect.width,
+    height: rect.height,
+    cameraYaw: state.cameraYaw,
+    cameraPitch: state.cameraPitch,
+    fov: camera.fov,
+  }));
+
+  if (!points.every((point) => point.inFront && Number.isFinite(point.x) && Number.isFinite(point.y))) {
+    return null;
+  }
+
+  return clipPolygonToRect(points, rect.width, rect.height);
+}
+
 function getAoiOverlayColor(aoi) {
   return typeof aoi.color === 'string' && window.CSS?.supports('color', aoi.color)
     ? aoi.color
     : '#ffd166';
+}
+
+function appendAoiOverlayPolygon(fragment, aoi, points, color) {
+  if (!points || points.length < 3) {
+    return;
+  }
+
+  const shape = document.createElementNS(SVG_NS, 'polygon');
+  shape.setAttribute('class', 'aoi-overlay-shape');
+  shape.setAttribute('points', points.map((point) => `${point.x.toFixed(1)},${point.y.toFixed(1)}`).join(' '));
+  shape.setAttribute('fill', color);
+  shape.setAttribute('fill-opacity', '0.16');
+  shape.setAttribute('stroke', color);
+  shape.dataset.aoiId = aoi.id;
+  fragment.appendChild(shape);
+}
+
+function appendAoiOverlayLabel(fragment, aoi, point) {
+  if (!point || !Number.isFinite(point.x) || !Number.isFinite(point.y)) {
+    return;
+  }
+
+  const label = document.createElementNS(SVG_NS, 'text');
+  label.setAttribute('class', 'aoi-overlay-label');
+  label.setAttribute('x', String(Math.round(point.x + 8)));
+  label.setAttribute('y', String(Math.round(point.y - 8)));
+  label.textContent = aoi.label;
+  fragment.appendChild(label);
 }
 
 function drawAoiOverlay() {
@@ -595,23 +648,31 @@ function drawAoiOverlay() {
   getRenderableAois().forEach((aoi) => {
     const color = getAoiOverlayColor(aoi);
 
+    if (aoi.shape === 'polygon' && aoi.space === 'video') {
+      const corners = projectVideoPolygon(aoi, rect);
+      appendAoiOverlayPolygon(fragment, aoi, corners, color);
+      appendAoiOverlayLabel(fragment, aoi, corners[0]);
+      return;
+    }
+
     if (aoi.space === 'video') {
       const corners = projectVideoAoiRange(aoi, rect);
-      const shape = document.createElementNS(SVG_NS, 'polygon');
-      shape.setAttribute('class', 'aoi-overlay-shape');
-      shape.setAttribute('points', corners.map((corner) => `${corner.x.toFixed(1)},${corner.y.toFixed(1)}`).join(' '));
-      shape.setAttribute('fill', color);
-      shape.setAttribute('fill-opacity', '0.16');
-      shape.setAttribute('stroke', color);
-      shape.dataset.aoiId = aoi.id;
-      fragment.appendChild(shape);
+      const labelPoint = {
+        x: Math.min(aoi.xMax, 0.96) * rect.width,
+        y: Math.max(aoi.yMin, 0.04) * rect.height,
+      };
 
-      const label = document.createElementNS(SVG_NS, 'text');
-      label.setAttribute('class', 'aoi-overlay-label');
-      label.setAttribute('x', String(Math.round(Math.min(aoi.xMax, 0.96) * rect.width + 8)));
-      label.setAttribute('y', String(Math.round(Math.max(aoi.yMin, 0.04) * rect.height - 8)));
-      label.textContent = aoi.label;
-      fragment.appendChild(label);
+      appendAoiOverlayPolygon(fragment, aoi, corners, color);
+      appendAoiOverlayLabel(fragment, aoi, labelPoint);
+      return;
+    }
+
+    if (aoi.shape === 'polygon' && aoi.space !== 'video') {
+      const corners = projectPanoramaPolygon(aoi, rect);
+      if (corners?.length >= 3) {
+        appendAoiOverlayPolygon(fragment, aoi, corners, color);
+        appendAoiOverlayLabel(fragment, aoi, corners[0]);
+      }
       return;
     }
 
@@ -622,14 +683,7 @@ function drawAoiOverlay() {
         return;
       }
 
-      const shape = document.createElementNS(SVG_NS, 'polygon');
-      shape.setAttribute('class', 'aoi-overlay-shape');
-      shape.setAttribute('points', corners.map((corner) => `${corner.x.toFixed(1)},${corner.y.toFixed(1)}`).join(' '));
-      shape.setAttribute('fill', color);
-      shape.setAttribute('fill-opacity', '0.16');
-      shape.setAttribute('stroke', color);
-      shape.dataset.aoiId = aoi.id;
-      fragment.appendChild(shape);
+      appendAoiOverlayPolygon(fragment, aoi, corners, color);
 
       const center = panoramaPointToScreen({
         yaw: normalizeYaw((yawMin + yawMax) / 2),
@@ -642,12 +696,7 @@ function drawAoiOverlay() {
       });
 
       if (center.visible) {
-        const label = document.createElementNS(SVG_NS, 'text');
-        label.setAttribute('class', 'aoi-overlay-label');
-        label.setAttribute('x', String(Math.round(center.x + 8)));
-        label.setAttribute('y', String(Math.round(center.y - 8)));
-        label.textContent = aoi.label;
-        fragment.appendChild(label);
+        appendAoiOverlayLabel(fragment, aoi, center);
       }
     });
   });
@@ -655,12 +704,22 @@ function drawAoiOverlay() {
   aoiOverlay.replaceChildren(fragment);
 }
 
+function getAoiBoundsLabel(aoi) {
+  if (aoi.shape === 'polygon') {
+    const pointCount = Array.isArray(aoi.points) ? aoi.points.length : 0;
+    const spaceLabel = getAoiSpace(aoi) === 'video' ? 'video' : 'panorama';
+    return `${pointCount} ${spaceLabel} polygon points`;
+  }
+
+  return aoi.space === 'video'
+    ? `x ${aoi.xMin} to ${aoi.xMax}, y ${aoi.yMin} to ${aoi.yMax}`
+    : `yaw ${aoi.yawMin} to ${aoi.yawMax}, pitch ${aoi.pitchMin} to ${aoi.pitchMax}`;
+}
+
 function renderAoiList() {
   aoiSourceLabel.textContent = aoiSource;
   aoiList.innerHTML = activeAois.map((aoi) => {
-    const bounds = aoi.space === 'video'
-      ? `x ${aoi.xMin} to ${aoi.xMax}, y ${aoi.yMin} to ${aoi.yMax}`
-      : `yaw ${aoi.yawMin} to ${aoi.yawMax}, pitch ${aoi.pitchMin} to ${aoi.pitchMax}`;
+    const bounds = getAoiBoundsLabel(aoi);
     const dynamicLabel = Array.isArray(aoi.keyframes) && aoi.keyframes.length ? ' (dynamic)' : '';
 
     return `
@@ -701,7 +760,25 @@ function isValidPanoramaAoiBounds(aoi) {
   );
 }
 
+function isValidPolygonPoints(points, space) {
+  if (!Array.isArray(points) || points.length < 3) {
+    return false;
+  }
+
+  return points.every((point) => (
+    point != null &&
+    typeof point === 'object' &&
+    (space === 'panorama'
+      ? isFiniteNumber(point.yaw) && isFiniteNumber(point.pitch)
+      : isFiniteNumber(point.x) && isFiniteNumber(point.y))
+  ));
+}
+
 function isValidAoiBounds(aoi, space = getAoiSpace(aoi)) {
+  if (aoi.shape === 'polygon') {
+    return isValidPolygonPoints(aoi.points, space);
+  }
+
   return space === 'video'
     ? isValidVideoAoiBounds(aoi)
     : isValidPanoramaAoiBounds(aoi);
@@ -718,7 +795,9 @@ function isValidAoiKeyframes(aoi) {
     aoi.keyframes.length > 0 &&
     aoi.keyframes.every((keyframe) => (
       isFiniteNumber(keyframe.t) &&
-      isValidAoiBounds(keyframe, space)
+      (aoi.shape === 'polygon'
+        ? isValidPolygonPoints(keyframe.points, space)
+        : isValidAoiBounds(keyframe, space))
     ))
   );
 }
@@ -775,7 +854,7 @@ function registerAois(aois, source) {
   const loadedAois = extractAoisFromJson(aois);
 
   if (!loadedAois.length || !loadedAois.every(isValidAoi)) {
-    throw new Error('AOI JSON must contain at least one valid AOI box.');
+    throw new Error('AOI JSON must contain at least one valid AOI definition.');
   }
 
   activeAois = loadedAois;
@@ -1996,6 +2075,39 @@ function drawMiniMap() {
   }
 }
 
+function serializeAoiCoordinate(value) {
+  return isFiniteNumber(value) ? Number(Number(value).toFixed(3)) : null;
+}
+
+function serializeAoiPoints(points) {
+  return Array.isArray(points)
+    ? points.map((point) => (
+      point && typeof point === 'object'
+        ? { ...point }
+        : point
+    ))
+    : null;
+}
+
+function serializeActiveAoiForSample(aoi) {
+  return {
+    id: aoi.id,
+    label: aoi.label,
+    color: aoi.color,
+    space: getAoiSpace(aoi),
+    shape: aoi.shape || 'box',
+    points: serializeAoiPoints(aoi.points),
+    yawMin: serializeAoiCoordinate(aoi.yawMin),
+    yawMax: serializeAoiCoordinate(aoi.yawMax),
+    pitchMin: serializeAoiCoordinate(aoi.pitchMin),
+    pitchMax: serializeAoiCoordinate(aoi.pitchMax),
+    xMin: serializeAoiCoordinate(aoi.xMin),
+    xMax: serializeAoiCoordinate(aoi.xMax),
+    yMin: serializeAoiCoordinate(aoi.yMin),
+    yMax: serializeAoiCoordinate(aoi.yMax),
+  };
+}
+
 function maybeSample(now) {
   if (state.reviewActive) {
     return;
@@ -2045,14 +2157,7 @@ function maybeSample(now) {
       pitch: Number(state.latestPoint.pitch.toFixed(3)),
     },
     hits: state.latestHits.map((hit) => hit.id),
-    activeAois: state.latestAois.map((aoi) => ({
-      id: aoi.id,
-      label: aoi.label,
-      yawMin: Number(aoi.yawMin.toFixed(3)),
-      yawMax: Number(aoi.yawMax.toFixed(3)),
-      pitchMin: Number(aoi.pitchMin.toFixed(3)),
-      pitchMax: Number(aoi.pitchMax.toFixed(3)),
-    })),
+    activeAois: state.latestAois.map(serializeActiveAoiForSample),
     likelyHits: state.latestAoiClassification?.likelyHits.map((hit) => hit.id) || [],
     possibleHits: state.latestAoiClassification?.possibleHits.map((hit) => hit.id) || [],
     ambiguousHits: state.latestAoiClassification?.ambiguousHits.map((hit) => hit.id) || [],

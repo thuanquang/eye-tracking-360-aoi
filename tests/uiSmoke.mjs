@@ -46,7 +46,7 @@ page.on('console', (message) => {
 });
 
 try {
-  await page.goto(TARGET_URL, { waitUntil: 'networkidle' });
+  await page.goto(urlWithMode('admin'), { waitUntil: 'networkidle' });
   await page.waitForSelector('#viewer canvas');
   await page.waitForFunction(() => document.querySelector('#sourceVideo')?.readyState >= 1);
 
@@ -164,6 +164,49 @@ try {
     'AOIs partly outside the player viewport should still render as clipped anchored shapes.',
   );
 
+  const polygonSidecarPath = join(tmpDir, 'polygon-video.aoi.json');
+  await writeFile(polygonSidecarPath, JSON.stringify({
+    video: {
+      name: 'test-video.mp4',
+      projection: 'flat',
+      stereoLayout: 'mono',
+    },
+    aois: [
+      {
+        id: 'polygon-object',
+        label: 'Polygon object',
+        color: '#ffd166',
+        space: 'video',
+        shape: 'polygon',
+        points: [
+          { x: 0.3, y: 0.2 },
+          { x: 0.55, y: 0.24 },
+          { x: 0.52, y: 0.5 },
+          { x: 0.33, y: 0.46 },
+        ],
+        keyframes: [
+          {
+            t: 0,
+            points: [
+              { x: 0.3, y: 0.2 },
+              { x: 0.55, y: 0.24 },
+              { x: 0.52, y: 0.5 },
+              { x: 0.33, y: 0.46 },
+            ],
+          },
+        ],
+      },
+    ],
+  }, null, 2));
+
+  await page.locator('#aoiFileInput').setInputFiles(polygonSidecarPath);
+  await page.waitForFunction(() => document.querySelector('#aoiList')?.textContent?.includes('Polygon object'));
+  assert.equal(
+    await page.locator('#aoiOverlay [data-aoi-id="polygon-object"]').count(),
+    1,
+    'Imported polygon AOIs should render as object-shaped overlay polygons.',
+  );
+
   const viewerBox = await page.locator('#viewer').boundingBox();
   const mouseMoveLeakCount = await page.locator('#viewer').evaluate((viewerElement) => {
     window.__aoiMouseMoveLeakCount = 0;
@@ -231,11 +274,11 @@ try {
   assert.equal(exportedJson.samples.length > 0, true, 'Mouse recording should export at least one sample.');
   assert.equal(
     exportedJson.aoiSource,
-    'test-video.aoi.json',
+    'polygon-video.aoi.json',
     'Export should identify the registered AOI sidecar source.',
   );
   assert.equal(
-    exportedJson.aois.some((aoi) => aoi.id === 'sidecar-center'),
+    exportedJson.aois.some((aoi) => aoi.id === 'polygon-object' && aoi.shape === 'polygon'),
     true,
     'Export should package AOI definitions from the registered sidecar file.',
   );
@@ -246,13 +289,13 @@ try {
   );
   assert.equal(
     exportedJson.project.video.projection,
-    'equirectangular',
-    'Export should preserve 360 video projection metadata from the AOI sidecar.',
+    'flat',
+    'Export should preserve flat video projection metadata from the AOI sidecar.',
   );
   assert.equal(
     exportedJson.project.video.stereoLayout,
-    'top-bottom',
-    'Export should preserve 3D stereo layout metadata from the AOI sidecar.',
+    'mono',
+    'Export should preserve mono video layout metadata from the AOI sidecar.',
   );
   assert.equal(
     exportedJson.project.aois.count,
@@ -261,7 +304,7 @@ try {
   );
   assert.equal(
     exportedJson.aois[0].keyframes.length,
-    2,
+    1,
     'Export should package dynamic AOI keyframes with the video.',
   );
   assert.equal(
@@ -296,12 +339,12 @@ try {
   );
   assert.equal(typeof exportedJson.namedAoiMetrics, 'object', 'Export should include named AOI metrics.');
   assert.equal(
-    exportedJson.namedAoiMetrics.perAoi['sidecar-center'].label,
-    'Sidecar center AOI',
+    exportedJson.namedAoiMetrics.perAoi['polygon-object'].label,
+    'Polygon object',
     'Named AOI metrics should retain AOI labels.',
   );
   assert.equal(
-    typeof exportedJson.namedAoiMetrics.perAoi['sidecar-center'].totalDwellSec,
+    typeof exportedJson.namedAoiMetrics.perAoi['polygon-object'].totalDwellSec,
     'number',
     'Named AOI metrics should include per-AOI dwell seconds.',
   );
@@ -327,9 +370,14 @@ try {
   assert.equal(Array.isArray(sample.ambiguousHits), true, 'Exported samples should include ambiguous AOI hits.');
   assert.equal(Array.isArray(sample.activeAois), true, 'Exported samples should include time-resolved AOI bounds.');
   assert.equal(
-    sample.activeAois.some((aoi) => aoi.id === 'sidecar-center' && Number.isFinite(aoi.yawMin)),
+    sample.activeAois.some((aoi) => (
+      aoi.id === 'polygon-object' &&
+      aoi.shape === 'polygon' &&
+      Array.isArray(aoi.points) &&
+      aoi.points.length === 4
+    )),
     true,
-    'Time-resolved AOI bounds should be inspectable by AOI id.',
+    'Time-resolved polygon AOI points should be inspectable by AOI id.',
   );
   assert.equal(
     sample.quality.trustedForAoiAnalysis,
@@ -366,7 +414,7 @@ try {
   await page.waitForFunction(() => /^x \d+, y \d+$/.test(document.querySelector('#screenReadout')?.textContent || ''));
   assert.match(
     await page.locator('#hitReadout').innerText(),
-    /Sidecar center|none|possible|ambiguous/i,
+    /Polygon object|none|possible|ambiguous/i,
     'Review mode should replay recorded tracker and AOI readout state.',
   );
   assert.equal(
