@@ -1,5 +1,6 @@
 const DEFAULT_POINT_KEYS = { x: 'x', y: 'y' };
 const EDGE_EPSILON = 1e-12;
+const MIN_POLYGON_AREA = 1e-8;
 const HALF_TURN = 180;
 const FULL_TURN = 360;
 
@@ -183,6 +184,48 @@ function preparePolygonGeometry(point, points, keys = DEFAULT_POINT_KEYS) {
   return { target, polygon };
 }
 
+function preparePolygonPoints(points, keys = DEFAULT_POINT_KEYS) {
+  const pointKeys = resolvePointKeys(keys);
+
+  if (!Array.isArray(points)) {
+    return [];
+  }
+
+  let polygon = points
+    .filter((polygonPoint) => isFinitePoint(polygonPoint, pointKeys))
+    .map((polygonPoint) => toFinitePoint(polygonPoint, pointKeys));
+
+  if (isYawKeySet(pointKeys)) {
+    polygon = unwrapYawPolygon(polygon);
+  }
+
+  return polygon;
+}
+
+function polygonAreaFromPreparedPoints(polygon) {
+  if (!Array.isArray(polygon) || polygon.length < 3) {
+    return 0;
+  }
+
+  let doubleArea = 0;
+
+  for (let index = 0; index < polygon.length; index += 1) {
+    const current = polygon[index];
+    const next = polygon[(index + 1) % polygon.length];
+    doubleArea += current.x * next.y - next.x * current.y;
+  }
+
+  return Math.abs(doubleArea) / 2;
+}
+
+export function getPolygonArea(points, keys = DEFAULT_POINT_KEYS) {
+  return polygonAreaFromPreparedPoints(preparePolygonPoints(points, keys));
+}
+
+export function hasUsablePolygonArea(points, keys = DEFAULT_POINT_KEYS) {
+  return getPolygonArea(points, keys) > MIN_POLYGON_AREA;
+}
+
 function distanceToSegment(point, start, end) {
   const segmentX = end.x - start.x;
   const segmentY = end.y - start.y;
@@ -284,7 +327,11 @@ export function distanceToPolygonEdges(point, points, keys = DEFAULT_POINT_KEYS)
 export function isPointInPolygon(point, points, keys = DEFAULT_POINT_KEYS) {
   const geometry = preparePolygonGeometry(point, points, keys);
 
-  if (!geometry || geometry.polygon.length < 3) {
+  if (
+    !geometry ||
+    geometry.polygon.length < 3 ||
+    polygonAreaFromPreparedPoints(geometry.polygon) <= MIN_POLYGON_AREA
+  ) {
     return false;
   }
 
@@ -331,7 +378,7 @@ export function pointHitsPolygonAoi(point, aoi, dimensions) {
 
   const points = normalizePolygonPoints(aoi?.points || [], pointKeys);
 
-  if (points.length < 3) {
+  if (points.length < 3 || !hasUsablePolygonArea(points, pointKeys)) {
     return false;
   }
 

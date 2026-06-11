@@ -76,6 +76,46 @@ test('hit tests video polygon AOIs with viewport-converted pixel padding', () =>
   assert.equal(pointHitsPolygonAoi({ x: 0.4, y: 0.14 }, aoi, viewport), false);
 });
 
+test('rejects degenerate polygon geometry during hit testing', () => {
+  const collinearAoi = {
+    id: 'line',
+    label: 'Line',
+    color: '#ffd166',
+    space: 'video',
+    shape: 'polygon',
+    analysisPadding: 0.05,
+    points: [
+      { x: 0.2, y: 0.2 },
+      { x: 0.4, y: 0.4 },
+      { x: 0.6, y: 0.6 },
+    ],
+  };
+  const duplicateAoi = {
+    ...collinearAoi,
+    id: 'duplicate',
+    points: [
+      { x: 0.3, y: 0.3 },
+      { x: 0.3, y: 0.3 },
+      { x: 0.3, y: 0.3 },
+    ],
+  };
+  const skinnyAoi = {
+    ...collinearAoi,
+    id: 'skinny',
+    analysisPadding: 0,
+    points: [
+      { x: 0.1, y: 0.1 },
+      { x: 0.9, y: 0.1 },
+      { x: 0.1, y: 0.1001 },
+    ],
+  };
+
+  assert.equal(isPointInPolygon({ x: 0.4, y: 0.4 }, collinearAoi.points), false);
+  assert.equal(pointHitsPolygonAoi({ x: 0.4, y: 0.4 }, collinearAoi), false);
+  assert.equal(pointHitsPolygonAoi({ x: 0.3, y: 0.3 }, duplicateAoi), false);
+  assert.equal(pointHitsPolygonAoi({ x: 0.11, y: 0.10002 }, skinnyAoi), true);
+});
+
 test('interpolates matching polygon keyframes', () => {
   const points = interpolatePolygonPoints(
     [

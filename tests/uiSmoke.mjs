@@ -51,11 +51,15 @@ const page = await browser.newPage({
   viewport: { width: 1366, height: 900 },
 });
 const consoleErrors = [];
+const pageErrors = [];
 
 page.on('console', (message) => {
   if (message.type() === 'error') {
     consoleErrors.push(message.text());
   }
+});
+page.on('pageerror', (error) => {
+  pageErrors.push(error.message);
 });
 
 try {
@@ -186,6 +190,26 @@ try {
     true,
     'Projection changes during drawing should not mix video and panorama point formats.',
   );
+
+  await page.locator('#projectionSelect').selectOption('flat');
+  await page.locator('#manualAoiLabelInput').fill('Degenerate manual polygon');
+  await page.locator('#drawPolygonAoiButton').click();
+  const degenerateManualBox = await page.locator('#viewer').boundingBox();
+  await page.mouse.click(degenerateManualBox.x + degenerateManualBox.width * 0.22, degenerateManualBox.y + degenerateManualBox.height * 0.32);
+  await page.mouse.click(degenerateManualBox.x + degenerateManualBox.width * 0.42, degenerateManualBox.y + degenerateManualBox.height * 0.32);
+  await page.mouse.click(degenerateManualBox.x + degenerateManualBox.width * 0.62, degenerateManualBox.y + degenerateManualBox.height * 0.32);
+  await page.mouse.dblclick(degenerateManualBox.x + degenerateManualBox.width * 0.82, degenerateManualBox.y + degenerateManualBox.height * 0.32);
+  assert.equal(
+    (await page.locator('#aoiList').innerText()).includes('Degenerate manual polygon'),
+    false,
+    'Manual polygon authoring should reject degenerate zero-area polygons.',
+  );
+  assert.match(
+    await page.locator('#manualAoiStatus').innerText(),
+    /area|shape/i,
+    'Rejected manual degenerate polygons should explain the geometry problem.',
+  );
+  await page.locator('#cancelPolygonAoiButton').click();
 
   await page.locator('#projectionSelect').selectOption('flat');
   await page.locator('#manualAoiLabelInput').fill('Manual flat AOI');
@@ -438,6 +462,50 @@ try {
     'Rejected polygon sidecars should not switch the AOI list.',
   );
 
+  const degeneratePolygonSidecarPath = join(tmpDir, 'degenerate-polygon-video.aoi.json');
+  await writeFile(degeneratePolygonSidecarPath, JSON.stringify({
+    video: {
+      name: 'test-video.mp4',
+      projection: 'flat',
+      stereoLayout: 'mono',
+    },
+    aois: [
+      {
+        id: 'degenerate-polygon-object',
+        label: 'Degenerate polygon object',
+        color: '#ffd166',
+        space: 'video',
+        shape: 'polygon',
+        points: [
+          { x: 0.2, y: 0.2 },
+          { x: 0.4, y: 0.4 },
+          { x: 0.6, y: 0.6 },
+        ],
+      },
+    ],
+  }, null, 2));
+
+  await page.locator('#aoiFileInput').setInputFiles(degeneratePolygonSidecarPath);
+  await page.waitForFunction(() => (
+    document.querySelector('#viewerNotice')?.textContent?.includes('Could not load AOI JSON') ||
+    document.querySelector('#aoiSourceLabel')?.textContent === 'degenerate-polygon-video.aoi.json'
+  ));
+  assert.match(
+    await page.locator('#viewerNotice').innerText(),
+    /Could not load AOI JSON/,
+    'Degenerate polygon sidecars should be rejected.',
+  );
+  assert.equal(
+    await page.locator('#aoiSourceLabel').innerText(),
+    'test-video.aoi.json',
+    'Rejected degenerate polygon sidecars should not replace the active AOI source.',
+  );
+  assert.equal(
+    (await page.locator('#aoiList').innerText()).includes('Degenerate polygon object'),
+    false,
+    'Rejected degenerate polygon sidecars should not switch the AOI list.',
+  );
+
   const polygonObjectPoints = [
     { x: 0.3, y: 0.2 },
     { x: 0.55, y: 0.24 },
@@ -449,6 +517,12 @@ try {
     { x: 0.86, y: 0.2 },
     { x: 0.86, y: 0.36 },
     { x: 0.72, y: 0.36 },
+  ];
+  const importedExplicitPaddingPoints = [
+    { x: 0.72, y: 0.52 },
+    { x: 0.86, y: 0.52 },
+    { x: 0.86, y: 0.68 },
+    { x: 0.72, y: 0.68 },
   ];
   const polygonSidecarPath = join(tmpDir, 'polygon-video.aoi.json');
   await writeFile(polygonSidecarPath, JSON.stringify({
@@ -485,6 +559,22 @@ try {
           {
             t: 0,
             points: importedPaddingOnlyPoints,
+          },
+        ],
+      },
+      {
+        id: 'source-frame-padding-polygon',
+        label: 'Source frame padding polygon',
+        color: '#ff8a5c',
+        space: 'video',
+        shape: 'polygon',
+        analysisPaddingPx: 8,
+        analysisPadding: 0.123,
+        points: importedExplicitPaddingPoints,
+        keyframes: [
+          {
+            t: 0,
+            points: importedExplicitPaddingPoints,
           },
         ],
       },
@@ -632,6 +722,17 @@ try {
     importedPaddingAoi.analysisPadding > 0,
     true,
     'Imported polygon effective analysis padding should be positive.',
+  );
+  const explicitPaddingAoi = exportedJson.aois.find((aoi) => aoi.id === 'source-frame-padding-polygon');
+  assert.equal(
+    explicitPaddingAoi.analysisPaddingPx,
+    8,
+    'Export should retain imported polygon pixel padding when explicit analysis padding exists.',
+  );
+  assert.equal(
+    explicitPaddingAoi.analysisPadding,
+    0.123,
+    'Export should preserve imported explicit analysis padding without viewer-size recomputation.',
   );
   assert.equal(
     typeof exportedJson.namedAoiMetrics.perAoi['polygon-object'].totalDwellSec,
@@ -785,6 +886,21 @@ try {
     dynamicEndPoints,
     'Dragging one dynamic polygon handle should not corrupt other keyframes.',
   );
+  await page.locator('#sourceVideo').evaluate((video) => {
+    video.currentTime = 4;
+    video.dispatchEvent(new Event('timeupdate'));
+  });
+  await page.waitForFunction(() => document.querySelector('#sourceVideo')?.currentTime >= 4);
+  assert.equal(
+    await page.locator('#aoiOverlay .aoi-vertex-handle').count(),
+    0,
+    'Dynamic polygon vertex handles should be hidden between keyframes.',
+  );
+  assert.match(
+    await page.locator('#manualAoiStatus').innerText(),
+    /keyframe/i,
+    'Dynamic polygon midpoint editing should explain that handles are available at keyframes.',
+  );
   await page.locator('#deleteSelectedAoiButton').click();
   await page.waitForFunction(() => document.querySelector('#selectedAoiPanel')?.hidden === true);
   assert.equal(
@@ -819,6 +935,16 @@ try {
   await page.locator('#reviewButton').click();
   await page.waitForFunction(() => document.querySelector('#modeLabel')?.textContent === 'review');
   await page.waitForFunction(() => /^x \d+, y \d+$/.test(document.querySelector('#screenReadout')?.textContent || ''));
+  assert.equal(
+    await page.locator('#projectionSelect').inputValue(),
+    'flat',
+    'Flat recording review should keep the packaged flat projection selected.',
+  );
+  assert.match(
+    await page.locator('#panoramaReadout').innerText(),
+    /^video x \d+\.\d{3}, y \d+\.\d{3}$/,
+    'Flat recording review should derive video-space coordinates from recorded screen samples.',
+  );
   assert.match(
     await page.locator('#hitReadout').innerText(),
     /Polygon object|none|possible|ambiguous/i,
@@ -861,6 +987,7 @@ try {
 
   assert.equal(hasColorVariance(canvasSamples), true, 'Three.js canvas should render nonblank video pixels.');
   assert.deepEqual(consoleErrors, [], 'Browser console should not contain errors.');
+  assert.deepEqual(pageErrors, [], 'Browser page should not throw uncaught errors.');
 } finally {
   await browser.close();
 }

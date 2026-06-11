@@ -15,7 +15,10 @@ import {
   buildColabAoiJob,
   normalizeAoiId,
 } from './aoiGeneration.js?v=colab-aoi-1';
-import { getEffectiveAnalysisPadding } from './aoiShapes.js?v=polygon-padding-1';
+import {
+  getEffectiveAnalysisPadding,
+  hasUsablePolygonArea,
+} from './aoiShapes.js?v=polygon-padding-2';
 import {
   applyViewportCalibration,
   buildAccuracyCorrection,
@@ -102,6 +105,7 @@ const RAW_GAZE_BOUNDS_MARGIN_RATIO = 0.35;
 const FRESH_GAZE_MAX_AGE_MS = 180;
 const LIVE_GAZE_STALE_MS = 450;
 const LIVE_GAZE_HOLD_MS = 1350;
+const POLYGON_KEYFRAME_EDIT_EPSILON_SEC = 0.05;
 const TARGET_MAX_DISPERSION_PX = 100;
 const CALIBRATION_POINTS = [
   { x: 50, y: 50 },
@@ -448,7 +452,7 @@ function getRenderableAois() {
     const sample = state.reviewSamples[sampleIndex >= 0 ? sampleIndex : 0];
 
     if (Array.isArray(sample?.activeAois) && sample.activeAois.length) {
-      return withEffectiveAoisAnalysisPadding(sample.activeAois, dimensions, { forceFromPx: true });
+      return withEffectiveAoisAnalysisPadding(sample.activeAois, dimensions);
     }
 
     return resolveAoisForAnalysis(activeAois, sample?.t || 0, dimensions);
@@ -778,6 +782,15 @@ function appendSelectedPolygonHandles(fragment, rect) {
     return;
   }
 
+  if (!canEditPolygonVerticesAtCurrentTime(selectedAoi)) {
+    setDynamicPolygonKeyframeEditMessage();
+    return;
+  }
+
+  if (manualAoiStatus.textContent.includes('keyframe')) {
+    manualAoiStatus.textContent = 'Drag polygon vertices to refine the selected AOI.';
+  }
+
   getPolygonHandleScreenPoints(selectedAoi, rect).forEach((point) => {
     appendAoiVertexHandle(fragment, point, point.vertexIndex, selectedAoi.id);
   });
@@ -957,11 +970,7 @@ function withEffectiveAoisAnalysisPadding(
 }
 
 function resolveAoisForAnalysis(aois, timeSec = 0, dimensions = getViewerAnalysisDimensions()) {
-  return withEffectiveAoisAnalysisPadding(
-    resolveAoisAtTime(aois, timeSec),
-    dimensions,
-    { forceFromPx: true },
-  );
+  return withEffectiveAoisAnalysisPadding(resolveAoisAtTime(aois, timeSec), dimensions);
 }
 
 function syncSelectedAoiPanel() {
@@ -1057,13 +1066,20 @@ function isValidPolygonPoints(points, space) {
     return false;
   }
 
-  return points.every((point) => (
-    point != null &&
-    typeof point === 'object' &&
-    (space === 'panorama'
-      ? isStrictFiniteNumber(point.yaw) && isStrictFiniteNumber(point.pitch)
-      : isStrictFiniteNumber(point.x) && isStrictFiniteNumber(point.y))
-  ));
+  const pointKeys = space === 'panorama'
+    ? { x: 'yaw', y: 'pitch' }
+    : { x: 'x', y: 'y' };
+
+  return (
+    points.every((point) => (
+      point != null &&
+      typeof point === 'object' &&
+      (space === 'panorama'
+        ? isStrictFiniteNumber(point.yaw) && isStrictFiniteNumber(point.pitch)
+        : isStrictFiniteNumber(point.x) && isStrictFiniteNumber(point.y))
+    )) &&
+    hasUsablePolygonArea(points, pointKeys)
+  );
 }
 
 function isValidAoiBounds(aoi, space = getAoiSpace(aoi)) {
@@ -1152,7 +1168,6 @@ function registerAois(aois, source) {
   activeAois = withEffectiveAoisAnalysisPadding(
     loadedAois,
     getViewerAnalysisDimensions(),
-    { forceFromPx: true },
   );
   aoiSource = source;
   state.selectedAoiId = null;
@@ -2117,18 +2132,26 @@ function getCurrentReviewPanoramaPoint() {
   };
 
   const analysisDimensions = getViewerAnalysisDimensions();
+  const viewport = {
+    width: rect.width,
+    height: rect.height,
+  };
+  const videoPoint = screenPointToVideoPoint({
+    x: screen.x,
+    y: screen.y,
+    width: viewport.width,
+    height: viewport.height,
+  });
 
   return {
     gaze: state.gaze,
     timeSec: sample.t,
     aois: Array.isArray(sample.activeAois) && sample.activeAois.length
-      ? withEffectiveAoisAnalysisPadding(sample.activeAois, analysisDimensions, { forceFromPx: true })
+      ? withEffectiveAoisAnalysisPadding(sample.activeAois, analysisDimensions)
       : resolveAoisForAnalysis(activeAois, sample.t, analysisDimensions),
-    viewport: {
-      width: rect.width,
-      height: rect.height,
-    },
+    viewport,
     point: sample.panorama,
+    videoPoint,
   };
 }
 
@@ -2333,6 +2356,52 @@ function drawVideoRange(ctx, canvasWidth, canvasHeight, aoi) {
   ctx.strokeRect(x, y, width, height);
 }
 
+function drawMiniMapPolygon(ctx, points) {
+  const finitePoints = points.filter((point) => (
+    Number.isFinite(point?.x) &&
+    Number.isFinite(point?.y)
+  ));
+
+  if (finitePoints.length < 3) {
+    return;
+  }
+
+  ctx.beginPath();
+  finitePoints.forEach((point, index) => {
+    if (index === 0) {
+      ctx.moveTo(point.x, point.y);
+      return;
+    }
+
+    ctx.lineTo(point.x, point.y);
+  });
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+}
+
+function drawVideoPolygonMiniMap(ctx, canvasWidth, canvasHeight, aoi) {
+  const points = Array.isArray(aoi.points)
+    ? aoi.points.map((point) => ({
+      x: point.x * canvasWidth,
+      y: point.y * canvasHeight,
+    }))
+    : [];
+
+  drawMiniMapPolygon(ctx, points);
+}
+
+function drawPanoramaPolygonMiniMap(ctx, canvasWidth, canvasHeight, aoi) {
+  const points = Array.isArray(aoi.points)
+    ? aoi.points.map((point) => ({
+      x: ((normalizeYaw(point.yaw) + 180) / 360) * canvasWidth,
+      y: ((90 - point.pitch) / 180) * canvasHeight,
+    }))
+    : [];
+
+  drawMiniMapPolygon(ctx, points);
+}
+
 function drawMiniMap() {
   const ctx = miniMap.getContext('2d');
   const width = miniMap.width;
@@ -2361,6 +2430,15 @@ function drawMiniMap() {
     ctx.fillStyle = `${aoi.color}33`;
     ctx.strokeStyle = aoi.color;
     ctx.lineWidth = 2;
+    if (aoi.shape === 'polygon') {
+      if (aoi.space === 'video') {
+        drawVideoPolygonMiniMap(ctx, width, height, aoi);
+      } else {
+        drawPanoramaPolygonMiniMap(ctx, width, height, aoi);
+      }
+      return;
+    }
+
     if (aoi.space === 'video') {
       drawVideoRange(ctx, width, height, aoi);
     } else {
@@ -2754,7 +2832,6 @@ function exportSamples() {
   const exportAois = withEffectiveAoisAnalysisPadding(
     activeAois,
     getViewerAnalysisDimensions(),
-    { forceFromPx: true },
   );
   const namedAoiMetrics = buildNamedAoiMetrics(state.samples, exportAois);
   const payload = {
@@ -2828,6 +2905,11 @@ function cancelPolygonAnnotation() {
   drawAoiOverlay();
 }
 
+function updateFinishPolygonAoiState() {
+  const space = state.manualAnnotation.space || (getCurrentProjection() === 'flat' ? 'video' : 'panorama');
+  finishPolygonAoiButton.disabled = !isValidPolygonPoints(state.manualAnnotation.points, space);
+}
+
 function addDraftPolygonPoint(event) {
   if (state.manualAnnotation.mode !== 'drawing' || event.detail > 1) {
     return;
@@ -2841,7 +2923,7 @@ function addDraftPolygonPoint(event) {
     y: event.clientY - rect.top,
   });
   state.manualAnnotation.points.push(point);
-  finishPolygonAoiButton.disabled = state.manualAnnotation.points.length < 3;
+  updateFinishPolygonAoiState();
   drawAoiOverlay();
 }
 
@@ -2854,6 +2936,14 @@ function finishPolygonAnnotation() {
   const id = createUniqueAoiId(label);
   const space = state.manualAnnotation.space || (getCurrentProjection() === 'flat' ? 'video' : 'panorama');
   const points = cloneAoiPoints(state.manualAnnotation.points);
+
+  if (!isValidPolygonPoints(points, space)) {
+    finishPolygonAoiButton.disabled = true;
+    manualAoiStatus.textContent = 'Polygon needs a non-overlapping shape with measurable area.';
+    setNotice('Polygon AOI needs a non-overlapping shape with measurable area.');
+    return;
+  }
+
   const aoi = {
     id,
     label,
@@ -2965,14 +3055,24 @@ function deleteSelectedAoi() {
   setNotice(`Deleted AOI: ${selectedAoi.label}`, true);
 }
 
-function findCurrentKeyframeIndex(keyframes) {
-  const timeSec = sourceVideo.currentTime || 0;
+function findEditablePolygonKeyframeIndex(aoi) {
+  if (!Array.isArray(aoi?.keyframes) || aoi.keyframes.length <= 1) {
+    return 0;
+  }
 
-  return keyframes.reduce((closestIndex, keyframe, index) => {
-    const closestDistance = Math.abs((keyframes[closestIndex]?.t || 0) - timeSec);
-    const distance = Math.abs((keyframe?.t || 0) - timeSec);
-    return distance < closestDistance ? index : closestIndex;
-  }, 0);
+  const timeSec = sourceVideo.currentTime || 0;
+  return aoi.keyframes.findIndex((keyframe) => (
+    Number.isFinite(keyframe?.t) &&
+    Math.abs(keyframe.t - timeSec) <= POLYGON_KEYFRAME_EDIT_EPSILON_SEC
+  ));
+}
+
+function canEditPolygonVerticesAtCurrentTime(aoi) {
+  return aoi?.shape === 'polygon' && findEditablePolygonKeyframeIndex(aoi) >= 0;
+}
+
+function setDynamicPolygonKeyframeEditMessage() {
+  manualAoiStatus.textContent = 'Move to a polygon keyframe to edit dynamic vertices.';
 }
 
 function replacePolygonVertex(points, vertexIndex, point) {
@@ -3003,7 +3103,13 @@ function updatePolygonKeyframes(aoi, vertexIndex, point) {
     };
   }
 
-  const keyframeIndex = findCurrentKeyframeIndex(aoi.keyframes);
+  const keyframeIndex = findEditablePolygonKeyframeIndex(aoi);
+
+  if (keyframeIndex < 0) {
+    setDynamicPolygonKeyframeEditMessage();
+    return { keyframes: aoi.keyframes, editedKeyframePoints: null };
+  }
+
   const keyframes = aoi.keyframes.map((keyframe, index) => {
     if (index !== keyframeIndex) {
       return keyframe;
@@ -3070,6 +3176,14 @@ function startVertexHandleDrag(event) {
     return;
   }
 
+  const selectedAoi = getActiveAoiById(handle.dataset.aoiId);
+  if (!canEditPolygonVerticesAtCurrentTime(selectedAoi)) {
+    setDynamicPolygonKeyframeEditMessage();
+    event.preventDefault();
+    event.stopPropagation();
+    return;
+  }
+
   state.selectedAoiId = handle.dataset.aoiId;
   state.manualAnnotation = { mode: 'editing', points: [], dragIndex, space: null };
   aoiOverlay.setPointerCapture(event.pointerId);
@@ -3086,6 +3200,12 @@ function dragSelectedVertex(event) {
 
   const selectedAoi = getActiveAoiById(state.selectedAoiId);
   if (selectedAoi?.shape !== 'polygon') {
+    return;
+  }
+
+  if (!canEditPolygonVerticesAtCurrentTime(selectedAoi)) {
+    state.manualAnnotation.dragIndex = null;
+    setDynamicPolygonKeyframeEditMessage();
     return;
   }
 
