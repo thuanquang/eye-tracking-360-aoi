@@ -30,6 +30,12 @@ function round(value) {
   return Number(value.toFixed(6));
 }
 
+function sanitizeNumber(value, fallback) {
+  const numeric = Number(value);
+
+  return Number.isFinite(numeric) ? numeric : fallback;
+}
+
 function parsePromptList(prompts) {
   if (Array.isArray(prompts)) {
     return prompts.map((prompt) => String(prompt).trim()).filter(Boolean);
@@ -55,8 +61,21 @@ export function buildColabAoiJob({
   video,
   prompts = DEFAULT_AUTO_AOI_PROMPTS,
   sampleIntervalSec = 1,
+  outputShape = 'polygon',
+  detectorModel = 'microsoft/Florence-2-base',
+  segmenterModel = 'facebook/sam2.1-hiera-small',
+  maxPolygonPoints = 80,
+  polygonSimplificationEpsilon = 0.003,
+  analysisPaddingPx = 18,
 }) {
   const promptList = parsePromptList(prompts);
+  const safeMaxPolygonPoints = Math.round(clamp(sanitizeNumber(maxPolygonPoints, 80), 12, 240));
+  const safePolygonSimplificationEpsilon = round(clamp(
+    sanitizeNumber(polygonSimplificationEpsilon, 0.003),
+    0.001,
+    0.02,
+  ));
+  const safeAnalysisPaddingPx = Math.round(clamp(sanitizeNumber(analysisPaddingPx, 18), 0, 128));
 
   return {
     kind: COLAB_AOI_JOB_KIND,
@@ -73,7 +92,12 @@ export function buildColabAoiJob({
       sampleIntervalSec: Number.isFinite(Number(sampleIntervalSec))
         ? Math.max(0.1, Number(sampleIntervalSec))
         : 1,
-      output: 'aoi-json',
+      outputShape,
+      detectorModel,
+      segmenterModel,
+      maxPolygonPoints: safeMaxPolygonPoints,
+      polygonSimplificationEpsilon: safePolygonSimplificationEpsilon,
+      analysisPaddingPx: safeAnalysisPaddingPx,
       recommendedNotebook: 'notebooks/google-colab-auto-aoi.ipynb',
     },
   };

@@ -194,6 +194,8 @@ try {
   await page.waitForFunction(() => document.querySelector('#aoiList')?.textContent?.includes('Manual flat AOI'));
   await page.locator('#cloudAoiPromptsInput').fill('person\nscreen, sign');
   await page.locator('#cloudAoiSampleIntervalInput').fill('0.75');
+  await page.locator('#cloudAoiMaxPointsInput').fill('42');
+  await page.locator('#cloudAoiSimplifyInput').fill('0.012');
   const colabJobDownloadPromise = page.waitForEvent('download');
   await page.locator('#exportColabJobButton').click();
   const colabJobDownload = await colabJobDownloadPromise;
@@ -204,6 +206,24 @@ try {
     colabJob.aoiPolicy.prompts,
     ['person', 'screen', 'sign'],
     'Colab job export should parse newline and comma separated AOI prompts.',
+  );
+  assert.equal(colabJob.aoiPolicy.sampleIntervalSec, 0.75, 'Colab job export should preserve the sample interval.');
+  assert.equal(colabJob.aoiPolicy.outputShape, 'polygon', 'Colab job export should request polygon output.');
+  assert.equal(
+    colabJob.aoiPolicy.detectorModel,
+    'microsoft/Florence-2-base',
+    'Colab job export should name the object detector model.',
+  );
+  assert.equal(
+    colabJob.aoiPolicy.segmenterModel,
+    'facebook/sam2.1-hiera-small',
+    'Colab job export should name the mask segmenter model.',
+  );
+  assert.equal(colabJob.aoiPolicy.maxPolygonPoints, 42, 'Colab job export should preserve polygon point budget.');
+  assert.equal(
+    colabJob.aoiPolicy.polygonSimplificationEpsilon,
+    0.012,
+    'Colab job export should preserve polygon simplification tolerance.',
   );
   const tmpDir = await mkdtemp(join(tmpdir(), 'aoi-sidecar-'));
   const sidecarPath = join(tmpDir, 'test-video.aoi.json');

@@ -186,6 +186,8 @@ const cancelPolygonAoiButton = document.querySelector('#cancelPolygonAoiButton')
 const manualAoiStatus = document.querySelector('#manualAoiStatus');
 const cloudAoiPromptsInput = document.querySelector('#cloudAoiPromptsInput');
 const cloudAoiSampleIntervalInput = document.querySelector('#cloudAoiSampleIntervalInput');
+const cloudAoiMaxPointsInput = document.querySelector('#cloudAoiMaxPointsInput');
+const cloudAoiSimplifyInput = document.querySelector('#cloudAoiSimplifyInput');
 const exportColabJobButton = document.querySelector('#exportColabJobButton');
 const cloudAoiResultInput = document.querySelector('#cloudAoiResultInput');
 const recordingFileInput = document.querySelector('#recordingFileInput');
@@ -2983,6 +2985,8 @@ function exportColabAoiJob() {
     video: buildVideoPackageMetadata(),
     prompts: cloudAoiPromptsInput.value,
     sampleIntervalSec: Number(cloudAoiSampleIntervalInput.value),
+    maxPolygonPoints: Number(cloudAoiMaxPointsInput.value),
+    polygonSimplificationEpsilon: Number(cloudAoiSimplifyInput.value),
   });
 
   downloadJson(job, `colab-aoi-job-${Date.now()}.json`);

@@ -185,6 +185,14 @@ product</textarea>
             <span>Sample seconds</span>
             <input id="cloudAoiSampleIntervalInput" type="number" min="0.25" step="0.25" value="1" />
           </label>
+          <label class="field-label compact-field">
+            <span>Max polygon points</span>
+            <input id="cloudAoiMaxPointsInput" type="number" min="12" max="240" value="80" />
+          </label>
+          <label class="field-label compact-field">
+            <span>Edge simplify</span>
+            <input id="cloudAoiSimplifyInput" type="number" min="0.001" max="0.02" step="0.001" value="0.003" />
+          </label>
           <div class="recording-actions">
             <button id="exportColabJobButton" type="button">Export Colab Job</button>
             <label class="file-loader compact-loader">
