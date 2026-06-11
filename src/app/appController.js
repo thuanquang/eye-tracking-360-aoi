@@ -53,6 +53,7 @@ import {
   updateLiveGazeQuality,
 } from '../gaze/gazeQuality.js';
 import {
+  shouldRecordGazeStreamDrop,
   summarizeGazeStreamQuality,
   updateGazeStreamStats,
 } from '../gaze/qualityMonitor.js';
@@ -743,6 +744,19 @@ export function createAppController({
       accepted: event.accepted,
       reason: event.reason,
       onScreen: event.onScreen ?? null,
+    });
+  }
+
+  function registerBoundedGazeStreamDrop({ atMs, reason, onScreen = null }) {
+    if (!shouldRecordGazeStreamDrop(state.gazeStreamStats, { atMs, reason }, LIVE_GAZE_STALE_MS)) {
+      return;
+    }
+
+    registerGazeStreamEvent({
+      atMs,
+      accepted: false,
+      reason,
+      onScreen,
     });
   }
 
@@ -1453,24 +1467,10 @@ export function createAppController({
 
     if (webcamGazeIsStale) {
       if (canHoldLastWebcamGaze(now)) {
-        if (state.gazeDropReason !== 'stale-held') {
-          registerGazeStreamEvent({
-            atMs: now,
-            accepted: false,
-            reason: 'stale-held',
-            onScreen: null,
-          });
-        }
+        registerBoundedGazeStreamDrop({ atMs: now, reason: 'stale-held' });
         holdLastWebcamGaze('stale');
       } else {
-        if (state.gazeDropReason !== 'stale') {
-          registerGazeStreamEvent({
-            atMs: now,
-            accepted: false,
-            reason: 'stale',
-            onScreen: null,
-          });
-        }
+        registerBoundedGazeStreamDrop({ atMs: now, reason: 'stale' });
         state.gaze = { ...state.gaze, visible: false, held: false };
         state.gazeDropReason = 'stale';
         registerLiveGazeQualityEvent({ accepted: false, reason: 'stale' });
@@ -1479,14 +1479,7 @@ export function createAppController({
     }
 
     if (state.gaze.held && !canHoldLastWebcamGaze(now)) {
-      if (state.gazeDropReason !== 'stale') {
-        registerGazeStreamEvent({
-          atMs: now,
-          accepted: false,
-          reason: 'stale',
-          onScreen: null,
-        });
-      }
+      registerBoundedGazeStreamDrop({ atMs: now, reason: 'stale' });
       state.gaze = { ...state.gaze, visible: false };
       state.gazeDropReason = 'stale';
       registerLiveGazeQualityEvent({ accepted: false, reason: 'stale' });
