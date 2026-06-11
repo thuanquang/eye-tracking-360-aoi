@@ -39,6 +39,11 @@ export function createWebGazerProvider({ webgazer, onGaze }) {
       webgazer.recordScreenPosition?.(x, y, 'click');
     },
     stop() {
+      if (webgazer.clearGazeListener) {
+        webgazer.clearGazeListener();
+        return;
+      }
+
       webgazer.setGazeListener?.(null);
     },
   };

@@ -7,17 +7,18 @@ import { createWebGazerProvider } from '../src/gaze/providers/webgazerProvider.j
 
 test('mouse provider emits viewer-relative gaze points', () => {
   const emitted = [];
+  const listeners = new Map();
   const viewer = {
     getBoundingClientRect: () => ({ left: 10, top: 20, width: 300, height: 200 }),
     addEventListener(type, listener) {
-      this.listener = listener;
+      listeners.set(type, listener);
     },
     removeEventListener() {},
   };
   const provider = createMouseProvider({ viewer, onGaze: (gaze) => emitted.push(gaze) });
 
   provider.start();
-  viewer.listener({ clientX: 110, clientY: 70 });
+  listeners.get('pointermove')({ clientX: 110, clientY: 70 });
 
   assert.deepEqual(emitted[0], {
     x: 100,
@@ -25,6 +26,30 @@ test('mouse provider emits viewer-relative gaze points', () => {
     visible: true,
     source: 'mouse',
   });
+});
+
+test('mouse provider detaches pointer listener when stopped', () => {
+  const emitted = [];
+  let attached = null;
+  const removed = [];
+  const viewer = {
+    getBoundingClientRect: () => ({ left: 10, top: 20, width: 300, height: 200 }),
+    addEventListener(type, listener) {
+      attached = { type, listener };
+    },
+    removeEventListener(type, listener) {
+      removed.push({ type, listener });
+    },
+  };
+  const provider = createMouseProvider({ viewer, onGaze: (gaze) => emitted.push(gaze) });
+
+  provider.start();
+  provider.stop();
+  attached.listener({ clientX: 110, clientY: 70 });
+
+  assert.equal(attached.type, 'pointermove');
+  assert.deepEqual(removed, [attached]);
+  assert.equal(emitted.length, 0);
 });
 
 test('webgazer provider configures controlled calibration and forwards gaze', async () => {
@@ -66,6 +91,19 @@ test('webgazer provider configures controlled calibration and forwards gaze', as
   assert.equal(calls.some((call) => call[0] === 'clearData'), true);
 });
 
+test('webgazer provider prefers clearGazeListener during cleanup', () => {
+  const calls = [];
+  const webgazer = {
+    clearGazeListener() { calls.push(['clearGazeListener']); },
+    setGazeListener(callback) { calls.push(['setGazeListener', callback]); },
+  };
+  const provider = createWebGazerProvider({ webgazer, onGaze: () => {} });
+
+  provider.stop();
+
+  assert.deepEqual(calls, [['clearGazeListener']]);
+});
+
 test('app wires mouse gaze through the mouse provider', async () => {
   const appSource = await readFile(new URL('../src/app.js', import.meta.url), 'utf8');
   const dragFunction = appSource.match(/function drag\(event\) \{[\s\S]*?\n\}/)?.[0] ?? '';
@@ -74,4 +112,5 @@ test('app wires mouse gaze through the mouse provider', async () => {
   assert.match(appSource, /createMouseProvider\(\{/);
   assert.match(appSource, /mouseProvider\.start\(\)/);
   assert.doesNotMatch(dragFunction, /source:\s*'mouse'/);
+  assert.doesNotMatch(appSource, /window\.webgazer\?\.removeMouseEventListeners|window\.webgazer\.removeMouseEventListeners/);
 });

@@ -1,7 +1,7 @@
 export function createMouseProvider({ viewer, onGaze }) {
   let active = false;
 
-  function handleMouseMove(event) {
+  function handlePointerMove(event) {
     if (!active) {
       return;
     }
@@ -18,11 +18,11 @@ export function createMouseProvider({ viewer, onGaze }) {
   return {
     start() {
       active = true;
-      viewer.addEventListener('mousemove', handleMouseMove);
+      viewer.addEventListener('pointermove', handlePointerMove);
     },
     stop() {
       active = false;
-      viewer.removeEventListener('mousemove', handleMouseMove);
+      viewer.removeEventListener('pointermove', handlePointerMove);
     },
   };
 }

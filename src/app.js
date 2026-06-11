@@ -633,11 +633,8 @@ function setWebcamStatus(status) {
   syncParticipantSessionControls();
 }
 
-function disableWebGazerMouseTraining() {
+function blockWebGazerMouseTraining() {
   window.__aoiBlockWebGazerMouseTraining = true;
-  if (window.webgazer?.removeMouseEventListeners) {
-    window.webgazer.removeMouseEventListeners();
-  }
 }
 
 async function resetWebcamCalibrationData() {
@@ -955,7 +952,7 @@ async function ensureWebcamGaze() {
     });
     await webcamProvider.start();
     state.webcamStarted = true;
-    disableWebGazerMouseTraining();
+    blockWebGazerMouseTraining();
     setWebcamStatus('active');
     return true;
   } catch (error) {
@@ -1055,7 +1052,7 @@ function cancelCalibration() {
 }
 
 async function captureCalibrationPoint() {
-  disableWebGazerMouseTraining();
+  blockWebGazerMouseTraining();
 
   if (state.targetCaptureInProgress) {
     return;
@@ -1121,7 +1118,7 @@ async function startAccuracyCheck() {
 }
 
 async function captureAccuracyPoint() {
-  disableWebGazerMouseTraining();
+  blockWebGazerMouseTraining();
 
   if (state.targetCaptureInProgress) {
     return;
