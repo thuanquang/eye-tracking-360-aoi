@@ -481,6 +481,23 @@ try {
     1,
     'Imported polygon AOIs should render as object-shaped overlay polygons.',
   );
+  await page.locator('#aoiList button[data-aoi-id="polygon-object"]').click();
+  await page.locator('#selectedAoiPanel').waitFor({ state: 'visible' });
+  assert.equal(
+    await page.locator('#selectedAoiLabelInput').inputValue(),
+    'Polygon object',
+    'Selecting an imported polygon AOI should populate the selected AOI panel.',
+  );
+  await page.locator('#selectedAoiLabelInput').fill('Reviewed polygon object');
+  await page.locator('#selectedAoiPaddingInput').fill('12');
+  await page.locator('#selectedAoiColorInput').fill('#00ffaa');
+  await page.locator('#saveSelectedAoiButton').click();
+  await page.waitForFunction(() => document.querySelector('#aoiList')?.textContent?.includes('Reviewed polygon object'));
+  assert.equal(
+    (await page.locator('#aoiList').innerText()).includes('Polygon object'),
+    false,
+    'Saving the selected AOI should update the AOI list label.',
+  );
 
   const exportedJson = await recordMouseExport(page, viewerBox);
   const [sample] = exportedJson.samples;
@@ -554,8 +571,18 @@ try {
   assert.equal(typeof exportedJson.namedAoiMetrics, 'object', 'Export should include named AOI metrics.');
   assert.equal(
     exportedJson.namedAoiMetrics.perAoi['polygon-object'].label,
-    'Polygon object',
+    'Reviewed polygon object',
     'Named AOI metrics should retain AOI labels.',
+  );
+  assert.equal(
+    exportedJson.aois[0].color,
+    '#00ffaa',
+    'Export should retain selected AOI color edits.',
+  );
+  assert.equal(
+    exportedJson.aois[0].analysisPaddingPx,
+    12,
+    'Export should retain selected AOI analysis padding edits.',
   );
   assert.equal(
     typeof exportedJson.namedAoiMetrics.perAoi['polygon-object'].totalDwellSec,
@@ -692,6 +719,27 @@ try {
     editedDynamicAoi.keyframes[1].points,
     dynamicEndPoints,
     'Dragging one dynamic polygon handle should not corrupt other keyframes.',
+  );
+  await page.locator('#deleteSelectedAoiButton').click();
+  await page.waitForFunction(() => document.querySelector('#selectedAoiPanel')?.hidden === true);
+  assert.equal(
+    (await page.locator('#aoiList').innerText()).includes('Dynamic polygon object'),
+    false,
+    'Deleting the selected AOI should remove it from the AOI list.',
+  );
+  assert.equal(
+    await page.locator('#aoiOverlay [data-aoi-id="dynamic-polygon-object"]').count(),
+    0,
+    'Deleting the selected AOI should remove its overlay shape.',
+  );
+  const deletedAoiExportPromise = page.waitForEvent('download');
+  await page.locator('#exportButton').click();
+  const deletedAoiExportDownload = await deletedAoiExportPromise;
+  const deletedAoiExportJson = JSON.parse(await readFile(await deletedAoiExportDownload.path(), 'utf8'));
+  assert.equal(
+    deletedAoiExportJson.aois.some((aoi) => aoi.id === 'dynamic-polygon-object'),
+    false,
+    'Deleted AOIs should not be included in exports.',
   );
 
   const reviewPath = join(tmpDir, 'recording-review.json');

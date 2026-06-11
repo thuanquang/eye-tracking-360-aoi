@@ -184,6 +184,12 @@ const drawPolygonAoiButton = document.querySelector('#drawPolygonAoiButton');
 const finishPolygonAoiButton = document.querySelector('#finishPolygonAoiButton');
 const cancelPolygonAoiButton = document.querySelector('#cancelPolygonAoiButton');
 const manualAoiStatus = document.querySelector('#manualAoiStatus');
+const selectedAoiPanel = document.querySelector('#selectedAoiPanel');
+const selectedAoiLabelInput = document.querySelector('#selectedAoiLabelInput');
+const selectedAoiPaddingInput = document.querySelector('#selectedAoiPaddingInput');
+const selectedAoiColorInput = document.querySelector('#selectedAoiColorInput');
+const saveSelectedAoiButton = document.querySelector('#saveSelectedAoiButton');
+const deleteSelectedAoiButton = document.querySelector('#deleteSelectedAoiButton');
 const cloudAoiPromptsInput = document.querySelector('#cloudAoiPromptsInput');
 const cloudAoiSampleIntervalInput = document.querySelector('#cloudAoiSampleIntervalInput');
 const cloudAoiMaxPointsInput = document.querySelector('#cloudAoiMaxPointsInput');
@@ -878,8 +884,39 @@ function focusAoiListButton(aoiId) {
   button?.focus({ preventScroll: true });
 }
 
+function getColorInputValue(color) {
+  return /^#[0-9a-f]{6}$/i.test(color || '') ? color : '#ffd166';
+}
+
+function normalizeAnalysisPaddingPx(value) {
+  const padding = Number(value);
+
+  return Number.isFinite(padding) ? Math.max(0, Math.round(padding)) : 0;
+}
+
+function syncSelectedAoiPanel() {
+  const selectedAoi = getActiveAoiById(state.selectedAoiId);
+
+  if (!selectedAoi) {
+    selectedAoiPanel.hidden = true;
+    selectedAoiLabelInput.value = '';
+    selectedAoiPaddingInput.value = '0';
+    selectedAoiColorInput.value = '#ffd166';
+    return;
+  }
+
+  selectedAoiPanel.hidden = false;
+  selectedAoiLabelInput.value = selectedAoi.label || '';
+  selectedAoiPaddingInput.value = String(normalizeAnalysisPaddingPx(selectedAoi.analysisPaddingPx));
+  selectedAoiColorInput.value = getColorInputValue(selectedAoi.color);
+}
+
 function renderAoiList({ focusAoiId = null } = {}) {
   aoiSourceLabel.textContent = aoiSource;
+  if (state.selectedAoiId && !getActiveAoiById(state.selectedAoiId)) {
+    state.selectedAoiId = null;
+  }
+
   const items = activeAois.map((aoi) => {
     const bounds = getAoiBoundsLabel(aoi);
     const dynamicLabel = Array.isArray(aoi.keyframes) && aoi.keyframes.length ? ' (dynamic)' : '';
@@ -909,6 +946,7 @@ function renderAoiList({ focusAoiId = null } = {}) {
   });
 
   aoiList.replaceChildren(...items);
+  syncSelectedAoiPanel();
   if (focusAoiId) {
     focusAoiListButton(focusAoiId);
   }
@@ -2776,6 +2814,56 @@ function handleAoiListClick(event) {
   }
 }
 
+function saveSelectedAoiChanges() {
+  const selectedAoi = getActiveAoiById(state.selectedAoiId);
+
+  if (!selectedAoi) {
+    syncSelectedAoiPanel();
+    return;
+  }
+
+  const label = selectedAoiLabelInput.value.trim() || selectedAoi.label || 'AOI';
+  const color = selectedAoiColorInput.value || selectedAoi.color || '#ffd166';
+  const analysisPaddingPx = normalizeAnalysisPaddingPx(selectedAoiPaddingInput.value);
+
+  activeAois = activeAois.map((aoi) => (
+    aoi.id === selectedAoi.id
+      ? {
+        ...aoi,
+        label,
+        color,
+        analysisPaddingPx,
+      }
+      : aoi
+  ));
+
+  renderAoiList({ focusAoiId: selectedAoi.id });
+  drawAoiOverlay();
+  drawMiniMap();
+  setNotice(`Updated AOI: ${label}`, true);
+}
+
+function deleteSelectedAoi() {
+  const selectedAoi = getActiveAoiById(state.selectedAoiId);
+
+  if (!selectedAoi) {
+    state.selectedAoiId = null;
+    setManualAnnotationIdle('Click Draw Polygon, then click around the object edge.');
+    renderAoiList();
+    drawAoiOverlay();
+    drawMiniMap();
+    return;
+  }
+
+  activeAois = activeAois.filter((aoi) => aoi.id !== selectedAoi.id);
+  state.selectedAoiId = null;
+  setManualAnnotationIdle('Click Draw Polygon, then click around the object edge.');
+  renderAoiList();
+  drawAoiOverlay();
+  drawMiniMap();
+  setNotice(`Deleted AOI: ${selectedAoi.label}`, true);
+}
+
 function findCurrentKeyframeIndex(keyframes) {
   const timeSec = sourceVideo.currentTime || 0;
 
@@ -3085,6 +3173,8 @@ drawPolygonAoiButton.addEventListener('click', startPolygonAnnotation);
 finishPolygonAoiButton.addEventListener('click', finishPolygonAnnotation);
 cancelPolygonAoiButton.addEventListener('click', cancelPolygonAnnotation);
 aoiList.addEventListener('click', handleAoiListClick);
+saveSelectedAoiButton.addEventListener('click', saveSelectedAoiChanges);
+deleteSelectedAoiButton.addEventListener('click', deleteSelectedAoi);
 exportColabJobButton.addEventListener('click', exportColabAoiJob);
 cloudAoiResultInput.addEventListener('change', loadCloudAoiResultFile);
 recordingFileInput.addEventListener('change', loadRecordingFile);

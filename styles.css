@@ -78,6 +78,16 @@ button.is-active {
   font-weight: 750;
 }
 
+.danger-action {
+  border-color: rgba(255, 107, 107, 0.58);
+  color: var(--danger);
+}
+
+.danger-action:hover {
+  border-color: var(--danger);
+  background: rgba(255, 107, 107, 0.12);
+}
+
 .app-shell {
   height: 100vh;
   display: grid;
@@ -435,6 +445,10 @@ h1 {
   border-bottom: 1px solid var(--line);
 }
 
+.panel-section[hidden] {
+  display: none;
+}
+
 .panel-section:last-child {
   border-bottom: 0;
 }
@@ -471,6 +485,10 @@ h1 {
 
 .wide-action + .recording-actions {
   margin-top: 8px;
+}
+
+.selected-aoi-actions {
+  margin-top: 12px;
 }
 
 .status-grid {

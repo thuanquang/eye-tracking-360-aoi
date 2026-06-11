@@ -172,6 +172,28 @@
           <p id="manualAoiStatus" class="fine-print">Click Draw Polygon, then click around the object edge. Double-click or press Finish to close.</p>
         </section>
 
+        <section id="selectedAoiPanel" class="panel-section" hidden>
+          <p class="section-label">Selected AOI</p>
+          <label class="field-label">
+            <span>Label</span>
+            <input id="selectedAoiLabelInput" type="text" autocomplete="off" />
+          </label>
+          <div class="metadata-grid">
+            <label class="field-label compact-field">
+              <span>Padding</span>
+              <input id="selectedAoiPaddingInput" type="number" min="0" step="1" value="0" />
+            </label>
+            <label class="field-label compact-field">
+              <span>Color</span>
+              <input id="selectedAoiColorInput" type="color" value="#ffd166" />
+            </label>
+          </div>
+          <div class="recording-actions selected-aoi-actions">
+            <button id="saveSelectedAoiButton" class="primary" type="button">Save AOI</button>
+            <button id="deleteSelectedAoiButton" class="danger-action" type="button">Delete</button>
+          </div>
+        </section>
+
         <section id="cloudAoiPanel" class="panel-section">
           <p class="section-label">Google Colab AOI</p>
           <label class="field-label">
