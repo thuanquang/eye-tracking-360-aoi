@@ -34,6 +34,16 @@ import {
 } from './aois/aoiImport.js?v=aoi-schema-1';
 import { buildAoiOverlayModels } from './aois/aoiOverlay.js?v=aoi-overlay-1';
 import {
+  getNextCameraFromDrag,
+  shouldAllowCameraDrag,
+} from './viewer/cameraControls.js';
+import {
+  getCurrentProjection as resolveCurrentProjection,
+  getCurrentStereoLayout as resolveCurrentStereoLayout,
+  normalizeStereoLayout,
+  normalizeVideoProjection,
+} from './viewer/projection.js';
+import {
   applyViewportCalibration,
   distanceBetweenPoints,
   estimateLocalAccuracyErrorPx,
@@ -209,11 +219,17 @@ function setNotice(message, visible = true) {
 }
 
 function getCurrentProjection() {
-  return projectionSelect?.value || sourceVideoInfo.projection || 'equirectangular';
+  return resolveCurrentProjection({
+    controlValue: projectionSelect?.value,
+    metadataProjection: sourceVideoInfo.projection,
+  });
 }
 
 function getCurrentStereoLayout() {
-  return stereoLayoutSelect?.value || sourceVideoInfo.stereoLayout || 'mono';
+  return resolveCurrentStereoLayout({
+    controlValue: stereoLayoutSelect?.value,
+    metadataStereoLayout: sourceVideoInfo.stereoLayout,
+  });
 }
 
 function syncSourceVideoMetadataFromControls() {
@@ -224,13 +240,26 @@ function syncSourceVideoMetadataFromControls() {
   };
 }
 
+function hasSelectOption(select, value) {
+  return Array.from(select.options).some((option) => option.value === value);
+}
+
+function setSelectValueIfOptionExists(select, value) {
+  if (hasSelectOption(select, value)) {
+    select.value = value;
+  }
+}
+
 function applyVideoMetadataControls(video = {}) {
-  if (video.projection && projectionSelect.querySelector(`option[value="${video.projection}"]`)) {
-    projectionSelect.value = video.projection;
+  if (video.projection) {
+    setSelectValueIfOptionExists(projectionSelect, normalizeVideoProjection(video.projection));
   }
 
-  if (video.stereoLayout && stereoLayoutSelect.querySelector(`option[value="${video.stereoLayout}"]`)) {
-    stereoLayoutSelect.value = video.stereoLayout;
+  if (video.stereoLayout) {
+    const stereoLayout = hasSelectOption(stereoLayoutSelect, video.stereoLayout)
+      ? video.stereoLayout
+      : normalizeStereoLayout(video.stereoLayout);
+    setSelectValueIfOptionExists(stereoLayoutSelect, stereoLayout);
   }
 
   syncSourceVideoMetadataFromControls();
@@ -1656,6 +1685,10 @@ function startDrag(event) {
     return;
   }
 
+  if (!shouldAllowCameraDrag(getCurrentProjection())) {
+    return;
+  }
+
   viewer.classList.add('is-dragging');
   viewer.setPointerCapture(event.pointerId);
   viewer.dataset.lastX = String(event.clientX);
@@ -1672,8 +1705,20 @@ function drag(event) {
   const dx = event.clientX - lastX;
   const dy = event.clientY - lastY;
 
-  state.cameraYaw = normalizeYaw(state.cameraYaw - dx * 0.12);
-  state.cameraPitch = THREE.MathUtils.clamp(state.cameraPitch - dy * 0.12, -85, 85);
+  if (!shouldAllowCameraDrag(getCurrentProjection())) {
+    viewer.dataset.lastX = String(event.clientX);
+    viewer.dataset.lastY = String(event.clientY);
+    return;
+  }
+
+  const nextCamera = getNextCameraFromDrag({
+    cameraYaw: state.cameraYaw,
+    cameraPitch: state.cameraPitch,
+    dx,
+    dy,
+  });
+  state.cameraYaw = nextCamera.cameraYaw;
+  state.cameraPitch = nextCamera.cameraPitch;
   viewer.dataset.lastX = String(event.clientX);
   viewer.dataset.lastY = String(event.clientY);
   updateCamera();
