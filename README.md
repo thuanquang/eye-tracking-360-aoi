@@ -25,14 +25,46 @@ You can also load a local AOI sidecar with `Load AOI JSON`. The file can be eith
 
 For 360 or stereo 3D video, dynamic AOIs are stored as panorama-space yaw/pitch boxes or polygons with optional time `keyframes`. Sidecar project JSON may include `video.projection` such as `equirectangular` and `video.stereoLayout` such as `mono`, `top-bottom`, or `side-by-side`. The MVP does not model depth meshes or per-eye occlusion; it tracks attention to regions on the rendered panorama.
 
+## Real Object AOIs
+
+The app supports two AOI shapes:
+
+- `box`: fast rectangular AOIs for rough regions.
+- `polygon`: object-edge AOIs from manual drawing or Colab segmentation.
+
+Polygon AOIs keep visible object edges editable while analysis can still use optional padding. For webcam gaze analysis, exact object-edge polygons may look precise, but gaze is still noisy. Use `analysisPaddingPx` to expand the effective AOI hit area while preserving the visible object edge for review.
+
+Manual polygon annotation:
+
+1. Open Admin mode.
+2. Choose `2D flat` or `360 equirectangular`.
+3. Click `Draw Polygon`.
+4. Click around the visible object edge.
+5. Double-click or press `Finish`.
+6. Select the AOI row to rename, recolor, adjust padding, or delete.
+
+Google Colab auto annotation:
+
+1. Load the video in Admin mode.
+2. Enter prompts such as `person`, `screen`, `sign`, or `product`.
+3. Export the Colab job JSON.
+4. Open `notebooks/google-colab-auto-aoi.ipynb` in Colab with a GPU runtime.
+5. Upload the video and job JSON.
+6. Download `generated-colab-aois.json`.
+7. Import it with `Import Colab AOIs`.
+8. Review and edit before participant collection.
+
+Generated polygon AOIs are proposals. They may miss objects, merge objects, or produce imperfect edges. Review them before using them for research.
+
 ## Admin AOI Authoring
 
-Admin mode now has two AOI creation paths:
+Admin mode now has three AOI creation paths:
 
-1. `Manual AOI`: choose the video projection, label, size, and color, then add a centered AOI at the current view. For `2D flat`, this creates normalized `x/y` AOIs. For `360 equirectangular`, this creates yaw/pitch AOIs at the current camera center.
-2. `Google Colab AOI`: enter detection prompts such as `person`, `screen`, `sign`, or `product`, export a Colab job JSON, run `notebooks/google-colab-auto-aoi.ipynb` in Google Colab with the video and job JSON, then import the generated AOI JSON.
+1. `Manual AOI`: choose the video projection, label, size, and color, then add a centered box AOI at the current view. For `2D flat`, this creates normalized `x/y` AOIs. For `360 equirectangular`, this creates yaw/pitch AOIs at the current camera center.
+2. `Draw Polygon`: click around a visible object edge to create an editable polygon AOI. Polygon vertices can be dragged at static AOIs or exact dynamic keyframes.
+3. `Google Colab AOI`: enter detection prompts such as `person`, `screen`, `sign`, or `product`, export a Colab job JSON, run `notebooks/google-colab-auto-aoi.ipynb` in Google Colab with the video and job JSON, then import the generated AOI JSON.
 
-The Colab notebook uses Florence-2 object detection on sampled video frames and writes ordinary AOI JSON. The generated AOIs are proposals: review labels, duplicates, missed objects, and low-quality tracks before recording participants.
+The Colab notebook uses Florence-2 object detection, SAM 2 masks, and OpenCV contours on sampled video frames, then writes ordinary polygon AOI JSON. The generated AOIs are proposals: review labels, duplicates, missed objects, and low-quality tracks before recording participants.
 
 ## Accurate Webcam Test Protocol
 
