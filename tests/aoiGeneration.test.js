@@ -239,6 +239,38 @@ test('converts equirectangular normalized polygon points to yaw and pitch', () =
   ]);
 });
 
+test('preserves direct panorama polygon yaw and pitch points', () => {
+  const aois = detectionsToAois({
+    detections: [
+      {
+        label: 'Door',
+        t: 3,
+        shape: 'polygon',
+        points: [
+          { yaw: -45, pitch: -10 },
+          { yaw: 45, pitch: -10 },
+          { yaw: 0, pitch: 20 },
+        ],
+        confidence: 0.82,
+      },
+    ],
+    video: {
+      width: 1920,
+      height: 1080,
+      projection: 'equirectangular',
+      stereoLayout: 'mono',
+    },
+  });
+
+  assert.equal(aois[0].shape, 'polygon');
+  assert.equal(aois[0].space, 'panorama');
+  assert.deepEqual(aois[0].points, [
+    { yaw: -45, pitch: -10 },
+    { yaw: 45, pitch: -10 },
+    { yaw: 0, pitch: 20 },
+  ]);
+});
+
 test('ignores polygon detections with fewer than three valid points', () => {
   const aois = detectionsToAois({
     detections: [
@@ -250,6 +282,39 @@ test('ignores polygon detections with fewer than three valid points', () => {
           { x: 0.1, y: 0.1 },
           { x: 0.2, y: Number.NaN },
           { x: 0.3, y: 0.3 },
+        ],
+        confidence: 0.25,
+      },
+    ],
+    video: {
+      width: 1000,
+      height: 500,
+      projection: 'flat',
+      stereoLayout: 'mono',
+    },
+  });
+
+  assert.deepEqual(aois, []);
+});
+
+test('ignores polygon detections with coercion-prone invalid point values', () => {
+  const aois = detectionsToAois({
+    detections: [
+      {
+        label: 'Malformed',
+        t: 0,
+        shape: 'polygon',
+        points: [
+          { x: 0.1, y: 0.1 },
+          { x: '0.2', y: ' 0.2 ' },
+          { x: false, y: 0.3 },
+          { x: 0.4, y: true },
+          { x: '   ', y: 0.5 },
+          { x: [], y: 0.6 },
+          { x: {}, y: 0.7 },
+          { x: null, y: 0.8 },
+          { x: 0.9, y: undefined },
+          { x: '', y: 1 },
         ],
         confidence: 0.25,
       },

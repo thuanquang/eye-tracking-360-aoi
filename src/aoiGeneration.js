@@ -37,13 +37,23 @@ function sanitizeNumber(value, fallback) {
 }
 
 function finiteCoordinate(value) {
-  if (value === null || value === '') {
-    return null;
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : null;
   }
 
-  const numeric = Number(value);
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
 
-  return Number.isFinite(numeric) ? numeric : null;
+    if (!trimmed) {
+      return null;
+    }
+
+    const numeric = Number(trimmed);
+
+    return Number.isFinite(numeric) ? numeric : null;
+  }
+
+  return null;
 }
 
 function parsePromptList(prompts) {
