@@ -11,6 +11,13 @@ import {
   screenUncertaintyToYawPitch,
 } from './aois/aoiMath.js?v=aoi-anchor-4';
 import { buildNamedAoiMetrics } from './recording/analysisMetrics.js?v=ui-modes-1';
+import { buildRecordingSample } from './recording/sampleBuilder.js?v=recording-export-1';
+import {
+  buildExportPayload,
+  buildExportSummary as createExportSummary,
+  buildProjectPackage as createProjectPackage,
+  buildVideoPackageMetadata as createVideoPackageMetadata,
+} from './recording/recordingExport.js?v=recording-export-1';
 import {
   buildColabAoiJob,
   normalizeAoiId,
@@ -1753,8 +1760,8 @@ function maybeSample(now) {
   state.lastSampleAt = now;
   const trustedForAoiAnalysis = state.mode !== 'webcam' || state.accuracyValidated;
 
-  state.samples.push({
-    t: Number(sourceVideo.currentTime.toFixed(3)),
+  state.samples.push(buildRecordingSample({
+    timeSec: sourceVideo.currentTime,
     source: state.mode,
     quality: {
       trustedForAoiAnalysis,
@@ -1768,37 +1775,19 @@ function maybeSample(now) {
       accuracyInvalidationReason: state.accuracyInvalidationReason,
       droppedGazeSamples: state.droppedGazeSamples,
     },
-    screen: {
-      x: Math.round(state.gaze.x),
-      y: Math.round(state.gaze.y),
-    },
-    rawScreen: state.rawViewerGaze ? {
-      x: Math.round(state.rawViewerGaze.x),
-      y: Math.round(state.rawViewerGaze.y),
-    } : null,
+    gaze: state.gaze,
+    rawGaze: state.rawViewerGaze,
     camera: {
-      yaw: Number(state.cameraYaw.toFixed(3)),
-      pitch: Number(state.cameraPitch.toFixed(3)),
+      yaw: state.cameraYaw,
+      pitch: state.cameraPitch,
       fov: camera.fov,
     },
-    panorama: {
-      yaw: Number(state.latestPoint.yaw.toFixed(3)),
-      pitch: Number(state.latestPoint.pitch.toFixed(3)),
-    },
-    hits: state.latestHits.map((hit) => hit.id),
-    activeAois: state.latestAois.map((aoi) => ({
-      id: aoi.id,
-      label: aoi.label,
-      yawMin: Number(aoi.yawMin.toFixed(3)),
-      yawMax: Number(aoi.yawMax.toFixed(3)),
-      pitchMin: Number(aoi.pitchMin.toFixed(3)),
-      pitchMax: Number(aoi.pitchMax.toFixed(3)),
-    })),
-    likelyHits: state.latestAoiClassification?.likelyHits.map((hit) => hit.id) || [],
-    possibleHits: state.latestAoiClassification?.possibleHits.map((hit) => hit.id) || [],
-    ambiguousHits: state.latestAoiClassification?.ambiguousHits.map((hit) => hit.id) || [],
-    gazeUncertainty: state.latestUncertainty || { px: 0, yawRadius: 0, pitchRadius: 0 },
-  });
+    panorama: state.latestPoint,
+    hits: state.latestHits,
+    activeAois: state.latestAois,
+    classification: state.latestAoiClassification,
+    uncertainty: state.latestUncertainty,
+  }));
   sampleCount.textContent = String(state.samples.length);
   syncParticipantSessionControls();
 }
@@ -1963,64 +1952,8 @@ async function toggleReviewMode() {
   await startReviewMode();
 }
 
-function countValues(samples, getValues) {
-  return samples.reduce((counts, sample) => {
-    const values = getValues(sample);
-
-    values.forEach((value) => {
-      counts[value] = (counts[value] || 0) + 1;
-    });
-
-    return counts;
-  }, {});
-}
-
-function getSampleDurations(samples) {
-  return samples.map((sample, index) => {
-    const next = samples[index + 1];
-    const videoDelta = next ? next.t - sample.t : SAMPLE_INTERVAL_MS / 1000;
-
-    return Number.isFinite(videoDelta) && videoDelta > 0
-      ? videoDelta
-      : SAMPLE_INTERVAL_MS / 1000;
-  });
-}
-
-function sumDwellSeconds(samples, getValues) {
-  const durations = getSampleDurations(samples);
-
-  return samples.reduce((dwell, sample, index) => {
-    getValues(sample).forEach((value) => {
-      dwell[value] = Number(((dwell[value] || 0) + durations[index]).toFixed(3));
-    });
-
-    return dwell;
-  }, {});
-}
-
 function buildExportSummary() {
-  const durationSec = getSampleDurations(state.samples).reduce((sum, duration) => sum + duration, 0);
-
-  return {
-    totalSamples: state.samples.length,
-    durationSec: Number(durationSec.toFixed(3)),
-    sources: countValues(state.samples, (sample) => [sample.source]),
-    aoiHitCounts: countValues(state.samples, (sample) => sample.hits || []),
-    likelyAoiHitCounts: countValues(state.samples, (sample) => sample.likelyHits || []),
-    possibleAoiHitCounts: countValues(state.samples, (sample) => sample.possibleHits || []),
-    aoiDwellSec: sumDwellSeconds(state.samples, (sample) => sample.hits || []),
-    likelyAoiDwellSec: sumDwellSeconds(state.samples, (sample) => sample.likelyHits || []),
-    possibleAoiDwellSec: sumDwellSeconds(state.samples, (sample) => sample.possibleHits || []),
-    ambiguousSampleCount: state.samples.filter((sample) => (sample.ambiguousHits || []).length > 0).length,
-    trustedSampleCount: state.samples.filter((sample) => sample.quality?.trustedForAoiAnalysis).length,
-    accuracyValidated: state.accuracyValidated,
-    accuracyMeanPx: state.correctedAccuracySummary?.meanPx ?? null,
-    accuracyP90Px: state.correctedAccuracySummary?.p90Px ?? null,
-    accuracyMaxPx: state.correctedAccuracySummary?.maxPx ?? null,
-    accuracyP90DispersionPx: state.correctedAccuracySummary?.p90DispersionPx ?? null,
-    accuracyMaxDispersionPx: state.correctedAccuracySummary?.maxDispersionPx ?? null,
-    droppedGazeSamples: state.droppedGazeSamples,
-  };
+  return createExportSummary(state.samples, state, SAMPLE_INTERVAL_MS);
 }
 
 function downloadJson(payload, fileName) {
@@ -2034,61 +1967,46 @@ function downloadJson(payload, fileName) {
 }
 
 function buildVideoPackageMetadata() {
-  const durationSec = Number.isFinite(sourceVideo.duration)
-    ? Number(sourceVideo.duration.toFixed(3))
-    : null;
-  const sidecarVideo = registeredProjectMetadata.video || {};
   syncSourceVideoMetadataFromControls();
 
-  return {
-    ...sidecarVideo,
-    ...sourceVideoInfo,
-    name: sourceVideoInfo.kind === 'local-file'
-      ? sourceVideoInfo.name
-      : sidecarVideo.name || sourceVideoInfo.name || null,
-    durationSec: durationSec ?? sidecarVideo.durationSec ?? null,
+  return createVideoPackageMetadata({
+    sourceVideoInfo,
+    sourceVideo,
+    sidecarVideo: registeredProjectMetadata.video || {},
     projection: getCurrentProjection(),
     stereoLayout: getCurrentStereoLayout(),
-    src: sourceVideo.currentSrc || sourceVideo.src,
-  };
+  });
 }
 
 function buildProjectPackage() {
-  return {
-    version: 1,
-    video: buildVideoPackageMetadata(),
-    aois: {
-      source: aoiSource,
-      count: activeAois.length,
-      packaged: true,
-    },
-    includesVideoBinary: false,
-  };
+  syncSourceVideoMetadataFromControls();
+
+  return createProjectPackage({
+    sourceVideoInfo,
+    sourceVideo,
+    sidecarVideo: registeredProjectMetadata.video || {},
+    projection: getCurrentProjection(),
+    stereoLayout: getCurrentStereoLayout(),
+    aoiSource,
+    aois: activeAois,
+  });
 }
 
 function exportSamples() {
   const namedAoiMetrics = buildNamedAoiMetrics(state.samples, activeAois);
-  const payload = {
+  const video = buildVideoPackageMetadata();
+  const payload = buildExportPayload({
     sourceVideo: sourceVideo.currentSrc || sourceVideo.src,
     exportedAt: new Date().toISOString(),
     participant: getExportParticipantMetadata(),
     project: buildProjectPackage(),
-    video: buildVideoPackageMetadata(),
+    video,
     summary: buildExportSummary(),
     namedAoiMetrics,
     aoiSource,
     aois: activeAois,
-    accuracy: state.correctedAccuracySummary,
-    rawValidationAccuracy: state.accuracySummary,
-    correctionFitAccuracy: state.refinementAccuracySummary,
-    gazeCorrection: state.gazeCorrection,
-    localAccuracyErrorModel: state.localAccuracyErrorModel,
-    accuracyValidated: state.accuracyValidated,
-    accuracyInvalidationReason: state.accuracyInvalidationReason,
-    liveGazeQuality: state.liveGazeQuality,
-    droppedGazeSamples: state.droppedGazeSamples,
-    samples: state.samples,
-  };
+    state,
+  });
   downloadJson(payload, `aoi-samples-${Date.now()}.json`);
 }
 
