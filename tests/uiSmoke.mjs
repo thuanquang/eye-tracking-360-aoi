@@ -63,6 +63,11 @@ try {
   await page.goto(urlWithMode('admin'), { waitUntil: 'networkidle' });
   await page.waitForSelector('#viewer canvas');
   await page.waitForFunction(() => document.querySelector('#sourceVideo')?.readyState >= 1);
+  assert.equal(
+    await page.evaluate(() => Boolean(window.__aoiAppReady)),
+    true,
+    'App controller should expose a test-only readiness marker after initialization.',
+  );
 
   const hasContent = await page.evaluate(() => document.body.innerText.trim().length > 0);
   assert.equal(hasContent, true, 'Page body should contain visible UI text.');

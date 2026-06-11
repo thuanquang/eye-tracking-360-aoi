@@ -25,6 +25,10 @@ You can also load a local AOI sidecar with `Load AOI JSON`. The file can be eith
 
 For 360 or stereo 3D video, dynamic AOIs are stored as panorama-space yaw/pitch boxes with optional time `keyframes`. Sidecar project JSON may include `video.projection` such as `equirectangular` and `video.stereoLayout` such as `mono`, `top-bottom`, or `side-by-side`. The MVP does not model depth meshes or per-eye occlusion; it tracks attention to regions on the rendered panorama.
 
+## Architecture
+
+See `docs/architecture.md` for the module boundaries. In short, `src/app.js` is the static browser entrypoint, `src/app/appController.js` owns DOM orchestration and startup wiring, and pure AOI, gaze, recording, and viewer behavior belongs in the domain folders with Node tests.
+
 ## Admin AOI Authoring
 
 Admin mode now has two AOI creation paths:

@@ -105,8 +105,12 @@ test('webgazer provider prefers clearGazeListener during cleanup', () => {
 });
 
 test('app wires mouse gaze through the mouse provider', async () => {
-  const appSource = await readFile(new URL('../src/app.js', import.meta.url), 'utf8');
-  const dragFunction = appSource.match(/function drag\(event\) \{[\s\S]*?\n\}/)?.[0] ?? '';
+  const appSource = await readFile(new URL('../src/app/appController.js', import.meta.url), 'utf8');
+  const dragStart = appSource.indexOf('function drag(event)');
+  const dragEnd = appSource.indexOf('function endDrag(event)');
+  const dragFunction = dragStart >= 0 && dragEnd > dragStart
+    ? appSource.slice(dragStart, dragEnd)
+    : '';
 
   assert.match(appSource, /import \{ createMouseProvider \}/);
   assert.match(appSource, /createMouseProvider\(\{/);
