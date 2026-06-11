@@ -35,21 +35,22 @@ import {
 import { buildAoiOverlayModels } from './aois/aoiOverlay.js?v=aoi-overlay-1';
 import {
   applyViewportCalibration,
-  buildAccuracyCorrection,
-  buildLocalAccuracyErrorModel,
   distanceBetweenPoints,
   estimateLocalAccuracyErrorPx,
-  hasSufficientSpatialCoverage,
   isGazeInsideViewport,
-  isAccuracyValidationUsable,
   isValidationFresh,
-  normalizeAccuracySample,
   resolveGazeUpdate,
   shouldCaptureFreshGazeSample,
   summarizeTargetSamples,
-  summarizeAccuracy,
   updateLiveGazeQuality,
 } from './gaze/gazeQuality.js';
+import {
+  ACCURACY_REFINEMENT_POINTS,
+  CALIBRATION_POINTS,
+  VALIDATION_POINTS,
+  getTargetPointsForMode,
+} from './gaze/calibrationTargets.js';
+import { evaluateAccuracyCheck } from './gaze/accuracyValidation.js';
 import {
   DEFAULT_VALIDATION_MAX_AGE_MS,
   GAZE_SMOOTHING,
@@ -88,47 +89,6 @@ const FRESH_GAZE_MAX_AGE_MS = GAZE_TIMING.freshGazeMaxAgeMs;
 const LIVE_GAZE_STALE_MS = GAZE_TIMING.liveGazeStaleMs;
 const LIVE_GAZE_HOLD_MS = GAZE_TIMING.liveGazeHoldMs;
 const TARGET_MAX_DISPERSION_PX = TARGET_CAPTURE.maxDispersionPx;
-const CALIBRATION_POINTS = [
-  { x: 50, y: 50 },
-  { x: 12, y: 14 },
-  { x: 88, y: 86 },
-  { x: 88, y: 14 },
-  { x: 12, y: 86 },
-  { x: 50, y: 14 },
-  { x: 50, y: 86 },
-  { x: 12, y: 50 },
-  { x: 88, y: 50 },
-  { x: 28, y: 28 },
-  { x: 72, y: 72 },
-  { x: 72, y: 28 },
-  { x: 28, y: 72 },
-  { x: 50, y: 50 },
-];
-const ACCURACY_REFINEMENT_POINTS = [
-  { x: 50, y: 50 },
-  { x: 20, y: 22 },
-  { x: 80, y: 22 },
-  { x: 20, y: 78 },
-  { x: 80, y: 78 },
-  { x: 50, y: 24 },
-  { x: 50, y: 76 },
-  { x: 24, y: 50 },
-  { x: 76, y: 50 },
-];
-const ACCURACY_VALIDATION_POINTS = [
-  { x: 35, y: 35 },
-  { x: 65, y: 35 },
-  { x: 35, y: 65 },
-  { x: 65, y: 65 },
-  { x: 50, y: 38 },
-  { x: 50, y: 62 },
-  { x: 38, y: 50 },
-  { x: 62, y: 50 },
-];
-const VALIDATION_POINTS = [
-  ...ACCURACY_REFINEMENT_POINTS,
-  ...ACCURACY_VALIDATION_POINTS,
-];
 const CALIBRATION_SAMPLES_PER_POINT = TARGET_CAPTURE.calibrationSamplesPerPoint;
 const VALIDATION_SAMPLES_PER_POINT = TARGET_CAPTURE.validationSamplesPerPoint;
 const TARGET_SETTLE_DELAY_MS = GAZE_TIMING.targetSettleDelayMs;
@@ -973,7 +933,7 @@ async function setWebcamMode() {
 }
 
 function targetPointsForMode() {
-  return state.targetMode === 'accuracy' ? VALIDATION_POINTS : CALIBRATION_POINTS;
+  return getTargetPointsForMode(state.targetMode);
 }
 
 function positionTargetOverlay() {
@@ -1189,88 +1149,54 @@ async function captureAccuracyPoint() {
   state.accuracyIndex += 1;
 
   if (state.accuracyIndex >= VALIDATION_POINTS.length) {
-    if (
-      state.accuracySamples.length < MIN_ACCEPTED_REFINEMENT_TARGETS ||
-      state.validationSamples.length < MIN_ACCEPTED_VALIDATION_TARGETS
-    ) {
-      const summary = summarizeAccuracy([]);
+    const evaluation = evaluateAccuracyCheck({
+      refinementSamples: state.accuracySamples,
+      validationSamples: state.validationSamples,
+      minAcceptedRefinementTargets: MIN_ACCEPTED_REFINEMENT_TARGETS,
+      minAcceptedValidationTargets: MIN_ACCEPTED_VALIDATION_TARGETS,
+    });
 
+    if (evaluation.reason === 'too-few-targets') {
       state.gazeCorrection = null;
       state.refinementAccuracySummary = null;
-      state.accuracySummary = summary;
+      state.accuracySummary = evaluation.accuracySummary;
       state.correctedAccuracySummary = null;
       state.localAccuracyErrorModel = null;
       state.accuracyValidated = false;
       state.accuracyValidatedAt = null;
       calibrationOverlay.hidden = true;
       setWebcamStatus('calibrated');
-      setAccuracySummary(summary);
+      setAccuracySummary(evaluation.accuracySummary);
       setNotice('Accuracy check could not collect enough fresh stable gaze predictions. Keep your face steady, then run Check accuracy again.', true);
       await restoreVideoAfterTargetMode();
       return;
     }
 
-    const normalizedRefinementSamples = state.accuracySamples.map((sample) => (
-      normalizeAccuracySample(sample, sample.viewport)
-    ));
-    const normalizedValidationSamples = state.validationSamples.map((sample) => (
-      normalizeAccuracySample(sample, sample.viewport)
-    ));
-
-    if (
-      !hasSufficientSpatialCoverage(normalizedRefinementSamples, { minXRange: 0.45, minYRange: 0.45 }) ||
-      !hasSufficientSpatialCoverage(normalizedValidationSamples, { minXRange: 0.22, minYRange: 0.22 })
-    ) {
-      const summary = summarizeAccuracy([]);
-
+    if (evaluation.reason === 'insufficient-coverage') {
       state.gazeCorrection = null;
       state.refinementAccuracySummary = null;
-      state.accuracySummary = summary;
+      state.accuracySummary = evaluation.accuracySummary;
       state.correctedAccuracySummary = null;
       state.localAccuracyErrorModel = null;
       state.accuracyValidated = false;
       state.accuracyValidatedAt = null;
       calibrationOverlay.hidden = true;
       setWebcamStatus('calibrated');
-      setAccuracySummary(summary);
+      setAccuracySummary(evaluation.accuracySummary);
       setNotice('Accuracy check did not cover enough of the player. Keep your face steady and retry all targets before recording.', true);
       await restoreVideoAfterTargetMode();
       return;
     }
 
-    const refinement = buildAccuracyCorrection(normalizedRefinementSamples, {
-      maxCorrectedMeanPx: 0.2,
-    });
-    const correctedValidationSamples = state.validationSamples.map((sample) => ({
-      ...sample,
-      gaze: applyViewportCalibration(sample.gaze, refinement.calibration, sample.viewport),
-    }));
-    const validationSummary = summarizeAccuracy(state.validationSamples);
-    const correctedValidationSummary = summarizeAccuracy(correctedValidationSamples);
-    const validationPassed = isAccuracyValidationUsable(correctedValidationSummary, {
-      minSamples: MIN_ACCEPTED_VALIDATION_TARGETS,
-    });
-    const finalCorrection = validationPassed
-      ? buildAccuracyCorrection([
-        ...normalizedRefinementSamples,
-        ...normalizedValidationSamples,
-      ], {
-        maxCorrectedMeanPx: 0.2,
-      })
-      : null;
-    const liveCalibration = finalCorrection?.accepted
-      ? finalCorrection.calibration
-      : refinement.calibration;
+    const correctedValidationSummary = evaluation.correctedValidationSummary;
 
-    state.gazeCorrection = validationPassed ? liveCalibration : null;
-    state.refinementAccuracySummary = refinement.correctedSummary;
-    state.accuracySummary = validationSummary;
+    state.gazeCorrection = evaluation.validationPassed ? evaluation.liveCalibration : null;
+    state.refinementAccuracySummary = evaluation.refinement.correctedSummary;
+    state.accuracySummary = evaluation.validationSummary;
     state.correctedAccuracySummary = correctedValidationSummary;
-    state.localAccuracyErrorModel = validationPassed
-      ? buildLocalAccuracyErrorModel(correctedValidationSamples)
-      : null;
-    state.accuracyValidated = validationPassed;
-    state.accuracyValidatedAt = validationPassed ? performance.now() : null;
+    state.localAccuracyErrorModel = evaluation.localAccuracyErrorModel;
+    state.accuracyValidated = evaluation.validationPassed;
+    state.accuracyValidatedAt = evaluation.validationPassed ? performance.now() : null;
     state.accuracyInvalidationReason = null;
     resetLiveGazeQuality();
     calibrationOverlay.hidden = true;
@@ -1280,7 +1206,7 @@ async function captureAccuracyPoint() {
       setNotice('Accuracy check could not collect gaze predictions. Recalibrate and keep your face steady in view.', true);
     } else {
       setNotice(
-        validationPassed
+        evaluation.validationPassed
           ? `Accuracy validated independently: mean ${Math.round(correctedValidationSummary.meanPx)}px, p90 ${Math.round(correctedValidationSummary.p90Px || 0)}px, capture p90 ${Math.round(correctedValidationSummary.p90DispersionPx || 0)}px, worst target ${Math.round(correctedValidationSummary.maxPx || 0)}px.`
           : `Accuracy validation is ${correctedValidationSummary.quality}, mean error ${Math.round(correctedValidationSummary.meanPx)}px, capture p90 ${Math.round(correctedValidationSummary.p90DispersionPx || 0)}px, worst target ${Math.round(correctedValidationSummary.maxPx || 0)}px. Recalibrate before recording.`,
         true,
