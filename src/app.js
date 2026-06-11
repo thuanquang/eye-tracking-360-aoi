@@ -2392,14 +2392,67 @@ function drawVideoPolygonMiniMap(ctx, canvasWidth, canvasHeight, aoi) {
 }
 
 function drawPanoramaPolygonMiniMap(ctx, canvasWidth, canvasHeight, aoi) {
-  const points = Array.isArray(aoi.points)
-    ? aoi.points.map((point) => ({
-      x: ((normalizeYaw(point.yaw) + 180) / 360) * canvasWidth,
-      y: ((90 - point.pitch) / 180) * canvasHeight,
-    }))
+  if (
+    !Number.isFinite(canvasWidth) ||
+    !Number.isFinite(canvasHeight) ||
+    canvasWidth <= 0 ||
+    canvasHeight <= 0
+  ) {
+    return;
+  }
+
+  const sourcePoints = Array.isArray(aoi.points)
+    ? aoi.points.filter((point) => (
+      Number.isFinite(point?.yaw) &&
+      Number.isFinite(point?.pitch)
+    ))
     : [];
 
-  drawMiniMapPolygon(ctx, points);
+  if (sourcePoints.length < 3) {
+    return;
+  }
+
+  let previousYaw = normalizeYaw(sourcePoints[0].yaw);
+  const points = sourcePoints.map((point, index) => {
+    let yaw = normalizeYaw(point.yaw);
+
+    if (index > 0) {
+      while (yaw - previousYaw > 180) {
+        yaw -= 360;
+      }
+
+      while (yaw - previousYaw < -180) {
+        yaw += 360;
+      }
+    }
+
+    previousYaw = yaw;
+
+    return {
+      x: ((yaw + 180) / 360) * canvasWidth,
+      y: ((90 - point.pitch) / 180) * canvasHeight,
+    };
+  });
+  const xs = points.map((point) => point.x);
+  const minX = Math.min(...xs);
+  const maxX = Math.max(...xs);
+  const minShift = Math.floor((0 - maxX) / canvasWidth);
+  const maxShift = Math.ceil((canvasWidth - minX) / canvasWidth);
+
+  for (let shiftIndex = minShift; shiftIndex <= maxShift; shiftIndex += 1) {
+    const shiftX = shiftIndex * canvasWidth;
+    const shiftedPoints = points.map((point) => ({
+      ...point,
+      x: point.x + shiftX,
+    }));
+
+    if (
+      Math.max(...shiftedPoints.map((point) => point.x)) >= 0 &&
+      Math.min(...shiftedPoints.map((point) => point.x)) <= canvasWidth
+    ) {
+      drawMiniMapPolygon(ctx, shiftedPoints);
+    }
+  }
 }
 
 function drawMiniMap() {

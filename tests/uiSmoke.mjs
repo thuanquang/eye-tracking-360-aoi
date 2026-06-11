@@ -298,6 +298,18 @@ try {
         pitchMin: -8,
         pitchMax: 8,
       },
+      {
+        id: 'sidecar-seam-polygon',
+        label: 'Sidecar seam polygon',
+        color: '#ff0000',
+        shape: 'polygon',
+        points: [
+          { yaw: 170, pitch: 58 },
+          { yaw: -170, pitch: 58 },
+          { yaw: -170, pitch: 72 },
+          { yaw: 170, pitch: 72 },
+        ],
+      },
     ],
   }, null, 2));
   await page.locator('#aoiFileInput').setInputFiles(sidecarPath);
@@ -317,6 +329,16 @@ try {
     await page.locator('#aoiOverlay [data-aoi-id="sidecar-right-edge"]').count(),
     1,
     'AOIs partly outside the player viewport should still render as clipped anchored shapes.',
+  );
+  const seamMiddlePixel = await page.locator('#miniMap').evaluate((canvas) => {
+    const context = canvas.getContext('2d');
+    const pixel = context.getImageData(Math.floor(canvas.width * 0.53), Math.floor(canvas.height * 0.14), 1, 1).data;
+    return Array.from(pixel);
+  });
+  assert.equal(
+    seamMiddlePixel[0] < 40,
+    true,
+    'Seam-crossing panorama polygons should not fill the middle of the mini-map.',
   );
 
   const viewerBox = await page.locator('#viewer').boundingBox();
@@ -891,6 +913,10 @@ try {
     video.dispatchEvent(new Event('timeupdate'));
   });
   await page.waitForFunction(() => document.querySelector('#sourceVideo')?.currentTime >= 4);
+  await page.waitForFunction(() => (
+    document.querySelectorAll('#aoiOverlay .aoi-vertex-handle').length === 0 &&
+    /keyframe/i.test(document.querySelector('#manualAoiStatus')?.textContent || '')
+  ));
   assert.equal(
     await page.locator('#aoiOverlay .aoi-vertex-handle').count(),
     0,
