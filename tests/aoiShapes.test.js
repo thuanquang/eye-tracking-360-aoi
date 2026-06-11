@@ -55,6 +55,27 @@ test('hit tests polygon AOIs with optional analysis padding', () => {
   assert.equal(pointHitsPolygonAoi({ x: 0.4, y: 0.12 }, aoi), false);
 });
 
+test('hit tests video polygon AOIs with viewport-converted pixel padding', () => {
+  const aoi = {
+    id: 'screen-px',
+    label: 'Screen with pixel padding',
+    color: '#ffd166',
+    space: 'video',
+    shape: 'polygon',
+    analysisPaddingPx: 12,
+    points: [
+      { x: 0.2, y: 0.2 },
+      { x: 0.6, y: 0.2 },
+      { x: 0.6, y: 0.6 },
+      { x: 0.2, y: 0.6 },
+    ],
+  };
+  const viewport = { width: 400, height: 300 };
+
+  assert.equal(pointHitsPolygonAoi({ x: 0.4, y: 0.17 }, aoi, viewport), true);
+  assert.equal(pointHitsPolygonAoi({ x: 0.4, y: 0.14 }, aoi, viewport), false);
+});
+
 test('interpolates matching polygon keyframes', () => {
   const points = interpolatePolygonPoints(
     [
@@ -203,6 +224,28 @@ test('hit tests panorama polygon AOIs with optional analysis padding', () => {
   assert.equal(pointHitsPolygonAoi({ yaw: 0, pitch: 0 }, aoi), true);
   assert.equal(pointHitsPolygonAoi({ yaw: 0, pitch: 11 }, aoi), true);
   assert.equal(pointHitsPolygonAoi({ yaw: 0, pitch: 14 }, aoi), false);
+});
+
+test('hit tests panorama polygon AOIs with viewport-converted pixel padding', () => {
+  const points = [
+    { yaw: -20, pitch: -10 },
+    { yaw: 20, pitch: -10 },
+    { yaw: 20, pitch: 10 },
+    { yaw: -20, pitch: 10 },
+  ];
+  const aoi = {
+    id: 'pan-object-px',
+    label: 'Panorama object with pixel padding',
+    color: '#ffd166',
+    space: 'panorama',
+    shape: 'polygon',
+    analysisPaddingPx: 8,
+    points,
+  };
+  const viewport = { width: 720, height: 360 };
+
+  assert.equal(pointHitsPolygonAoi({ yaw: 0, pitch: 13 }, aoi, viewport), true);
+  assert.equal(pointHitsPolygonAoi({ yaw: 0, pitch: 15 }, aoi, viewport), false);
 });
 
 test('hit tests panorama polygons across the yaw seam', () => {

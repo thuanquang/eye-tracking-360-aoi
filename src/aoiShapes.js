@@ -12,6 +12,47 @@ function finiteNumber(value, fallback = 0) {
   return Number.isFinite(numeric) ? numeric : fallback;
 }
 
+function positiveFiniteNumber(value) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) && numeric > 0 ? numeric : 0;
+}
+
+function normalizePaddingDimensions(dimensions) {
+  const source = dimensions?.viewport || dimensions || {};
+  const width = positiveFiniteNumber(source.width);
+  const height = positiveFiniteNumber(source.height);
+
+  return width > 0 && height > 0 ? { width, height } : null;
+}
+
+function analysisPaddingPxToAoiUnits(aoi, dimensions) {
+  const paddingPx = positiveFiniteNumber(aoi?.analysisPaddingPx);
+  const viewport = normalizePaddingDimensions(dimensions);
+
+  if (paddingPx <= 0 || !viewport) {
+    return 0;
+  }
+
+  if (aoi?.space === 'video') {
+    return paddingPx / Math.min(viewport.width, viewport.height);
+  }
+
+  return Math.max(
+    (paddingPx / viewport.width) * FULL_TURN,
+    (paddingPx / viewport.height) * HALF_TURN,
+  );
+}
+
+export function getEffectiveAnalysisPadding(aoi, dimensions) {
+  const explicitPadding = Number(aoi?.analysisPadding);
+
+  if (Number.isFinite(explicitPadding)) {
+    return Math.max(0, explicitPadding);
+  }
+
+  return analysisPaddingPxToAoiUnits(aoi, dimensions);
+}
+
 function roundCoordinate(value) {
   return Number(value.toFixed(6));
 }
@@ -281,7 +322,7 @@ function pointKeysForAoi(aoi) {
     : { x: 'yaw', y: 'pitch' };
 }
 
-export function pointHitsPolygonAoi(point, aoi) {
+export function pointHitsPolygonAoi(point, aoi, dimensions) {
   const pointKeys = pointKeysForAoi(aoi);
 
   if (!isFinitePoint(point, pointKeys)) {
@@ -298,7 +339,7 @@ export function pointHitsPolygonAoi(point, aoi) {
     return true;
   }
 
-  const padding = Math.max(0, finiteNumber(aoi?.analysisPadding));
+  const padding = getEffectiveAnalysisPadding(aoi, dimensions);
   return padding > 0 && distanceToPolygonEdges(point, points, pointKeys) <= padding;
 }
 

@@ -15,6 +15,7 @@ import {
   buildColabAoiJob,
   normalizeAoiId,
 } from './aoiGeneration.js?v=colab-aoi-1';
+import { getEffectiveAnalysisPadding } from './aoiShapes.js?v=polygon-padding-1';
 import {
   applyViewportCalibration,
   buildAccuracyCorrection,
@@ -440,18 +441,20 @@ function getExportParticipantMetadata() {
 }
 
 function getRenderableAois() {
+  const dimensions = getViewerAnalysisDimensions();
+
   if (state.reviewActive && state.reviewSamples.length) {
     const sampleIndex = findReviewSampleIndex(sourceVideo.currentTime || 0);
     const sample = state.reviewSamples[sampleIndex >= 0 ? sampleIndex : 0];
 
     if (Array.isArray(sample?.activeAois) && sample.activeAois.length) {
-      return sample.activeAois;
+      return withEffectiveAoisAnalysisPadding(sample.activeAois, dimensions, { forceFromPx: true });
     }
 
-    return resolveAoisAtTime(activeAois, sample?.t || 0);
+    return resolveAoisForAnalysis(activeAois, sample?.t || 0, dimensions);
   }
 
-  return resolveAoisAtTime(activeAois, sourceVideo.currentTime || 0);
+  return resolveAoisForAnalysis(activeAois, sourceVideo.currentTime || 0, dimensions);
 }
 
 function splitAoiYawRanges(aoi) {
@@ -894,6 +897,73 @@ function normalizeAnalysisPaddingPx(value) {
   return Number.isFinite(padding) ? Math.max(0, Math.round(padding)) : 0;
 }
 
+function positiveLayoutNumber(value) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) && numeric > 0 ? numeric : 0;
+}
+
+function getViewerAnalysisDimensions() {
+  const rect = viewer.getBoundingClientRect();
+  const width = (
+    positiveLayoutNumber(rect.width) ||
+    positiveLayoutNumber(viewer.clientWidth) ||
+    positiveLayoutNumber(sourceVideo.videoWidth) ||
+    1
+  );
+  const height = (
+    positiveLayoutNumber(rect.height) ||
+    positiveLayoutNumber(viewer.clientHeight) ||
+    positiveLayoutNumber(sourceVideo.videoHeight) ||
+    1
+  );
+
+  return { width, height };
+}
+
+function withEffectiveAoiAnalysisPadding(
+  aoi,
+  dimensions = getViewerAnalysisDimensions(),
+  { forceFromPx = false } = {},
+) {
+  if (!aoi || typeof aoi !== 'object') {
+    return aoi;
+  }
+
+  const hasPaddingPx = Number.isFinite(Number(aoi.analysisPaddingPx));
+  const hasPadding = Number.isFinite(Number(aoi.analysisPadding));
+
+  if (!hasPaddingPx && !hasPadding) {
+    return { ...aoi };
+  }
+
+  const sourceAoi = forceFromPx && hasPaddingPx
+    ? { ...aoi, analysisPadding: undefined }
+    : aoi;
+
+  return {
+    ...aoi,
+    analysisPadding: getEffectiveAnalysisPadding(sourceAoi, dimensions),
+  };
+}
+
+function withEffectiveAoisAnalysisPadding(
+  aois,
+  dimensions = getViewerAnalysisDimensions(),
+  options,
+) {
+  return Array.isArray(aois)
+    ? aois.map((aoi) => withEffectiveAoiAnalysisPadding(aoi, dimensions, options))
+    : [];
+}
+
+function resolveAoisForAnalysis(aois, timeSec = 0, dimensions = getViewerAnalysisDimensions()) {
+  return withEffectiveAoisAnalysisPadding(
+    resolveAoisAtTime(aois, timeSec),
+    dimensions,
+    { forceFromPx: true },
+  );
+}
+
 function syncSelectedAoiPanel() {
   const selectedAoi = getActiveAoiById(state.selectedAoiId);
 
@@ -1079,7 +1149,11 @@ function registerAois(aois, source) {
     throw new Error('AOI JSON must contain at least one valid AOI definition.');
   }
 
-  activeAois = loadedAois;
+  activeAois = withEffectiveAoisAnalysisPadding(
+    loadedAois,
+    getViewerAnalysisDimensions(),
+    { forceFromPx: true },
+  );
   aoiSource = source;
   state.selectedAoiId = null;
   setManualAnnotationIdle('Click Draw Polygon, then click around the object edge. Double-click or press Finish to close.');
@@ -1098,7 +1172,7 @@ async function loadAois() {
 
     registerAois(await response.json(), 'assets/aois.json');
   } catch (error) {
-    activeAois = DEFAULT_AOIS;
+    activeAois = withEffectiveAoisAnalysisPadding(DEFAULT_AOIS);
     aoiSource = 'default';
     registeredProjectMetadata = {};
     applyVideoMetadataControls(sourceVideoInfo);
@@ -2042,12 +2116,14 @@ function getCurrentReviewPanoramaPoint() {
     source: 'review',
   };
 
+  const analysisDimensions = getViewerAnalysisDimensions();
+
   return {
     gaze: state.gaze,
     timeSec: sample.t,
     aois: Array.isArray(sample.activeAois) && sample.activeAois.length
-      ? sample.activeAois
-      : resolveAoisAtTime(activeAois, sample.t),
+      ? withEffectiveAoisAnalysisPadding(sample.activeAois, analysisDimensions, { forceFromPx: true })
+      : resolveAoisForAnalysis(activeAois, sample.t, analysisDimensions),
     viewport: {
       width: rect.width,
       height: rect.height,
@@ -2104,14 +2180,17 @@ function getCurrentPanoramaPoint() {
 
   const timeSec = sourceVideo.currentTime || 0;
 
+  const viewport = {
+    width: rect.width,
+    height: rect.height,
+  };
+  const analysisDimensions = getViewerAnalysisDimensions();
+
   return {
     gaze,
     timeSec,
-    aois: resolveAoisAtTime(activeAois, timeSec),
-    viewport: {
-      width: rect.width,
-      height: rect.height,
-    },
+    aois: resolveAoisForAnalysis(activeAois, timeSec, analysisDimensions),
+    viewport,
     point: screenPointToYawPitch({
       x: gaze.x,
       y: gaze.y,
@@ -2130,8 +2209,8 @@ function getCurrentPanoramaPoint() {
   };
 }
 
-function classifyVideoAois(point, aois) {
-  const exactHits = hitTestAois(point, aois);
+function classifyVideoAois(point, aois, viewport) {
+  const exactHits = hitTestAois(point, aois, viewport);
 
   return {
     exactHits,
@@ -2201,8 +2280,11 @@ function updateReadout() {
     : { yawRadius: 0, pitchRadius: 0 };
   const isFlatVideo = getCurrentProjection() === 'flat';
   const classification = isFlatVideo
-    ? classifyVideoAois(current.videoPoint, current.aois)
-    : classifyAoisWithUncertainty(current.point, current.aois, angularUncertainty);
+    ? classifyVideoAois(current.videoPoint, current.aois, current.viewport)
+    : classifyAoisWithUncertainty(current.point, current.aois, {
+      ...angularUncertainty,
+      viewport: current.viewport,
+    });
 
   state.latestPoint = current.point;
   state.latestHits = classification.exactHits;
@@ -2314,7 +2396,7 @@ function serializeAoiPoints(points) {
 }
 
 function serializeActiveAoiForSample(aoi) {
-  return {
+  const serialized = {
     id: aoi.id,
     label: aoi.label,
     color: aoi.color,
@@ -2330,6 +2412,19 @@ function serializeActiveAoiForSample(aoi) {
     yMin: serializeAoiCoordinate(aoi.yMin),
     yMax: serializeAoiCoordinate(aoi.yMax),
   };
+
+  const analysisPaddingPx = serializeAoiCoordinate(aoi.analysisPaddingPx);
+  const analysisPadding = serializeAoiCoordinate(aoi.analysisPadding);
+
+  if (analysisPaddingPx != null) {
+    serialized.analysisPaddingPx = analysisPaddingPx;
+  }
+
+  if (analysisPadding != null) {
+    serialized.analysisPadding = analysisPadding;
+  }
+
+  return serialized;
 }
 
 function maybeSample(now) {
@@ -2656,7 +2751,12 @@ function buildProjectPackage() {
 }
 
 function exportSamples() {
-  const namedAoiMetrics = buildNamedAoiMetrics(state.samples, activeAois);
+  const exportAois = withEffectiveAoisAnalysisPadding(
+    activeAois,
+    getViewerAnalysisDimensions(),
+    { forceFromPx: true },
+  );
+  const namedAoiMetrics = buildNamedAoiMetrics(state.samples, exportAois);
   const payload = {
     sourceVideo: sourceVideo.currentSrc || sourceVideo.src,
     exportedAt: new Date().toISOString(),
@@ -2666,7 +2766,7 @@ function exportSamples() {
     summary: buildExportSummary(),
     namedAoiMetrics,
     aoiSource,
-    aois: activeAois,
+    aois: exportAois,
     accuracy: state.correctedAccuracySummary,
     rawValidationAccuracy: state.accuracySummary,
     correctionFitAccuracy: state.refinementAccuracySummary,
@@ -2825,15 +2925,16 @@ function saveSelectedAoiChanges() {
   const label = selectedAoiLabelInput.value.trim() || selectedAoi.label || 'AOI';
   const color = selectedAoiColorInput.value || selectedAoi.color || '#ffd166';
   const analysisPaddingPx = normalizeAnalysisPaddingPx(selectedAoiPaddingInput.value);
+  const dimensions = getViewerAnalysisDimensions();
 
   activeAois = activeAois.map((aoi) => (
     aoi.id === selectedAoi.id
-      ? {
+      ? withEffectiveAoiAnalysisPadding({
         ...aoi,
         label,
         color,
         analysisPaddingPx,
-      }
+      }, dimensions, { forceFromPx: true })
       : aoi
   ));
 

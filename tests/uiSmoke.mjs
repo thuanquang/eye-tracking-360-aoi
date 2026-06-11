@@ -438,6 +438,18 @@ try {
     'Rejected polygon sidecars should not switch the AOI list.',
   );
 
+  const polygonObjectPoints = [
+    { x: 0.3, y: 0.2 },
+    { x: 0.55, y: 0.24 },
+    { x: 0.52, y: 0.5 },
+    { x: 0.33, y: 0.46 },
+  ];
+  const importedPaddingOnlyPoints = [
+    { x: 0.72, y: 0.2 },
+    { x: 0.86, y: 0.2 },
+    { x: 0.86, y: 0.36 },
+    { x: 0.72, y: 0.36 },
+  ];
   const polygonSidecarPath = join(tmpDir, 'polygon-video.aoi.json');
   await writeFile(polygonSidecarPath, JSON.stringify({
     video: {
@@ -452,21 +464,27 @@ try {
         color: '#ffd166',
         space: 'video',
         shape: 'polygon',
-        points: [
-          { x: 0.3, y: 0.2 },
-          { x: 0.55, y: 0.24 },
-          { x: 0.52, y: 0.5 },
-          { x: 0.33, y: 0.46 },
-        ],
+        analysisPaddingPx: 6,
+        points: polygonObjectPoints,
         keyframes: [
           {
             t: 0,
-            points: [
-              { x: 0.3, y: 0.2 },
-              { x: 0.55, y: 0.24 },
-              { x: 0.52, y: 0.5 },
-              { x: 0.33, y: 0.46 },
-            ],
+            points: polygonObjectPoints,
+          },
+        ],
+      },
+      {
+        id: 'imported-padding-polygon',
+        label: 'Imported padding polygon',
+        color: '#5dd7c8',
+        space: 'video',
+        shape: 'polygon',
+        analysisPaddingPx: 8,
+        points: importedPaddingOnlyPoints,
+        keyframes: [
+          {
+            t: 0,
+            points: importedPaddingOnlyPoints,
           },
         ],
       },
@@ -487,6 +505,11 @@ try {
     await page.locator('#selectedAoiLabelInput').inputValue(),
     'Polygon object',
     'Selecting an imported polygon AOI should populate the selected AOI panel.',
+  );
+  assert.equal(
+    await page.locator('#selectedAoiPaddingInput').inputValue(),
+    '6',
+    'Selecting an imported polygon AOI should populate saved pixel padding.',
   );
   await page.locator('#selectedAoiLabelInput').fill('Reviewed polygon object');
   await page.locator('#selectedAoiPaddingInput').fill('12');
@@ -585,6 +608,32 @@ try {
     'Export should retain selected AOI analysis padding edits.',
   );
   assert.equal(
+    typeof exportedJson.aois[0].analysisPadding,
+    'number',
+    'Export should include selected AOI effective polygon analysis padding.',
+  );
+  assert.equal(
+    exportedJson.aois[0].analysisPadding > 0,
+    true,
+    'Selected AOI effective polygon analysis padding should be positive.',
+  );
+  const importedPaddingAoi = exportedJson.aois.find((aoi) => aoi.id === 'imported-padding-polygon');
+  assert.equal(
+    importedPaddingAoi.analysisPaddingPx,
+    8,
+    'Export should retain imported polygon pixel padding.',
+  );
+  assert.equal(
+    typeof importedPaddingAoi.analysisPadding,
+    'number',
+    'Export should materialize imported polygon pixel padding for analysis.',
+  );
+  assert.equal(
+    importedPaddingAoi.analysisPadding > 0,
+    true,
+    'Imported polygon effective analysis padding should be positive.',
+  );
+  assert.equal(
     typeof exportedJson.namedAoiMetrics.perAoi['polygon-object'].totalDwellSec,
     'number',
     'Named AOI metrics should include per-AOI dwell seconds.',
@@ -610,15 +659,31 @@ try {
   assert.equal(Array.isArray(sample.possibleHits), true, 'Exported samples should include possible AOI hits.');
   assert.equal(Array.isArray(sample.ambiguousHits), true, 'Exported samples should include ambiguous AOI hits.');
   assert.equal(Array.isArray(sample.activeAois), true, 'Exported samples should include time-resolved AOI bounds.');
+  const samplePolygonAoi = sample.activeAois.find((aoi) => aoi.id === 'polygon-object');
   assert.equal(
-    sample.activeAois.some((aoi) => (
-      aoi.id === 'polygon-object' &&
-      aoi.shape === 'polygon' &&
-      Array.isArray(aoi.points) &&
-      aoi.points.length === 4
-    )),
+    samplePolygonAoi?.shape,
+    'polygon',
+    'Time-resolved polygon AOIs should be inspectable by AOI id.',
+  );
+  assert.deepEqual(
+    samplePolygonAoi.points,
+    polygonObjectPoints,
+    'Time-resolved polygon AOI points should preserve exported vertex coordinates.',
+  );
+  assert.equal(
+    samplePolygonAoi.analysisPaddingPx,
+    12,
+    'Time-resolved polygon AOIs should preserve selected pixel padding.',
+  );
+  assert.equal(
+    typeof samplePolygonAoi.analysisPadding,
+    'number',
+    'Time-resolved polygon AOIs should preserve effective analysis padding.',
+  );
+  assert.equal(
+    samplePolygonAoi.analysisPadding > 0,
     true,
-    'Time-resolved polygon AOI points should be inspectable by AOI id.',
+    'Time-resolved polygon effective analysis padding should be positive.',
   );
   assert.equal(
     sample.quality.trustedForAoiAnalysis,

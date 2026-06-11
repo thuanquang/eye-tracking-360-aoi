@@ -257,10 +257,10 @@ function hitTestVideoAoi(point, aoi) {
   );
 }
 
-export function hitTestAois(point, aois) {
+export function hitTestAois(point, aois, dimensions) {
   return aois.filter((aoi) => {
     if (aoi.shape === 'polygon') {
-      return pointHitsPolygonAoi(point, aoi);
+      return pointHitsPolygonAoi(point, aoi, dimensions);
     }
 
     return getAoiSpace(aoi) === 'video'
@@ -414,11 +414,12 @@ export function classifyAoisWithUncertainty(
   {
     yawRadius = 0,
     pitchRadius = 0,
+    viewport = null,
   } = {},
 ) {
   const safeYawRadius = Math.max(0, yawRadius);
   const safePitchRadius = Math.max(0, pitchRadius);
-  const exactHits = hitTestAois(point, aois);
+  const exactHits = hitTestAois(point, aois, viewport);
   const exactHitIds = new Set(exactHits.map((aoi) => aoi.id));
   const polygonRadius = Math.hypot(safeYawRadius, safePitchRadius);
   const possibleHits = aois.filter((aoi) => {

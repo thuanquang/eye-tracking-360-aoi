@@ -27,6 +27,58 @@ test('builds named per-AOI dwell and fixation metrics', () => {
   assert.equal(metrics.session.averageNumberOfAoisFixated > 0, true);
 });
 
+test('builds ID-based metrics for polygon AOIs', () => {
+  const polygonAoi = {
+    id: 'screen-polygon',
+    label: 'Screen polygon',
+    color: '#ffd166',
+    space: 'video',
+    shape: 'polygon',
+    points: [
+      { x: 0.2, y: 0.2 },
+      { x: 0.6, y: 0.2 },
+      { x: 0.6, y: 0.6 },
+      { x: 0.2, y: 0.6 },
+    ],
+  };
+  const samples = [
+    {
+      t: 0,
+      hits: ['screen-polygon'],
+      likelyHits: ['screen-polygon'],
+      possibleHits: [],
+      ambiguousHits: [],
+      activeAois: [polygonAoi],
+    },
+    {
+      t: 0.2,
+      hits: ['screen-polygon'],
+      likelyHits: ['screen-polygon'],
+      possibleHits: [],
+      ambiguousHits: [],
+      activeAois: [polygonAoi],
+    },
+    {
+      t: 0.4,
+      hits: [],
+      likelyHits: [],
+      possibleHits: ['screen-polygon'],
+      ambiguousHits: ['screen-polygon'],
+      activeAois: [polygonAoi],
+    },
+  ];
+
+  const metrics = buildNamedAoiMetrics(samples, []);
+
+  assert.equal(metrics.perAoi['screen-polygon'].label, 'Screen polygon');
+  assert.equal(metrics.perAoi['screen-polygon'].hitCount, 2);
+  assert.equal(metrics.perAoi['screen-polygon'].likelyHitCount, 2);
+  assert.equal(metrics.perAoi['screen-polygon'].possibleSampleCount, 1);
+  assert.equal(metrics.perAoi['screen-polygon'].ambiguousSampleCount, 1);
+  assert.equal(metrics.perAoi['screen-polygon'].totalDwellSec, 0.4);
+  assert.equal(metrics.perAoi['screen-polygon'].fixationCount, 1);
+});
+
 test('returns empty named metrics for recordings without samples', () => {
   const metrics = buildNamedAoiMetrics([], [{ id: 'front', label: 'Front' }]);
 
