@@ -18,7 +18,7 @@ Each generated AOI includes:
 - `shape: "polygon"`
 - top-level `points` from the first keyframe
 - time-keyframed `points` and `maskScore`
-- `analysisPaddingPx` from the exported policy
+- `analysisPaddingPx` from the exported policy plus app-readable `analysisPadding`
 - generation metadata for Florence-2, SAM 2, sampling, projection, stereo layout, and detection count
 
 ## Review Warning
