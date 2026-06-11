@@ -6,7 +6,7 @@ import {
   detectionsToAois,
   getStereoFrameRect,
   pixelBoxToAoiKeyframe,
-} from '../src/aoiGeneration.js';
+} from '../src/aois/aoiGeneration.js';
 
 test('builds a Colab auto-AOI job from video metadata and prompts', () => {
   const job = buildColabAoiJob({

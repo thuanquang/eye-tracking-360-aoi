@@ -26,7 +26,7 @@ import {
   resolveGazeUpdate,
   smoothGazePoint,
   summarizeAccuracy,
-} from '../src/gazeQuality.js';
+} from '../src/gaze/gazeQuality.js';
 
 test('smooths webcam gaze toward the newest point', () => {
   const result = smoothGazePoint(

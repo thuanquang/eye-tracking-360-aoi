@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { buildNamedAoiMetrics } from '../src/analysisMetrics.js';
+import { buildNamedAoiMetrics } from '../src/recording/analysisMetrics.js';
 
 test('builds named per-AOI dwell and fixation metrics', () => {
   const aois = [

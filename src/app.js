@@ -9,12 +9,12 @@ import {
   screenPointToVideoPoint,
   screenPointToYawPitch,
   screenUncertaintyToYawPitch,
-} from './aoiMath.js?v=aoi-anchor-4';
-import { buildNamedAoiMetrics } from './analysisMetrics.js?v=ui-modes-1';
+} from './aois/aoiMath.js?v=aoi-anchor-4';
+import { buildNamedAoiMetrics } from './recording/analysisMetrics.js?v=ui-modes-1';
 import {
   buildColabAoiJob,
   normalizeAoiId,
-} from './aoiGeneration.js?v=colab-aoi-1';
+} from './aois/aoiGeneration.js?v=colab-aoi-1';
 import {
   applyViewportCalibration,
   buildAccuracyCorrection,
@@ -31,7 +31,7 @@ import {
   summarizeTargetSamples,
   summarizeAccuracy,
   updateLiveGazeQuality,
-} from './gazeQuality.js';
+} from './gaze/gazeQuality.js';
 import {
   DEFAULT_VALIDATION_MAX_AGE_MS,
   GAZE_SMOOTHING,

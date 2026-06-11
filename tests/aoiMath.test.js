@@ -10,7 +10,7 @@ import {
   screenPointToVideoPoint,
   screenPointToYawPitch,
   screenUncertaintyToYawPitch,
-} from '../src/aoiMath.js';
+} from '../src/aois/aoiMath.js';
 
 test('normalizes yaw to the -180..180 range', () => {
   assert.equal(normalizeYaw(190), -170);
