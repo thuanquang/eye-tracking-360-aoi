@@ -100,6 +100,18 @@ test('interpolates matching panorama polygon keyframes', () => {
   ]);
 });
 
+test('interpolates panorama polygon yaw across the seam', () => {
+  const [point] = interpolatePolygonPoints(
+    [{ yaw: 170, pitch: -10 }],
+    [{ yaw: -170, pitch: 10 }],
+    0.5,
+    { x: 'yaw', y: 'pitch' },
+  );
+
+  assert.ok(Math.abs(Math.abs(point.yaw) - 180) < 0.000001);
+  assert.equal(point.pitch, 0);
+});
+
 test('normalizes and bounds polygon points', () => {
   const points = normalizePolygonPoints([
     { x: -0.2, y: 0.2 },
@@ -191,4 +203,32 @@ test('hit tests panorama polygon AOIs with optional analysis padding', () => {
   assert.equal(pointHitsPolygonAoi({ yaw: 0, pitch: 0 }, aoi), true);
   assert.equal(pointHitsPolygonAoi({ yaw: 0, pitch: 11 }, aoi), true);
   assert.equal(pointHitsPolygonAoi({ yaw: 0, pitch: 14 }, aoi), false);
+});
+
+test('hit tests panorama polygons across the yaw seam', () => {
+  const points = [
+    { yaw: 170, pitch: -10 },
+    { yaw: -170, pitch: -10 },
+    { yaw: -170, pitch: 10 },
+    { yaw: 170, pitch: 10 },
+  ];
+  const keys = { x: 'yaw', y: 'pitch' };
+  const aoi = {
+    id: 'seam-object',
+    label: 'Seam object',
+    color: '#ffd166',
+    space: 'panorama',
+    shape: 'polygon',
+    analysisPadding: 2,
+    points,
+  };
+
+  assert.equal(isPointInPolygon({ yaw: 180, pitch: 0 }, points, keys), true);
+  assert.equal(isPointInPolygon({ yaw: -180, pitch: 0 }, points, keys), true);
+  assert.equal(isPointInPolygon({ yaw: 0, pitch: 0 }, points, keys), false);
+  assert.equal(distanceToPolygonEdges({ yaw: 169, pitch: 0 }, points, keys), 1);
+  assert.equal(distanceToPolygonEdges({ yaw: -169, pitch: 0 }, points, keys), 1);
+  assert.equal(pointHitsPolygonAoi({ yaw: 169, pitch: 0 }, aoi), true);
+  assert.equal(pointHitsPolygonAoi({ yaw: -169, pitch: 0 }, aoi), true);
+  assert.equal(pointHitsPolygonAoi({ yaw: 166, pitch: 0 }, aoi), false);
 });

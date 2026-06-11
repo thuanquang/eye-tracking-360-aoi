@@ -1,5 +1,7 @@
 import {
+  distanceToPolygonEdges,
   interpolatePolygonPoints,
+  normalizePolygonPoints,
   pointHitsPolygonAoi,
 } from './aoiShapes.js';
 
@@ -215,6 +217,17 @@ function getPolygonPointKeys(aoi) {
     : { x: 'yaw', y: 'pitch' };
 }
 
+function isPanoramaPolygonAoi(aoi) {
+  return aoi?.shape === 'polygon' && getAoiSpace(aoi) === 'panorama';
+}
+
+function distanceToPanoramaPolygonEdge(point, aoi) {
+  const pointKeys = getPolygonPointKeys(aoi);
+  const points = normalizePolygonPoints(aoi?.points || [], pointKeys);
+
+  return distanceToPolygonEdges(point, points, pointKeys);
+}
+
 function hitTestPanoramaAoi(point, aoi) {
   const pitchMin = Math.min(aoi.pitchMin, aoi.pitchMax);
   const pitchMax = Math.max(aoi.pitchMin, aoi.pitchMax);
@@ -406,14 +419,31 @@ export function classifyAoisWithUncertainty(
   const safeYawRadius = Math.max(0, yawRadius);
   const safePitchRadius = Math.max(0, pitchRadius);
   const exactHits = hitTestAois(point, aois);
-  const possibleHits = aois.filter((aoi) => (
-    distanceToYawRange(point.yaw, aoi.yawMin, aoi.yawMax) <= safeYawRadius &&
-    distanceToPitchRange(point.pitch, aoi.pitchMin, aoi.pitchMax) <= safePitchRadius
-  ));
-  const likelyHits = exactHits.filter((aoi) => (
-    yawMarginInsideRange(point.yaw, aoi.yawMin, aoi.yawMax) >= safeYawRadius &&
-    pitchMarginInsideRange(point.pitch, aoi.pitchMin, aoi.pitchMax) >= safePitchRadius
-  ));
+  const exactHitIds = new Set(exactHits.map((aoi) => aoi.id));
+  const polygonRadius = Math.hypot(safeYawRadius, safePitchRadius);
+  const possibleHits = aois.filter((aoi) => {
+    if (isPanoramaPolygonAoi(aoi)) {
+      return (
+        exactHitIds.has(aoi.id) ||
+        distanceToPanoramaPolygonEdge(point, aoi) <= polygonRadius
+      );
+    }
+
+    return (
+      distanceToYawRange(point.yaw, aoi.yawMin, aoi.yawMax) <= safeYawRadius &&
+      distanceToPitchRange(point.pitch, aoi.pitchMin, aoi.pitchMax) <= safePitchRadius
+    );
+  });
+  const likelyHits = exactHits.filter((aoi) => {
+    if (isPanoramaPolygonAoi(aoi)) {
+      return distanceToPanoramaPolygonEdge(point, aoi) >= polygonRadius;
+    }
+
+    return (
+      yawMarginInsideRange(point.yaw, aoi.yawMin, aoi.yawMax) >= safeYawRadius &&
+      pitchMarginInsideRange(point.pitch, aoi.pitchMin, aoi.pitchMax) >= safePitchRadius
+    );
+  });
   const likelyHitIds = new Set(likelyHits.map((aoi) => aoi.id));
   const ambiguousHits = possibleHits.filter((aoi) => !likelyHitIds.has(aoi.id));
 

@@ -395,6 +395,69 @@ test('marks deep AOI hits as likely when uncertainty fits within the AOI', () =>
   assert.deepEqual(classification.ambiguousHits, []);
 });
 
+test('classifies panorama polygon AOIs with zero uncertainty', () => {
+  const classification = classifyAoisWithUncertainty(
+    { yaw: 0, pitch: 0 },
+    [
+      {
+        id: 'poly-center',
+        label: 'Polygon center',
+        color: '#ffd166',
+        space: 'panorama',
+        shape: 'polygon',
+        points: [
+          { yaw: -20, pitch: -10 },
+          { yaw: 20, pitch: -10 },
+          { yaw: 20, pitch: 10 },
+          { yaw: -20, pitch: 10 },
+        ],
+      },
+    ],
+    { yawRadius: 0, pitchRadius: 0 },
+  );
+
+  assert.deepEqual(classification.exactHits.map((aoi) => aoi.id), ['poly-center']);
+  assert.deepEqual(classification.possibleHits.map((aoi) => aoi.id), ['poly-center']);
+  assert.deepEqual(classification.likelyHits.map((aoi) => aoi.id), ['poly-center']);
+  assert.deepEqual(classification.ambiguousHits, []);
+});
+
+test('classifies panorama polygon uncertainty using edge distance', () => {
+  const aoi = {
+    id: 'poly-object',
+    label: 'Polygon object',
+    color: '#ffd166',
+    space: 'panorama',
+    shape: 'polygon',
+    points: [
+      { yaw: -20, pitch: -10 },
+      { yaw: 20, pitch: -10 },
+      { yaw: 20, pitch: 10 },
+      { yaw: -20, pitch: 10 },
+    ],
+  };
+  const nearEdge = classifyAoisWithUncertainty(
+    { yaw: 18, pitch: 0 },
+    [aoi],
+    { yawRadius: 3, pitchRadius: 0 },
+  );
+  const deepInside = classifyAoisWithUncertainty(
+    { yaw: 0, pitch: 0 },
+    [aoi],
+    { yawRadius: 3, pitchRadius: 4 },
+  );
+
+  assert.deepEqual(nearEdge.exactHits.map((hit) => hit.id), ['poly-object']);
+  assert.deepEqual(nearEdge.possibleHits.map((hit) => hit.id), ['poly-object']);
+  assert.deepEqual(nearEdge.likelyHits.map((hit) => hit.id), []);
+  assert.deepEqual(nearEdge.ambiguousHits.map((hit) => hit.id), ['poly-object']);
+
+  assert.deepEqual(deepInside.exactHits.map((hit) => hit.id), ['poly-object']);
+  assert.deepEqual(deepInside.possibleHits.map((hit) => hit.id), ['poly-object']);
+  assert.deepEqual(deepInside.likelyHits.map((hit) => hit.id), ['poly-object']);
+  assert.deepEqual(deepInside.ambiguousHits, []);
+});
+
 test('converts screen pixel uncertainty to yaw and pitch uncertainty', () => {
   const uncertainty = screenUncertaintyToYawPitch({
     x: 960,
