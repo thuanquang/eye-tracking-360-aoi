@@ -250,6 +250,25 @@ function keyForDetection(detection) {
   return normalizeAoiId(detection.label || detection.className || 'generated-aoi');
 }
 
+function uniquifyAoiIds(aois) {
+  const usedIds = new Set();
+
+  return aois.map((aoi) => {
+    const baseId = aoi.id;
+    let id = baseId;
+    let suffix = 2;
+
+    while (usedIds.has(id)) {
+      id = `${baseId}-${suffix}`;
+      suffix += 1;
+    }
+
+    usedIds.add(id);
+
+    return id === aoi.id ? aoi : { ...aoi, id };
+  });
+}
+
 export function detectionsToAois({
   detections,
   video,
@@ -333,7 +352,7 @@ export function detectionsToAois({
     grouped.set(groupKey, entry);
   });
 
-  return [...grouped.values()].map((aoi) => {
+  const aois = [...grouped.values()].map((aoi) => {
     const keyframes = aoi.keyframes.sort((a, b) => a.t - b.t);
     return {
       ...aoi,
@@ -343,4 +362,6 @@ export function detectionsToAois({
       keyframes,
     };
   });
+
+  return uniquifyAoiIds(aois);
 }
