@@ -47,6 +47,20 @@ page.on('console', (message) => {
 
 try {
   await page.goto(TARGET_URL, { waitUntil: 'networkidle' });
+  await page.waitForSelector('#modeSelectScreen');
+  assert.equal(await page.locator('#modeSelectScreen').isVisible(), true, 'Root URL should show a mode selection screen.');
+  assert.equal(await page.locator('#viewerSection').isVisible(), false, 'Root URL should not enter the viewer before choosing a mode.');
+  assert.equal(await page.locator('#controlPanel').isVisible(), false, 'Root URL should not show admin controls before choosing a mode.');
+  await assert.doesNotReject(
+    page.locator('#chooseAdminModeLink').waitFor({ state: 'visible', timeout: 1000 }),
+    'Mode selection should offer Admin mode.',
+  );
+  await assert.doesNotReject(
+    page.locator('#chooseParticipantModeLink').waitFor({ state: 'visible', timeout: 1000 }),
+    'Mode selection should offer Participant mode.',
+  );
+
+  await page.goto(urlWithMode('admin'), { waitUntil: 'networkidle' });
   await page.waitForSelector('#viewer canvas');
   await page.waitForFunction(() => document.querySelector('#sourceVideo')?.readyState >= 1);
 
@@ -54,6 +68,15 @@ try {
   assert.equal(hasContent, true, 'Page body should contain visible UI text.');
   assert.equal(await page.locator('#controlPanel').isVisible(), true, 'Admin controls should be visible by default.');
   assert.equal(await page.locator('#participantPanel').isVisible(), false, 'Participant panel should be hidden in admin mode.');
+  assert.equal(await page.locator('#adminWorkflowRail').isVisible(), true, 'Admin should expose a researcher workflow rail.');
+  assert.deepEqual(
+    await page.locator('#adminWorkflowRail .admin-flow-step').allTextContents(),
+    ['01 Setup', '02 AOIs', '03 Calibrate', '04 Record', '05 Export'],
+    'Admin workflow should show the expected setup order.',
+  );
+  assert.equal(await page.locator('#adminSetupPanel').isVisible(), true, 'Admin setup controls should be grouped in the first workflow panel.');
+  assert.equal(await page.locator('#adminCalibrationPanel').isVisible(), true, 'Admin calibration controls should be grouped separately from video setup.');
+  assert.equal(await page.locator('#adminRecordingPanel').isVisible(), true, 'Admin recording/export controls should be grouped in one workflow panel.');
   assert.equal(await page.locator('#modeLabel').innerText(), 'webcam');
   assert.match(await page.locator('#screenReadout').innerText(), /waiting for webcam gaze|--/);
   await assert.doesNotReject(
@@ -68,7 +91,6 @@ try {
     page.locator('#projectionSelect').waitFor({ state: 'visible', timeout: 1000 }),
     'Admin should expose video projection metadata controls.',
   );
-
   const participantPage = await browser.newPage({
     viewport: { width: 1366, height: 900 },
   });
@@ -76,6 +98,12 @@ try {
   await participantPage.waitForSelector('#participantPanel');
   assert.equal(await participantPage.locator('#controlPanel').isVisible(), false, 'Research controls should be hidden in participant mode.');
   assert.equal(await participantPage.locator('#participantPanel').isVisible(), true, 'Participant panel should be visible in participant mode.');
+  assert.equal(await participantPage.locator('#viewerSection').isVisible(), false, 'Participant mode should start on a separate setup screen.');
+  assert.equal(
+    await participantPage.locator('#participantFlowRail').isVisible(),
+    true,
+    'Participant mode should expose the step-based screen flow.',
+  );
   assert.equal(await participantPage.locator('#participantStartButton').isEnabled(), false, 'Participant start should require required fields.');
   await participantPage.locator('#participantIdInput').fill('P042');
   await participantPage.locator('#participantNameInput').fill('Nguyen A');
@@ -84,6 +112,19 @@ try {
   assert.equal(await participantPage.locator('#participantStartButton').isEnabled(), true, 'Participant start should enable after valid metadata.');
   await participantPage.locator('#participantStartButton').click();
   await participantPage.waitForFunction(() => document.querySelector('#participantStageLabel')?.textContent?.includes('Ready'));
+  assert.equal(await participantPage.locator('#viewerSection').isVisible(), true, 'Participant session should advance to the viewer screen.');
+  await assert.doesNotReject(
+    participantPage.locator('#participantCalibrateButton').waitFor({ state: 'visible', timeout: 1000 }),
+    'Participant session should expose calibration as a flow action.',
+  );
+  await assert.doesNotReject(
+    participantPage.locator('#participantAccuracyButton').waitFor({ state: 'visible', timeout: 1000 }),
+    'Participant session should expose accuracy check as a flow action.',
+  );
+  await assert.doesNotReject(
+    participantPage.locator('#participantRecordButton').waitFor({ state: 'visible', timeout: 1000 }),
+    'Participant session should expose recording as a flow action.',
+  );
   assert.equal(await participantPage.locator('#modeLabel').innerText(), 'webcam');
   await participantPage.close();
 

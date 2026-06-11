@@ -81,10 +81,83 @@ button.is-active {
 .app-shell {
   height: 100vh;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 380px;
+  grid-template-columns: minmax(0, 1fr) 420px;
   gap: 18px;
   padding: 18px;
   overflow: hidden;
+}
+
+.mode-select-screen {
+  display: none;
+}
+
+.mode-select-header {
+  max-width: 680px;
+}
+
+.mode-select-header h1 {
+  font-size: clamp(2.2rem, 5vw, 4.6rem);
+}
+
+.mode-choice-grid {
+  width: min(920px, 100%);
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.mode-choice {
+  min-height: 230px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: rgba(23, 25, 21, 0.9);
+  color: var(--ink);
+  display: grid;
+  align-content: end;
+  gap: 12px;
+  padding: 22px;
+  text-decoration: none;
+  box-shadow: var(--shadow);
+  transition:
+    transform 140ms ease,
+    border-color 140ms ease,
+    background 140ms ease;
+}
+
+.mode-choice:hover {
+  transform: translateY(-2px);
+  border-color: var(--accent);
+  background: rgba(32, 36, 31, 0.94);
+}
+
+.mode-choice strong {
+  display: block;
+  font-size: clamp(1.5rem, 3vw, 2.25rem);
+  line-height: 1;
+}
+
+.mode-choice span:last-child {
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.app-shell.is-mode-select {
+  grid-template-columns: minmax(0, 1fr);
+  align-content: center;
+  justify-items: center;
+  gap: 28px;
+}
+
+.app-shell.is-mode-select .mode-select-screen {
+  width: min(960px, calc(100vw - 36px));
+  display: grid;
+  gap: 28px;
+}
+
+.app-shell.is-mode-select #viewerSection,
+.app-shell.is-mode-select #controlPanel,
+.app-shell.is-mode-select #participantPanel {
+  display: none;
 }
 
 .viewer-section,
@@ -263,12 +336,131 @@ h1 {
   overflow: auto;
 }
 
+.admin-workflow-rail {
+  position: sticky;
+  top: 0;
+  z-index: 12;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 1px;
+  border-bottom: 1px solid var(--line);
+  background: var(--line);
+}
+
+.admin-flow-step {
+  min-height: 42px;
+  display: grid;
+  place-items: center;
+  background: #11130f;
+  color: var(--muted);
+  font-size: 0.66rem;
+  font-weight: 850;
+  text-transform: uppercase;
+  text-align: center;
+}
+
+.admin-flow-step:first-child {
+  color: var(--accent);
+  background: rgba(255, 209, 102, 0.13);
+}
+
+.admin-panel-section {
+  position: relative;
+  padding-left: 54px;
+}
+
+.admin-panel-section::before {
+  content: attr(data-step);
+  position: absolute;
+  left: 16px;
+  top: 18px;
+  width: 24px;
+  height: 24px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  color: var(--accent-2);
+  font-size: 0.68rem;
+  font-weight: 900;
+  background: var(--field);
+}
+
+.panel-heading {
+  display: grid;
+  gap: 2px;
+  margin-bottom: 12px;
+}
+
+.panel-heading h2 {
+  margin: 0;
+  font-size: 1.15rem;
+  line-height: 1.1;
+  letter-spacing: 0;
+}
+
+.button-pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.button-pair .wide-action {
+  margin-top: 0;
+}
+
+.primary-loader {
+  min-height: 56px;
+  border-style: solid;
+  border-color: rgba(255, 209, 102, 0.46);
+  background: rgba(255, 209, 102, 0.07);
+}
+
+.admin-inline-divider {
+  height: 1px;
+  margin: 14px 0;
+  background: var(--line);
+}
+
+.compact-admin-section {
+  background: rgba(13, 15, 12, 0.34);
+}
+
 .participant-panel {
   min-width: 0;
   overflow: auto;
   border: 1px solid var(--line);
   background: rgba(23, 25, 21, 0.86);
   box-shadow: var(--shadow);
+}
+
+.participant-flow-rail {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1px;
+  border-bottom: 1px solid var(--line);
+  background: var(--line);
+}
+
+.flow-step {
+  min-height: 46px;
+  display: grid;
+  place-items: center;
+  background: #11130f;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.flow-step.is-active {
+  background: rgba(255, 209, 102, 0.14);
+  color: var(--accent);
+}
+
+.flow-step.is-complete {
+  color: var(--ok);
 }
 
 .participant-card h2 {
@@ -382,6 +574,16 @@ h1 {
   font-size: 0.95rem;
 }
 
+.participant-session-panel {
+  background: rgba(13, 15, 12, 0.74);
+}
+
+.participant-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
 .app-shell.is-participant-mode {
   grid-template-columns: minmax(0, 1fr) minmax(300px, 360px);
 }
@@ -400,6 +602,21 @@ h1 {
   display: none;
 }
 
+.app-shell.is-participant-mode:not(.is-participant-started) {
+  grid-template-columns: minmax(0, 720px);
+  place-content: center;
+}
+
+.app-shell.is-participant-mode:not(.is-participant-started) #viewerSection {
+  display: none;
+}
+
+.app-shell.is-participant-mode:not(.is-participant-started) #participantPanel {
+  display: block;
+  width: min(720px, calc(100vw - 36px));
+  max-height: min(760px, calc(100vh - 36px));
+}
+
 .app-shell.is-participant-started {
   grid-template-columns: minmax(0, 1fr);
 }
@@ -411,6 +628,10 @@ h1 {
   width: min(330px, calc(100vw - 56px));
   z-index: 8;
   box-shadow: var(--shadow);
+}
+
+.app-shell.is-participant-started .participant-card {
+  display: none;
 }
 
 .panel-section {
@@ -654,8 +875,13 @@ h1 {
 
   .toolbar-actions,
   .recording-actions,
-  .segmented {
+  .segmented,
+  .mode-choice-grid {
     width: 100%;
+  }
+
+  .mode-choice-grid {
+    grid-template-columns: 1fr;
   }
 
   button {

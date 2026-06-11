@@ -209,6 +209,13 @@ const participantAgeInput = document.querySelector('#participantAgeInput');
 const participantConsentInput = document.querySelector('#participantConsentInput');
 const participantStartButton = document.querySelector('#participantStartButton');
 const participantStageLabel = document.querySelector('#participantStageLabel');
+const participantSessionPanel = document.querySelector('#participantSessionPanel');
+const participantSessionStatus = document.querySelector('#participantSessionStatus');
+const participantCalibrateButton = document.querySelector('#participantCalibrateButton');
+const participantAccuracyButton = document.querySelector('#participantAccuracyButton');
+const participantRecordButton = document.querySelector('#participantRecordButton');
+const participantExportButton = document.querySelector('#participantExportButton');
+const participantFlowSteps = Array.from(document.querySelectorAll('#participantFlowRail .flow-step'));
 const calibrationOverlay = document.querySelector('#calibrationOverlay');
 const calibrationTarget = document.querySelector('#calibrationTarget');
 const calibrationProgress = document.querySelector('#calibrationProgress');
@@ -324,12 +331,18 @@ function applyVideoMetadataControls(video = {}) {
 }
 
 function getRequestedAppMode() {
-  const mode = new URLSearchParams(window.location.search).get('mode');
+  const params = new URLSearchParams(window.location.search);
+  if (!params.has('mode')) {
+    return 'select';
+  }
+
+  const mode = params.get('mode');
   return mode === 'participant' ? 'participant' : 'admin';
 }
 
 function setParticipantStage(message) {
   participantStageLabel.textContent = message;
+  participantSessionStatus.textContent = message;
 }
 
 function collectParticipantMetadata() {
@@ -361,21 +374,78 @@ function updateParticipantStartState() {
   participantStartButton.disabled = !isParticipantMetadataValid(metadata);
 }
 
+function setParticipantFlowStep(step) {
+  participantFlowSteps.forEach((element) => {
+    const isActive = element.dataset.flowStep === step;
+    element.classList.toggle('is-active', isActive);
+    element.classList.toggle('is-complete', !isActive && (
+      (step === 'calibration' && element.dataset.flowStep === 'setup') ||
+      (step === 'recording' && ['setup', 'calibration'].includes(element.dataset.flowStep)) ||
+      (step === 'export' && element.dataset.flowStep !== 'export')
+    ));
+  });
+}
+
+function syncParticipantSessionControls() {
+  const isParticipant = state.appMode === 'participant';
+  const isStarted = Boolean(state.participant.startedAt);
+
+  appShell.classList.toggle('is-participant-started', isParticipant && isStarted);
+  participantSessionPanel.hidden = !isParticipant || !isStarted;
+
+  if (!isParticipant) {
+    return;
+  }
+
+  if (!isStarted) {
+    setParticipantFlowStep('setup');
+    participantSessionStatus.textContent = 'Waiting to start';
+    return;
+  }
+
+  participantRecordButton.textContent = state.isRecording ? 'Stop Recording' : 'Start Recording';
+  participantRecordButton.classList.toggle('primary', !state.isRecording);
+
+  if (state.isRecording) {
+    setParticipantFlowStep('recording');
+    setParticipantStage('Recording samples');
+  } else if (state.samples.length > 0) {
+    setParticipantFlowStep('export');
+    setParticipantStage('Recording ready to export');
+  } else if (state.accuracyValidated) {
+    setParticipantFlowStep('recording');
+    setParticipantStage('Ready: start recording');
+  } else if (state.webcamStatus === 'calibrated' || state.webcamStatus === 'validating') {
+    setParticipantFlowStep('calibration');
+    setParticipantStage('Ready: check accuracy');
+  } else {
+    setParticipantFlowStep('calibration');
+  }
+}
+
 function applyAppMode(mode = getRequestedAppMode()) {
   state.appMode = mode;
   const isParticipant = mode === 'participant';
+  const isModeSelect = mode === 'select';
 
+  appShell.classList.toggle('is-mode-select', isModeSelect);
   appShell.classList.toggle('is-participant-mode', isParticipant);
-  appShell.classList.toggle('is-admin-mode', !isParticipant);
+  appShell.classList.toggle('is-admin-mode', mode === 'admin');
   participantPanel.hidden = !isParticipant;
-  controlPanel.hidden = isParticipant;
-  adminModeLink.classList.toggle('is-active', !isParticipant);
+  controlPanel.hidden = isParticipant || isModeSelect;
+  viewerSection.hidden = isModeSelect;
+  adminModeLink.classList.toggle('is-active', mode === 'admin');
   participantModeLink.classList.toggle('is-active', isParticipant);
 
   if (isParticipant) {
     setParticipantStage('Enter details');
     updateParticipantStartState();
     setNotice('Enter participant details, then start the session.', true);
+    syncParticipantSessionControls();
+  }
+
+  if (isModeSelect) {
+    setNotice('Choose Admin or Participant mode to begin.', true);
   }
 }
 
@@ -403,10 +473,11 @@ async function startParticipantSession() {
     ...metadata,
     startedAt: new Date().toISOString(),
   };
-  appShell.classList.add('is-participant-started');
   selectWebcamMode();
   setParticipantStage('Ready: calibrate webcam');
   setNotice('Participant session ready. Calibrate webcam, check accuracy, then start recording.', true);
+  syncParticipantSessionControls();
+  resize();
   await requestParticipantFullscreen();
 }
 
@@ -887,6 +958,7 @@ function updateCamera() {
 function setWebcamStatus(status) {
   state.webcamStatus = status;
   webcamStatusLabel.textContent = status;
+  syncParticipantSessionControls();
 }
 
 function disableWebGazerMouseTraining() {
@@ -943,15 +1015,18 @@ async function resetWebcamCalibrationData() {
 function setAccuracySummary(summary) {
   if (!summary || summary.quality === 'untested') {
     accuracyStatusLabel.textContent = 'untested';
+    syncParticipantSessionControls();
     return;
   }
 
   if (state.accuracyValidated && state.correctedAccuracySummary) {
     accuracyStatusLabel.textContent = `validated ${Math.round(state.correctedAccuracySummary.meanPx)}px`;
+    syncParticipantSessionControls();
     return;
   }
 
   accuracyStatusLabel.textContent = `${summary.quality} ${Math.round(summary.meanPx)}px`;
+  syncParticipantSessionControls();
 }
 
 function getCurrentUncertaintyPx(point = null) {
@@ -2059,6 +2134,7 @@ function maybeSample(now) {
     gazeUncertainty: state.latestUncertainty || { px: 0, yawRadius: 0, pitchRadius: 0 },
   });
   sampleCount.textContent = String(state.samples.length);
+  syncParticipantSessionControls();
 }
 
 function animate(now = 0) {
@@ -2156,11 +2232,13 @@ function toggleRecording() {
   state.isRecording = !state.isRecording;
   recordButton.textContent = state.isRecording ? 'Stop Recording' : 'Start Recording';
   recordButton.classList.toggle('primary', !state.isRecording);
+  syncParticipantSessionControls();
 }
 
 function clearSamples() {
   state.samples = [];
   sampleCount.textContent = '0';
+  syncParticipantSessionControls();
 }
 
 async function startReviewMode() {
@@ -2512,6 +2590,10 @@ participantNameInput.addEventListener('input', updateParticipantStartState);
 participantAgeInput.addEventListener('input', updateParticipantStartState);
 participantConsentInput.addEventListener('change', updateParticipantStartState);
 participantStartButton.addEventListener('click', startParticipantSession);
+participantCalibrateButton.addEventListener('click', startCalibration);
+participantAccuracyButton.addEventListener('click', startAccuracyCheck);
+participantRecordButton.addEventListener('click', toggleRecording);
+participantExportButton.addEventListener('click', exportSamples);
 window.addEventListener('resize', handleResize);
 window.addEventListener('blur', handleWindowFocusLoss);
 document.addEventListener('visibilitychange', handleVisibilityChange);

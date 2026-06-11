@@ -33,6 +33,25 @@
   </head>
   <body>
     <main id="appShell" class="app-shell">
+      <section id="modeSelectScreen" class="mode-select-screen" aria-label="Choose workflow">
+        <div class="mode-select-header">
+          <p class="eyebrow">Dynamic AOI Lab</p>
+          <h1>Choose workflow</h1>
+        </div>
+        <div class="mode-choice-grid">
+          <a id="chooseAdminModeLink" class="mode-choice" href="./?mode=admin">
+            <span class="section-label">Admin Mode</span>
+            <strong>Set up study</strong>
+            <span>Load videos, define AOIs, test calibration, review recordings, and export research data.</span>
+          </a>
+          <a id="chooseParticipantModeLink" class="mode-choice" href="./?mode=participant">
+            <span class="section-label">Participant Mode</span>
+            <strong>Run participant session</strong>
+            <span>Enter participant details, calibrate webcam gaze, record the session, and export results.</span>
+          </a>
+        </div>
+      </section>
+
       <section id="viewerSection" class="viewer-section" aria-label="360 video viewer">
         <div class="viewer-toolbar">
           <div>
@@ -81,6 +100,12 @@
       </section>
 
       <aside id="participantPanel" class="participant-panel" aria-label="Participant survey setup" hidden>
+        <nav id="participantFlowRail" class="participant-flow-rail" aria-label="Participant screen flow">
+          <span class="flow-step is-active" data-flow-step="setup">01 Setup</span>
+          <span class="flow-step" data-flow-step="calibration">02 Calibrate</span>
+          <span class="flow-step" data-flow-step="recording">03 Record</span>
+          <span class="flow-step" data-flow-step="export">04 Export</span>
+        </nav>
         <section class="panel-section participant-card">
           <p class="section-label">Participant Mode</p>
           <h2>Survey setup</h2>
@@ -109,18 +134,36 @@
             <strong id="participantStageLabel">Enter details</strong>
           </div>
         </section>
+        <section id="participantSessionPanel" class="panel-section participant-session-panel" hidden>
+          <p class="section-label">Session Flow</p>
+          <div class="participant-actions">
+            <button id="participantCalibrateButton" type="button">Calibrate</button>
+            <button id="participantAccuracyButton" type="button">Check Accuracy</button>
+            <button id="participantRecordButton" class="primary" type="button">Start Recording</button>
+            <button id="participantExportButton" type="button">Export JSON</button>
+          </div>
+          <div class="participant-status">
+            <span>Session</span>
+            <strong id="participantSessionStatus">Waiting to start</strong>
+          </div>
+        </section>
       </aside>
 
       <aside id="controlPanel" class="control-panel" aria-label="Experiment controls">
-        <section class="panel-section">
-          <p class="section-label">Input</p>
-          <div class="segmented">
-            <button id="mouseModeButton" type="button">Mouse demo</button>
-            <button id="webcamModeButton" class="is-active" type="button">Webcam gaze</button>
+        <nav id="adminWorkflowRail" class="admin-workflow-rail" aria-label="Admin workflow">
+          <span class="admin-flow-step">01 Setup</span>
+          <span class="admin-flow-step">02 AOIs</span>
+          <span class="admin-flow-step">03 Calibrate</span>
+          <span class="admin-flow-step">04 Record</span>
+          <span class="admin-flow-step">05 Export</span>
+        </nav>
+
+        <section id="adminSetupPanel" class="panel-section admin-panel-section" data-step="01">
+          <div class="panel-heading">
+            <p class="section-label">Setup</p>
+            <h2>Video source</h2>
           </div>
-          <button id="calibrateButton" class="wide-action" type="button">Calibrate webcam</button>
-          <button id="accuracyButton" class="wide-action" type="button">Check accuracy</button>
-          <label class="file-loader">
+          <label class="file-loader primary-loader">
             <span>Load local video</span>
             <input id="videoFileInput" type="file" accept="video/*" />
           </label>
@@ -141,13 +184,33 @@
               </select>
             </label>
           </div>
+        </section>
+
+        <section id="adminCalibrationPanel" class="panel-section admin-panel-section" data-step="03">
+          <div class="panel-heading">
+            <p class="section-label">Calibration</p>
+            <h2>Tracker quality</h2>
+          </div>
+          <div class="segmented">
+            <button id="mouseModeButton" type="button">Mouse demo</button>
+            <button id="webcamModeButton" class="is-active" type="button">Webcam gaze</button>
+          </div>
+          <div class="button-pair">
+            <button id="calibrateButton" class="wide-action" type="button">Calibrate webcam</button>
+            <button id="accuracyButton" class="wide-action" type="button">Check accuracy</button>
+          </div>
+        </section>
+
+        <section id="manualAoiPanel" class="panel-section admin-panel-section" data-step="02">
+          <div class="panel-heading">
+            <p class="section-label">AOIs</p>
+            <h2>Import or create</h2>
+          </div>
           <label class="file-loader">
             <span>Load AOI JSON</span>
             <input id="aoiFileInput" type="file" accept="application/json,.json" />
           </label>
-        </section>
-
-        <section id="manualAoiPanel" class="panel-section">
+          <div class="admin-inline-divider"></div>
           <p class="section-label">Manual AOI</p>
           <label class="field-label">
             <span>Label</span>
@@ -166,8 +229,11 @@
           <button id="addManualAoiButton" class="wide-action" type="button">Add Center AOI</button>
         </section>
 
-        <section id="cloudAoiPanel" class="panel-section">
-          <p class="section-label">Google Colab AOI</p>
+        <section id="cloudAoiPanel" class="panel-section admin-panel-section" data-step="02">
+          <div class="panel-heading">
+            <p class="section-label">Auto AOI</p>
+            <h2>Google Colab job</h2>
+          </div>
           <label class="field-label">
             <span>Prompts</span>
             <textarea id="cloudAoiPromptsInput" rows="3">person
@@ -188,8 +254,11 @@ product</textarea>
           </div>
         </section>
 
-        <section class="panel-section">
-          <p class="section-label">Recording</p>
+        <section id="adminRecordingPanel" class="panel-section admin-panel-section" data-step="04">
+          <div class="panel-heading">
+            <p class="section-label">Record</p>
+            <h2>Session output</h2>
+          </div>
           <div class="recording-actions">
             <button id="recordButton" class="primary" type="button">Start Recording</button>
             <button id="reviewButton" type="button" disabled>Review Recording</button>
@@ -224,8 +293,11 @@ product</textarea>
           </div>
         </section>
 
-        <section class="panel-section">
-          <p class="section-label">Live Readout</p>
+        <section id="adminReadoutPanel" class="panel-section admin-panel-section compact-admin-section" data-step="03">
+          <div class="panel-heading">
+            <p class="section-label">Live Readout</p>
+            <h2>Gaze state</h2>
+          </div>
           <dl class="readout">
             <div>
               <dt>Screen</dt>
@@ -246,8 +318,11 @@ product</textarea>
           </dl>
         </section>
 
-        <section class="panel-section">
-          <p class="section-label">AOIs</p>
+        <section id="adminAoiListPanel" class="panel-section admin-panel-section compact-admin-section" data-step="05">
+          <div class="panel-heading">
+            <p class="section-label">AOI List</p>
+            <h2>Current regions</h2>
+          </div>
           <ul id="aoiList" class="aoi-list"></ul>
         </section>
       </aside>
