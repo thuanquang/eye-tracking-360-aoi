@@ -208,6 +208,7 @@ try {
     'Colab job export should parse newline and comma separated AOI prompts.',
   );
   assert.equal(colabJob.aoiPolicy.sampleIntervalSec, 0.75, 'Colab job export should preserve the sample interval.');
+  assert.equal(colabJob.aoiPolicy.output, 'aoi-json', 'Colab job export should preserve the AOI JSON output marker.');
   assert.equal(colabJob.aoiPolicy.outputShape, 'polygon', 'Colab job export should request polygon output.');
   assert.equal(
     colabJob.aoiPolicy.detectorModel,

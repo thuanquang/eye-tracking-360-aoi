@@ -27,6 +27,7 @@ test('builds a Colab auto-AOI job from video metadata and prompts', () => {
   assert.equal(job.video.stereoLayout, 'top-bottom');
   assert.deepEqual(job.aoiPolicy.prompts, ['person', 'screen', 'sign']);
   assert.equal(job.aoiPolicy.sampleIntervalSec, 0.75);
+  assert.equal(job.aoiPolicy.output, 'aoi-json');
   assert.equal(job.aoiPolicy.outputShape, 'polygon');
   assert.equal(job.aoiPolicy.detectorModel, 'microsoft/Florence-2-base');
   assert.equal(job.aoiPolicy.segmenterModel, 'facebook/sam2.1-hiera-small');

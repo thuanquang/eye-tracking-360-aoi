@@ -92,6 +92,7 @@ export function buildColabAoiJob({
       sampleIntervalSec: Number.isFinite(Number(sampleIntervalSec))
         ? Math.max(0.1, Number(sampleIntervalSec))
         : 1,
+      output: 'aoi-json',
       outputShape,
       detectorModel,
       segmenterModel,
