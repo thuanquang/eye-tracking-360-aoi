@@ -36,6 +36,16 @@ function sanitizeNumber(value, fallback) {
   return Number.isFinite(numeric) ? numeric : fallback;
 }
 
+function finiteCoordinate(value) {
+  if (value === null || value === '') {
+    return null;
+  }
+
+  const numeric = Number(value);
+
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
 function parsePromptList(prompts) {
   if (Array.isArray(prompts)) {
     return prompts.map((prompt) => String(prompt).trim()).filter(Boolean);
@@ -172,6 +182,60 @@ export function pixelBoxToAoiKeyframe({
   };
 }
 
+// Polygon detections are expected to provide normalized points in the detected frame.
+// Flat AOIs keep x/y; panorama AOIs preserve yaw/pitch or convert normalized x/y.
+function normalizeVideoPoint(point) {
+  const x = finiteCoordinate(point?.x);
+  const y = finiteCoordinate(point?.y);
+
+  if (x === null || y === null) {
+    return null;
+  }
+
+  return {
+    x: round(clamp(x, 0, 1)),
+    y: round(clamp(y, 0, 1)),
+  };
+}
+
+function normalizePanoramaPoint(point) {
+  const yaw = finiteCoordinate(point?.yaw);
+  const pitch = finiteCoordinate(point?.pitch);
+
+  if (yaw !== null && pitch !== null) {
+    return {
+      yaw: normalizeYaw(round(yaw)),
+      pitch: round(clamp(pitch, -90, 90)),
+    };
+  }
+
+  const videoPoint = normalizeVideoPoint(point);
+
+  if (!videoPoint) {
+    return null;
+  }
+
+  return {
+    yaw: normalizeYaw(round(videoPoint.x * 360 - 180)),
+    pitch: round(90 - videoPoint.y * 180),
+  };
+}
+
+function polygonDetectionToAoiKeyframe({ detection, projection }) {
+  const sourcePoints = Array.isArray(detection.points) ? detection.points : [];
+  const normalizePoint = projection === 'flat' ? normalizeVideoPoint : normalizePanoramaPoint;
+  const points = sourcePoints.map(normalizePoint).filter(Boolean);
+
+  if (points.length < 3) {
+    return null;
+  }
+
+  return {
+    t: Number.isFinite(detection.t) ? detection.t : 0,
+    points,
+  };
+}
+
 function keyForDetection(detection) {
   return normalizeAoiId(detection.label || detection.className || 'generated-aoi');
 }
@@ -192,30 +256,41 @@ export function detectionsToAois({
   }
 
   (detections || []).forEach((detection) => {
-    if (!detection?.box) {
+    const isPolygon = detection?.shape === 'polygon';
+
+    if (!isPolygon && !detection?.box) {
       return;
     }
 
     const id = keyForDetection(detection);
-    const keyframe = pixelBoxToAoiKeyframe({
-      t: Number.isFinite(detection.t) ? detection.t : 0,
-      box: detection.box,
-      videoWidth,
-      videoHeight,
-      projection,
-      stereoLayout,
-      eye: detection.eye || 'left',
-    });
+    const keyframe = isPolygon
+      ? polygonDetectionToAoiKeyframe({ detection, projection })
+      : pixelBoxToAoiKeyframe({
+        t: Number.isFinite(detection.t) ? detection.t : 0,
+        box: detection.box,
+        videoWidth,
+        videoHeight,
+        projection,
+        stereoLayout,
+        eye: detection.eye || 'left',
+      });
+
+    if (!keyframe) {
+      return;
+    }
+
     const entry = grouped.get(id) || {
       id,
       label: detection.label || detection.className || id,
       color: GENERATED_COLORS[grouped.size % GENERATED_COLORS.length],
       space: projection === 'flat' ? 'video' : 'panorama',
+      shape: isPolygon ? 'polygon' : 'box',
       generated: {
         method: generatedBy,
         confidence: detection.confidence ?? null,
         projection,
         stereoLayout,
+        outputShape: isPolygon ? 'polygon' : 'box',
       },
       keyframes: [],
     };
@@ -228,7 +303,9 @@ export function detectionsToAois({
     const keyframes = aoi.keyframes.sort((a, b) => a.t - b.t);
     return {
       ...aoi,
-      ...keyframes[0],
+      ...(aoi.shape === 'polygon'
+        ? { points: keyframes[0].points }
+        : keyframes[0]),
       keyframes,
     };
   });

@@ -164,3 +164,103 @@ test('groups detections into generated AOIs with keyframes', () => {
   assert.equal(aois[0].keyframes.length, 2);
   assert.equal(aois[0].generated.method, 'google-colab-auto-aoi');
 });
+
+test('groups polygon detections into generated AOIs', () => {
+  const aois = detectionsToAois({
+    detections: [
+      {
+        label: 'Person',
+        t: 0,
+        shape: 'polygon',
+        points: [
+          { x: 0.1, y: 0.1 },
+          { x: 0.2, y: 0.1 },
+          { x: 0.2, y: 0.3 },
+          { x: 0.1, y: 0.3 },
+        ],
+        confidence: 0.91,
+      },
+      {
+        label: 'Person',
+        t: 1,
+        shape: 'polygon',
+        points: [
+          { x: 0.12, y: 0.12 },
+          { x: 0.23, y: 0.12 },
+          { x: 0.23, y: 0.32 },
+          { x: 0.12, y: 0.32 },
+        ],
+        confidence: 0.88,
+      },
+    ],
+    video: {
+      width: 1000,
+      height: 500,
+      projection: 'flat',
+      stereoLayout: 'mono',
+    },
+  });
+
+  assert.equal(aois[0].shape, 'polygon');
+  assert.equal(aois[0].points.length, 4);
+  assert.equal(aois[0].keyframes.length, 2);
+});
+
+test('converts equirectangular normalized polygon points to yaw and pitch', () => {
+  const aois = detectionsToAois({
+    detections: [
+      {
+        label: 'Sign',
+        t: 2,
+        shape: 'polygon',
+        points: [
+          { x: 0, y: 0 },
+          { x: 0.5, y: 0 },
+          { x: 0.5, y: 0.5 },
+          { x: 0, y: 0.5 },
+        ],
+        confidence: 0.77,
+      },
+    ],
+    video: {
+      width: 1920,
+      height: 1080,
+      projection: 'equirectangular',
+      stereoLayout: 'mono',
+    },
+  });
+
+  assert.equal(aois[0].space, 'panorama');
+  assert.deepEqual(aois[0].points, [
+    { yaw: -180, pitch: 90 },
+    { yaw: 0, pitch: 90 },
+    { yaw: 0, pitch: 0 },
+    { yaw: -180, pitch: 0 },
+  ]);
+});
+
+test('ignores polygon detections with fewer than three valid points', () => {
+  const aois = detectionsToAois({
+    detections: [
+      {
+        label: 'Broken',
+        t: 0,
+        shape: 'polygon',
+        points: [
+          { x: 0.1, y: 0.1 },
+          { x: 0.2, y: Number.NaN },
+          { x: 0.3, y: 0.3 },
+        ],
+        confidence: 0.25,
+      },
+    ],
+    video: {
+      width: 1000,
+      height: 500,
+      projection: 'flat',
+      stereoLayout: 'mono',
+    },
+  });
+
+  assert.deepEqual(aois, []);
+});
