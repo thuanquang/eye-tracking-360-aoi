@@ -21,6 +21,7 @@ import {
   isFiniteNumber,
   isValidAoi,
 } from './aois/aoiImport.js?v=aoi-schema-1';
+import { buildAoiOverlayModels } from './aois/aoiOverlay.js?v=aoi-overlay-1';
 import {
   applyViewportCalibration,
   buildAccuracyCorrection,
@@ -427,149 +428,6 @@ function getRenderableAois() {
   return resolveAoisAtTime(activeAois, sourceVideo.currentTime || 0);
 }
 
-function splitAoiYawRanges(aoi) {
-  const yawMin = normalizeYaw(aoi.yawMin);
-  const yawMax = normalizeYaw(aoi.yawMax);
-
-  if (yawMin <= yawMax) {
-    return [{ yawMin, yawMax }];
-  }
-
-  return [
-    { yawMin, yawMax: 180 },
-    { yawMin: -180, yawMax },
-  ];
-}
-
-function clampNumber(value, min, max) {
-  return Math.min(max, Math.max(min, value));
-}
-
-function interpolateScreenPoint(start, end, ratio) {
-  return {
-    x: start.x + (end.x - start.x) * ratio,
-    y: start.y + (end.y - start.y) * ratio,
-  };
-}
-
-function clipPolygonAgainstBoundary(points, isInside, intersection) {
-  if (!points.length) {
-    return [];
-  }
-
-  const clipped = [];
-  let previous = points[points.length - 1];
-  let previousInside = isInside(previous);
-
-  points.forEach((current) => {
-    const currentInside = isInside(current);
-
-    if (currentInside) {
-      if (!previousInside) {
-        clipped.push(intersection(previous, current));
-      }
-
-      clipped.push(current);
-    } else if (previousInside) {
-      clipped.push(intersection(previous, current));
-    }
-
-    previous = current;
-    previousInside = currentInside;
-  });
-
-  return clipped;
-}
-
-function clipPolygonToRect(points, width, height) {
-  const safeIntersection = (start, end, ratio) => interpolateScreenPoint(
-    start,
-    end,
-    Number.isFinite(ratio) ? ratio : 0,
-  );
-
-  const clipped = [
-    {
-      isInside: (point) => point.x >= 0,
-      intersection: (start, end) => safeIntersection(start, end, (0 - start.x) / (end.x - start.x)),
-    },
-    {
-      isInside: (point) => point.x <= width,
-      intersection: (start, end) => safeIntersection(start, end, (width - start.x) / (end.x - start.x)),
-    },
-    {
-      isInside: (point) => point.y >= 0,
-      intersection: (start, end) => safeIntersection(start, end, (0 - start.y) / (end.y - start.y)),
-    },
-    {
-      isInside: (point) => point.y <= height,
-      intersection: (start, end) => safeIntersection(start, end, (height - start.y) / (end.y - start.y)),
-    },
-  ].reduce(
-    (currentPoints, boundary) => clipPolygonAgainstBoundary(
-      currentPoints,
-      boundary.isInside,
-      boundary.intersection,
-    ),
-    points,
-  );
-
-  return clipped.map((point) => ({
-    x: clampNumber(point.x, 0, width),
-    y: clampNumber(point.y, 0, height),
-  }));
-}
-
-function projectAoiRange(aoi, yawMin, yawMax, rect) {
-  const pitchMin = Math.min(aoi.pitchMin, aoi.pitchMax);
-  const pitchMax = Math.max(aoi.pitchMin, aoi.pitchMax);
-  const corners = [
-    { yaw: yawMin, pitch: pitchMax },
-    { yaw: yawMax, pitch: pitchMax },
-    { yaw: yawMax, pitch: pitchMin },
-    { yaw: yawMin, pitch: pitchMin },
-  ].map((corner) => panoramaPointToScreen({
-    ...corner,
-    width: rect.width,
-    height: rect.height,
-    cameraYaw: state.cameraYaw,
-    cameraPitch: state.cameraPitch,
-    fov: camera.fov,
-  }));
-
-  if (!corners.every((corner) => corner.inFront && Number.isFinite(corner.x) && Number.isFinite(corner.y))) {
-    return null;
-  }
-
-  const clipped = clipPolygonToRect(corners, rect.width, rect.height);
-
-  if (clipped.length < 3) {
-    return null;
-  }
-
-  return clipped;
-}
-
-function projectVideoAoiRange(aoi, rect) {
-  const xMin = Math.min(aoi.xMin, aoi.xMax) * rect.width;
-  const xMax = Math.max(aoi.xMin, aoi.xMax) * rect.width;
-  const yMin = Math.min(aoi.yMin, aoi.yMax) * rect.height;
-  const yMax = Math.max(aoi.yMin, aoi.yMax) * rect.height;
-
-  return [
-    { x: xMin, y: yMin },
-    { x: xMax, y: yMin },
-    { x: xMax, y: yMax },
-    { x: xMin, y: yMax },
-  ];
-}
-
-function getAoiOverlayColor(aoi) {
-  return typeof aoi.color === 'string' && window.CSS?.supports('color', aoi.color)
-    ? aoi.color
-    : '#ffd166';
-}
-
 function drawAoiOverlay() {
   const rect = viewer.getBoundingClientRect();
 
@@ -584,64 +442,31 @@ function drawAoiOverlay() {
 
   const fragment = document.createDocumentFragment();
 
-  getRenderableAois().forEach((aoi) => {
-    const color = getAoiOverlayColor(aoi);
+  const models = buildAoiOverlayModels({
+    aois: getRenderableAois(),
+    rect,
+    camera: { yaw: state.cameraYaw, pitch: state.cameraPitch, fov: camera.fov },
+    supportsColor: (color) => window.CSS?.supports('color', color),
+  });
 
-    if (aoi.space === 'video') {
-      const corners = projectVideoAoiRange(aoi, rect);
-      const shape = document.createElementNS(SVG_NS, 'polygon');
-      shape.setAttribute('class', 'aoi-overlay-shape');
-      shape.setAttribute('points', corners.map((corner) => `${corner.x.toFixed(1)},${corner.y.toFixed(1)}`).join(' '));
-      shape.setAttribute('fill', color);
-      shape.setAttribute('fill-opacity', '0.16');
-      shape.setAttribute('stroke', color);
-      shape.dataset.aoiId = aoi.id;
-      fragment.appendChild(shape);
+  models.forEach((model) => {
+    const shape = document.createElementNS(SVG_NS, 'polygon');
+    shape.setAttribute('class', 'aoi-overlay-shape');
+    shape.setAttribute('points', model.points.map((point) => `${point.x.toFixed(1)},${point.y.toFixed(1)}`).join(' '));
+    shape.setAttribute('fill', model.color);
+    shape.setAttribute('fill-opacity', '0.16');
+    shape.setAttribute('stroke', model.color);
+    shape.dataset.aoiId = model.id;
+    fragment.appendChild(shape);
 
+    if (model.labelPoint) {
       const label = document.createElementNS(SVG_NS, 'text');
       label.setAttribute('class', 'aoi-overlay-label');
-      label.setAttribute('x', String(Math.round(Math.min(aoi.xMax, 0.96) * rect.width + 8)));
-      label.setAttribute('y', String(Math.round(Math.max(aoi.yMin, 0.04) * rect.height - 8)));
-      label.textContent = aoi.label;
+      label.setAttribute('x', String(model.labelPoint.x));
+      label.setAttribute('y', String(model.labelPoint.y));
+      label.textContent = model.label;
       fragment.appendChild(label);
-      return;
     }
-
-    splitAoiYawRanges(aoi).forEach(({ yawMin, yawMax }) => {
-      const corners = projectAoiRange(aoi, yawMin, yawMax, rect);
-
-      if (!corners) {
-        return;
-      }
-
-      const shape = document.createElementNS(SVG_NS, 'polygon');
-      shape.setAttribute('class', 'aoi-overlay-shape');
-      shape.setAttribute('points', corners.map((corner) => `${corner.x.toFixed(1)},${corner.y.toFixed(1)}`).join(' '));
-      shape.setAttribute('fill', color);
-      shape.setAttribute('fill-opacity', '0.16');
-      shape.setAttribute('stroke', color);
-      shape.dataset.aoiId = aoi.id;
-      fragment.appendChild(shape);
-
-      const center = panoramaPointToScreen({
-        yaw: normalizeYaw((yawMin + yawMax) / 2),
-        pitch: (Math.min(aoi.pitchMin, aoi.pitchMax) + Math.max(aoi.pitchMin, aoi.pitchMax)) / 2,
-        width: rect.width,
-        height: rect.height,
-        cameraYaw: state.cameraYaw,
-        cameraPitch: state.cameraPitch,
-        fov: camera.fov,
-      });
-
-      if (center.visible) {
-        const label = document.createElementNS(SVG_NS, 'text');
-        label.setAttribute('class', 'aoi-overlay-label');
-        label.setAttribute('x', String(Math.round(center.x + 8)));
-        label.setAttribute('y', String(Math.round(center.y - 8)));
-        label.textContent = aoi.label;
-        fragment.appendChild(label);
-      }
-    });
   });
 
   aoiOverlay.replaceChildren(fragment);
