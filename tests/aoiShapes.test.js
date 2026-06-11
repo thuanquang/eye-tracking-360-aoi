@@ -96,3 +96,20 @@ test('normalizes and bounds polygon points', () => {
     yMax: 1,
   });
 });
+
+test('filters invalid polygon points during normalization', () => {
+  const points = normalizePolygonPoints([
+    { x: 0.2, y: 0.2 },
+    { x: 'bad', y: 0.3 },
+    { x: 0.4, y: Infinity },
+    { x: 0.5 },
+    { y: 0.6 },
+    null,
+    { x: 0.7, y: 0.8 },
+  ]);
+
+  assert.deepEqual(points, [
+    { x: 0.2, y: 0.2 },
+    { x: 0.7, y: 0.8 },
+  ]);
+});

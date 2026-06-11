@@ -37,6 +37,15 @@ function hasCoordinate(point, key) {
   return Object.prototype.hasOwnProperty.call(point, key);
 }
 
+function hasFiniteCoordinate(point, key) {
+  return (
+    point != null &&
+    point[key] !== null &&
+    point[key] !== undefined &&
+    Number.isFinite(Number(point[key]))
+  );
+}
+
 function isFinitePoint(point) {
   return (
     Number.isFinite(Number(point?.x)) &&
@@ -80,19 +89,24 @@ export function normalizePolygonPoints(points, keys = DEFAULT_POINT_KEYS) {
 
   const pointKeys = resolvePointKeys(keys);
 
-  return points.map((point) => {
-    const normalized = { ...point };
-    normalized[pointKeys.x] = normalizeCoordinate(point?.[pointKeys.x], pointKeys.x);
-    normalized[pointKeys.y] = normalizeCoordinate(point?.[pointKeys.y], pointKeys.y);
+  return points
+    .filter((point) => (
+      hasFiniteCoordinate(point, pointKeys.x) &&
+      hasFiniteCoordinate(point, pointKeys.y)
+    ))
+    .map((point) => {
+      const normalized = { ...point };
+      normalized[pointKeys.x] = normalizeCoordinate(point?.[pointKeys.x], pointKeys.x);
+      normalized[pointKeys.y] = normalizeCoordinate(point?.[pointKeys.y], pointKeys.y);
 
-    ['x', 'y', 'yaw', 'pitch'].forEach((key) => {
-      if (key !== pointKeys.x && key !== pointKeys.y && hasCoordinate(normalized, key)) {
-        normalized[key] = normalizeCoordinate(normalized[key], key);
-      }
+      ['x', 'y', 'yaw', 'pitch'].forEach((key) => {
+        if (key !== pointKeys.x && key !== pointKeys.y && hasCoordinate(normalized, key)) {
+          normalized[key] = normalizeCoordinate(normalized[key], key);
+        }
+      });
+
+      return normalized;
     });
-
-    return normalized;
-  });
 }
 
 export function boundsFromPoints(points, keys = DEFAULT_POINT_KEYS) {
