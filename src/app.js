@@ -43,66 +43,19 @@ import {
   SVG_NS,
   TARGET_CAPTURE,
 } from './app/constants.js';
+import {
+  createDefaultAois,
+  createDefaultGaze,
+  createInitialAppState,
+  createInitialVideoInfo,
+} from './app/state.js';
 
-const DEFAULT_AOIS = [
-  {
-    id: 'front-center',
-    label: 'Front center object',
-    color: '#ffd166',
-    yawMin: -18,
-    yawMax: 18,
-    pitchMin: -10,
-    pitchMax: 16,
-    keyframes: [
-      { t: 0, yawMin: -18, yawMax: 18, pitchMin: -10, pitchMax: 16 },
-      { t: 8, yawMin: -4, yawMax: 32, pitchMin: -8, pitchMax: 18 },
-      { t: 16, yawMin: -24, yawMax: 12, pitchMin: -12, pitchMax: 14 },
-    ],
-  },
-  {
-    id: 'upper-left',
-    label: 'Upper left zone',
-    color: '#5dd7c8',
-    yawMin: -82,
-    yawMax: -42,
-    pitchMin: 4,
-    pitchMax: 32,
-  },
-  {
-    id: 'lower-right',
-    label: 'Lower right zone',
-    color: '#ff8a5c',
-    yawMin: 38,
-    yawMax: 88,
-    pitchMin: -38,
-    pitchMax: -10,
-  },
-  {
-    id: 'rear-seam',
-    label: 'Rear seam wraparound',
-    color: '#8bd66f',
-    yawMin: 165,
-    yawMax: -165,
-    pitchMin: -20,
-    pitchMax: 20,
-  },
-];
-let activeAois = DEFAULT_AOIS;
+let activeAois = createDefaultAois();
 let aoiSource = 'default';
 let registeredProjectMetadata = {};
-let sourceVideoInfo = {
-  kind: 'bundled',
-  name: 'test-video.mp4',
-  path: 'assets/test-video.mp4',
-  type: 'video/mp4',
-  size: null,
-  lastModified: null,
-  projection: 'equirectangular',
-  stereoLayout: 'mono',
-};
+let sourceVideoInfo = createInitialVideoInfo();
 
 const SAMPLE_INTERVAL_MS = RECORDING_SAMPLE_INTERVAL_MS;
-const DEFAULT_GAZE = { x: 0, y: 0, visible: false, source: 'webcam' };
 const GAZE_SMOOTHING_ALPHA = GAZE_SMOOTHING.alpha;
 const GAZE_FAST_SMOOTHING_ALPHA = GAZE_SMOOTHING.fastAlpha;
 const GAZE_FAST_SMOOTHING_DISTANCE_PX = GAZE_SMOOTHING.fastDistancePx;
@@ -229,56 +182,7 @@ const calibrationProgress = document.querySelector('#calibrationProgress');
 const calibrationDescription = document.querySelector('#calibrationDescription');
 const cancelCalibrationButton = document.querySelector('#cancelCalibrationButton');
 
-const state = {
-  cameraYaw: 0,
-  cameraPitch: 0,
-  mode: 'webcam',
-  gaze: { ...DEFAULT_GAZE },
-  latestPoint: null,
-  latestHits: [],
-  latestAois: [],
-  latestAoiClassification: null,
-  latestUncertainty: null,
-  samples: [],
-  reviewSamples: [],
-  reviewSource: null,
-  reviewActive: false,
-  reviewIndex: 0,
-  isRecording: false,
-  lastSampleAt: 0,
-  webcamStarted: false,
-  webcamStatus: 'idle',
-  rawPageGaze: null,
-  rawViewerGaze: null,
-  rawGazeAt: 0,
-  lastAcceptedGazeAt: 0,
-  gazeCorrection: null,
-  refinementAccuracySummary: null,
-  accuracySummary: null,
-  correctedAccuracySummary: null,
-  localAccuracyErrorModel: null,
-  validationSamples: [],
-  accuracyValidated: false,
-  accuracyValidatedAt: null,
-  accuracyInvalidationReason: null,
-  liveGazeQuality: null,
-  gazeDropReason: null,
-  droppedGazeSamples: 0,
-  appMode: 'admin',
-  participant: {
-    id: '',
-    name: '',
-    age: null,
-    consent: false,
-    startedAt: null,
-  },
-  calibrationIndex: 0,
-  targetMode: 'calibration',
-  targetCaptureInProgress: false,
-  accuracyIndex: 0,
-  accuracySamples: [],
-  resumeVideoAfterTargetMode: false,
-};
+const state = createInitialAppState();
 
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(75, 1, 0.1, 1100);
@@ -873,7 +777,7 @@ async function loadAois() {
 
     registerAois(await response.json(), 'assets/aois.json');
   } catch (error) {
-    activeAois = DEFAULT_AOIS;
+    activeAois = createDefaultAois();
     aoiSource = 'default';
     registeredProjectMetadata = {};
     applyVideoMetadataControls(sourceVideoInfo);
@@ -1010,7 +914,7 @@ async function resetWebcamCalibrationData() {
     await window.webgazer.clearData();
   }
 
-  state.gaze = { ...DEFAULT_GAZE };
+  state.gaze = createDefaultGaze();
   state.rawPageGaze = null;
   state.rawViewerGaze = null;
   state.rawGazeAt = 0;
@@ -1082,7 +986,7 @@ function handleResize() {
 function setMouseMode() {
   stopReviewMode();
   state.mode = 'mouse';
-  state.gaze = { ...DEFAULT_GAZE, source: 'mouse' };
+  state.gaze = createDefaultGaze({ source: 'mouse' });
   mouseModeButton.classList.add('is-active');
   webcamModeButton.classList.remove('is-active');
   modeLabel.textContent = 'mouse';
@@ -1091,7 +995,7 @@ function setMouseMode() {
 function selectWebcamMode() {
   stopReviewMode();
   state.mode = 'webcam';
-  state.gaze = { ...DEFAULT_GAZE };
+  state.gaze = createDefaultGaze();
   mouseModeButton.classList.remove('is-active');
   webcamModeButton.classList.add('is-active');
   modeLabel.textContent = 'webcam';
@@ -1255,7 +1159,7 @@ function processWebcamGaze(data) {
       return;
     }
 
-    state.gaze = { ...DEFAULT_GAZE };
+    state.gaze = createDefaultGaze();
     state.gazeDropReason = 'raw-out-of-bounds';
     registerLiveGazeQualityEvent({ accepted: false, reason: 'raw-out-of-bounds' });
     return;
@@ -2293,7 +2197,7 @@ async function toggleReviewMode() {
   if (state.reviewActive) {
     stopReviewMode();
     state.mode = 'mouse';
-    state.gaze = { ...DEFAULT_GAZE, source: 'mouse' };
+    state.gaze = createDefaultGaze({ source: 'mouse' });
     mouseModeButton.classList.add('is-active');
     webcamModeButton.classList.remove('is-active');
     modeLabel.textContent = 'mouse';
