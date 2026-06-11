@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 
 import { createMouseProvider } from '../src/gaze/providers/mouseProvider.js';
 import { createWebGazerProvider } from '../src/gaze/providers/webgazerProvider.js';
@@ -63,4 +64,14 @@ test('webgazer provider configures controlled calibration and forwards gaze', as
   assert.deepEqual(emitted[0], { x: 11, y: 22, visible: true, source: 'webcam' });
   assert.equal(calls.some((call) => call[0] === 'recordScreenPosition'), true);
   assert.equal(calls.some((call) => call[0] === 'clearData'), true);
+});
+
+test('app wires mouse gaze through the mouse provider', async () => {
+  const appSource = await readFile(new URL('../src/app.js', import.meta.url), 'utf8');
+  const dragFunction = appSource.match(/function drag\(event\) \{[\s\S]*?\n\}/)?.[0] ?? '';
+
+  assert.match(appSource, /import \{ createMouseProvider \}/);
+  assert.match(appSource, /createMouseProvider\(\{/);
+  assert.match(appSource, /mouseProvider\.start\(\)/);
+  assert.doesNotMatch(dragFunction, /source:\s*'mouse'/);
 });

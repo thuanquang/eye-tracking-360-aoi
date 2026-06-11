@@ -68,6 +68,7 @@ import {
   createInitialVideoInfo,
 } from './app/state.js';
 import { queryAppDom } from './app/dom.js';
+import { createMouseProvider } from './gaze/providers/mouseProvider.js?v=gaze-providers-1';
 import { createWebGazerProvider } from './gaze/providers/webgazerProvider.js?v=gaze-providers-1';
 
 let activeAois = createDefaultAois();
@@ -207,6 +208,16 @@ const {
 } = dom;
 
 const state = createInitialAppState();
+const mouseProvider = createMouseProvider({
+  viewer,
+  onGaze: (gaze) => {
+    if (state.mode !== 'mouse') {
+      return;
+    }
+
+    state.gaze = gaze;
+  },
+});
 
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(75, 1, 0.1, 1100);
@@ -1729,17 +1740,6 @@ function startDrag(event) {
 }
 
 function drag(event) {
-  const rect = viewer.getBoundingClientRect();
-
-  if (state.mode === 'mouse') {
-    state.gaze = {
-      x: event.clientX - rect.left,
-      y: event.clientY - rect.top,
-      visible: true,
-      source: 'mouse',
-    };
-  }
-
   if (!viewer.classList.contains('is-dragging')) {
     return;
   }
@@ -2063,6 +2063,7 @@ viewer.addEventListener('pointerdown', startDrag);
 viewer.addEventListener('pointermove', drag);
 viewer.addEventListener('pointerup', endDrag);
 viewer.addEventListener('pointercancel', endDrag);
+mouseProvider.start();
 playVideoButton.addEventListener('click', toggleVideoPlayback);
 resetViewButton.addEventListener('click', resetView);
 mouseModeButton.addEventListener('click', setMouseMode);
