@@ -209,6 +209,12 @@ function getAoiSpace(aoi) {
   return aoi?.space === 'video' ? 'video' : 'panorama';
 }
 
+function getPolygonPointKeys(aoi) {
+  return getAoiSpace(aoi) === 'video'
+    ? { x: 'x', y: 'y' }
+    : { x: 'yaw', y: 'pitch' };
+}
+
 function hitTestPanoramaAoi(point, aoi) {
   const pitchMin = Math.min(aoi.pitchMin, aoi.pitchMax);
   const pitchMax = Math.max(aoi.pitchMin, aoi.pitchMax);
@@ -304,9 +310,11 @@ function resolveDynamicAoiAtTime(aoi, timeSec) {
   const ratio = duration > 0 ? (timeSec - start.t) / duration : 0;
 
   if (aoi.shape === 'polygon') {
+    const pointKeys = getPolygonPointKeys(aoi);
+
     return {
       ...aoi,
-      points: interpolatePolygonPoints(start.points || [], end.points || [], ratio),
+      points: interpolatePolygonPoints(start.points || [], end.points || [], ratio, pointKeys),
     };
   }
 

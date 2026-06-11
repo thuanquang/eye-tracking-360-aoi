@@ -37,26 +37,32 @@ function hasCoordinate(point, key) {
   return Object.prototype.hasOwnProperty.call(point, key);
 }
 
+function isFiniteCoordinateValue(value) {
+  return typeof value === 'number' && Number.isFinite(value);
+}
+
 function hasFiniteCoordinate(point, key) {
   return (
     point != null &&
-    point[key] !== null &&
-    point[key] !== undefined &&
-    Number.isFinite(Number(point[key]))
+    isFiniteCoordinateValue(point[key])
   );
 }
 
-function isFinitePoint(point) {
+function isFinitePoint(point, keys = DEFAULT_POINT_KEYS) {
+  const pointKeys = resolvePointKeys(keys);
+
   return (
-    Number.isFinite(Number(point?.x)) &&
-    Number.isFinite(Number(point?.y))
+    hasFiniteCoordinate(point, pointKeys.x) &&
+    hasFiniteCoordinate(point, pointKeys.y)
   );
 }
 
-function toFinitePoint(point) {
+function toFinitePoint(point, keys = DEFAULT_POINT_KEYS) {
+  const pointKeys = resolvePointKeys(keys);
+
   return {
-    x: finiteNumber(point.x),
-    y: finiteNumber(point.y),
+    x: point[pointKeys.x],
+    y: point[pointKeys.y],
   };
 }
 
@@ -100,7 +106,12 @@ export function normalizePolygonPoints(points, keys = DEFAULT_POINT_KEYS) {
       normalized[pointKeys.y] = normalizeCoordinate(point?.[pointKeys.y], pointKeys.y);
 
       ['x', 'y', 'yaw', 'pitch'].forEach((key) => {
-        if (key !== pointKeys.x && key !== pointKeys.y && hasCoordinate(normalized, key)) {
+        if (
+          key !== pointKeys.x &&
+          key !== pointKeys.y &&
+          hasCoordinate(normalized, key) &&
+          isFiniteCoordinateValue(normalized[key])
+        ) {
           normalized[key] = normalizeCoordinate(normalized[key], key);
         }
       });
@@ -113,38 +124,46 @@ export function boundsFromPoints(points, keys = DEFAULT_POINT_KEYS) {
   const pointKeys = resolvePointKeys(keys);
   const finitePoints = Array.isArray(points)
     ? points.filter((point) => (
-      Number.isFinite(Number(point?.[pointKeys.x])) &&
-      Number.isFinite(Number(point?.[pointKeys.y]))
+      hasFiniteCoordinate(point, pointKeys.x) &&
+      hasFiniteCoordinate(point, pointKeys.y)
     ))
     : [];
+  const minXKey = `${pointKeys.x}Min`;
+  const maxXKey = `${pointKeys.x}Max`;
+  const minYKey = `${pointKeys.y}Min`;
+  const maxYKey = `${pointKeys.y}Max`;
 
   if (!finitePoints.length) {
     return {
-      xMin: 0,
-      xMax: 0,
-      yMin: 0,
-      yMax: 0,
+      [minXKey]: 0,
+      [maxXKey]: 0,
+      [minYKey]: 0,
+      [maxYKey]: 0,
     };
   }
 
-  const xs = finitePoints.map((point) => finiteNumber(point[pointKeys.x]));
-  const ys = finitePoints.map((point) => finiteNumber(point[pointKeys.y]));
+  const xs = finitePoints.map((point) => point[pointKeys.x]);
+  const ys = finitePoints.map((point) => point[pointKeys.y]);
 
   return {
-    xMin: roundCoordinate(Math.min(...xs)),
-    xMax: roundCoordinate(Math.max(...xs)),
-    yMin: roundCoordinate(Math.min(...ys)),
-    yMax: roundCoordinate(Math.max(...ys)),
+    [minXKey]: roundCoordinate(Math.min(...xs)),
+    [maxXKey]: roundCoordinate(Math.max(...xs)),
+    [minYKey]: roundCoordinate(Math.min(...ys)),
+    [maxYKey]: roundCoordinate(Math.max(...ys)),
   };
 }
 
-export function distanceToPolygonEdges(point, points) {
-  if (!isFinitePoint(point) || !Array.isArray(points) || points.length < 2) {
+export function distanceToPolygonEdges(point, points, keys = DEFAULT_POINT_KEYS) {
+  const pointKeys = resolvePointKeys(keys);
+
+  if (!isFinitePoint(point, pointKeys) || !Array.isArray(points) || points.length < 2) {
     return Infinity;
   }
 
-  const target = toFinitePoint(point);
-  const polygon = points.filter(isFinitePoint).map(toFinitePoint);
+  const target = toFinitePoint(point, pointKeys);
+  const polygon = points
+    .filter((polygonPoint) => isFinitePoint(polygonPoint, pointKeys))
+    .map((polygonPoint) => toFinitePoint(polygonPoint, pointKeys));
 
   if (polygon.length < 2) {
     return Infinity;
@@ -161,13 +180,17 @@ export function distanceToPolygonEdges(point, points) {
   return minDistance;
 }
 
-export function isPointInPolygon(point, points) {
-  if (!isFinitePoint(point) || !Array.isArray(points) || points.length < 3) {
+export function isPointInPolygon(point, points, keys = DEFAULT_POINT_KEYS) {
+  const pointKeys = resolvePointKeys(keys);
+
+  if (!isFinitePoint(point, pointKeys) || !Array.isArray(points) || points.length < 3) {
     return false;
   }
 
-  const target = toFinitePoint(point);
-  const polygon = points.filter(isFinitePoint).map(toFinitePoint);
+  const target = toFinitePoint(point, pointKeys);
+  const polygon = points
+    .filter((polygonPoint) => isFinitePoint(polygonPoint, pointKeys))
+    .map((polygonPoint) => toFinitePoint(polygonPoint, pointKeys));
 
   if (polygon.length < 3) {
     return false;
@@ -199,28 +222,37 @@ export function isPointInPolygon(point, points) {
   return inside;
 }
 
+function pointKeysForAoi(aoi) {
+  return aoi?.space === 'video'
+    ? DEFAULT_POINT_KEYS
+    : { x: 'yaw', y: 'pitch' };
+}
+
 export function pointHitsPolygonAoi(point, aoi) {
-  if (!isFinitePoint(point)) {
+  const pointKeys = pointKeysForAoi(aoi);
+
+  if (!isFinitePoint(point, pointKeys)) {
     return false;
   }
 
-  const points = normalizePolygonPoints(aoi?.points || []);
+  const points = normalizePolygonPoints(aoi?.points || [], pointKeys);
 
   if (points.length < 3) {
     return false;
   }
 
-  if (isPointInPolygon(point, points)) {
+  if (isPointInPolygon(point, points, pointKeys)) {
     return true;
   }
 
   const padding = Math.max(0, finiteNumber(aoi?.analysisPadding));
-  return padding > 0 && distanceToPolygonEdges(point, points) <= padding;
+  return padding > 0 && distanceToPolygonEdges(point, points, pointKeys) <= padding;
 }
 
-export function interpolatePolygonPoints(startPoints, endPoints, ratio) {
-  const start = normalizePolygonPoints(startPoints);
-  const end = normalizePolygonPoints(endPoints);
+export function interpolatePolygonPoints(startPoints, endPoints, ratio, keys = DEFAULT_POINT_KEYS) {
+  const pointKeys = resolvePointKeys(keys);
+  const start = normalizePolygonPoints(startPoints, pointKeys);
+  const end = normalizePolygonPoints(endPoints, pointKeys);
   const safeRatio = clamp(finiteNumber(ratio), 0, 1);
 
   if (start.length !== end.length) {
@@ -231,8 +263,12 @@ export function interpolatePolygonPoints(startPoints, endPoints, ratio) {
     const endPoint = end[index];
 
     return normalizePolygonPoints([{
-      x: roundCoordinate(startPoint.x + (endPoint.x - startPoint.x) * safeRatio),
-      y: roundCoordinate(startPoint.y + (endPoint.y - startPoint.y) * safeRatio),
-    }])[0];
+      [pointKeys.x]: roundCoordinate(
+        startPoint[pointKeys.x] + (endPoint[pointKeys.x] - startPoint[pointKeys.x]) * safeRatio,
+      ),
+      [pointKeys.y]: roundCoordinate(
+        startPoint[pointKeys.y] + (endPoint[pointKeys.y] - startPoint[pointKeys.y]) * safeRatio,
+      ),
+    }], pointKeys)[0];
   });
 }

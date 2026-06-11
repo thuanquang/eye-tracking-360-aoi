@@ -281,6 +281,49 @@ test('hit tests resolved polygon AOIs', () => {
   assert.deepEqual(hitTestAois({ x: 0.2, y: 0.18 }, [resolved]).map((aoi) => aoi.id), ['object']);
 });
 
+test('resolves and hit tests panorama polygon AOIs', () => {
+  const [resolved] = resolveAoisAtTime([
+    {
+      id: 'pan-object',
+      label: 'Panorama object',
+      color: '#ffd166',
+      space: 'panorama',
+      shape: 'polygon',
+      points: [
+        { yaw: -20, pitch: -10 },
+        { yaw: 20, pitch: -10 },
+        { yaw: 0, pitch: 10 },
+      ],
+      keyframes: [
+        {
+          t: 0,
+          points: [
+            { yaw: -20, pitch: -10 },
+            { yaw: 20, pitch: -10 },
+            { yaw: 0, pitch: 10 },
+          ],
+        },
+        {
+          t: 10,
+          points: [
+            { yaw: 0, pitch: -10 },
+            { yaw: 40, pitch: -10 },
+            { yaw: 20, pitch: 10 },
+          ],
+        },
+      ],
+    },
+  ], 5);
+
+  assert.deepEqual(resolved.points, [
+    { yaw: -10, pitch: -10 },
+    { yaw: 30, pitch: -10 },
+    { yaw: 10, pitch: 10 },
+  ]);
+  assert.deepEqual(hitTestAois({ yaw: 10, pitch: 0 }, [resolved]).map((aoi) => aoi.id), ['pan-object']);
+  assert.deepEqual(hitTestAois({ yaw: 45, pitch: 0 }, [resolved]).map((aoi) => aoi.id), []);
+});
+
 test('interpolates dynamic AOI yaw across the panorama wraparound', () => {
   const [resolved] = resolveAoisAtTime([
     {

@@ -77,6 +77,29 @@ test('interpolates matching polygon keyframes', () => {
   ]);
 });
 
+test('interpolates matching panorama polygon keyframes', () => {
+  const points = interpolatePolygonPoints(
+    [
+      { yaw: -20, pitch: -10 },
+      { yaw: 20, pitch: -10 },
+      { yaw: 0, pitch: 10 },
+    ],
+    [
+      { yaw: 0, pitch: 10 },
+      { yaw: 40, pitch: 10 },
+      { yaw: 20, pitch: 30 },
+    ],
+    0.5,
+    { x: 'yaw', y: 'pitch' },
+  );
+
+  assert.deepEqual(points, [
+    { yaw: -10, pitch: 0 },
+    { yaw: 30, pitch: 0 },
+    { yaw: 10, pitch: 20 },
+  ]);
+});
+
 test('normalizes and bounds polygon points', () => {
   const points = normalizePolygonPoints([
     { x: -0.2, y: 0.2 },
@@ -97,9 +120,39 @@ test('normalizes and bounds polygon points', () => {
   });
 });
 
+test('normalizes and bounds panorama polygon points', () => {
+  const keys = { x: 'yaw', y: 'pitch' };
+  const points = normalizePolygonPoints([
+    { yaw: -220, pitch: 10 },
+    { yaw: 220, pitch: -100 },
+    { yaw: 40, pitch: 120 },
+    { yaw: '30', pitch: 10 },
+    { yaw: 15, pitch: null },
+    { yaw: false, pitch: 0 },
+    null,
+  ], keys);
+
+  assert.deepEqual(points, [
+    { yaw: -180, pitch: 10 },
+    { yaw: 180, pitch: -90 },
+    { yaw: 40, pitch: 90 },
+  ]);
+  assert.deepEqual(boundsFromPoints(points, keys), {
+    yawMin: -180,
+    yawMax: 180,
+    pitchMin: -90,
+    pitchMax: 90,
+  });
+});
+
 test('filters invalid polygon points during normalization', () => {
   const points = normalizePolygonPoints([
     { x: 0.2, y: 0.2 },
+    { x: '0.4', y: 0.3 },
+    { x: '', y: 0.3 },
+    { x: '   ', y: 0.3 },
+    { x: false, y: 0.3 },
+    { x: [], y: 0.3 },
     { x: 'bad', y: 0.3 },
     { x: 0.4, y: Infinity },
     { x: 0.5 },
@@ -112,4 +165,30 @@ test('filters invalid polygon points during normalization', () => {
     { x: 0.2, y: 0.2 },
     { x: 0.7, y: 0.8 },
   ]);
+});
+
+test('hit tests panorama polygon AOIs with optional analysis padding', () => {
+  const points = [
+    { yaw: -20, pitch: -10 },
+    { yaw: 20, pitch: -10 },
+    { yaw: 20, pitch: 10 },
+    { yaw: -20, pitch: 10 },
+  ];
+  const keys = { x: 'yaw', y: 'pitch' };
+  const aoi = {
+    id: 'pan-object',
+    label: 'Panorama object',
+    color: '#ffd166',
+    space: 'panorama',
+    shape: 'polygon',
+    analysisPadding: 2,
+    points,
+  };
+
+  assert.equal(isPointInPolygon({ yaw: 0, pitch: 0 }, points, keys), true);
+  assert.equal(isPointInPolygon({ yaw: 30, pitch: 0 }, points, keys), false);
+  assert.equal(distanceToPolygonEdges({ yaw: 0, pitch: 11 }, points, keys), 1);
+  assert.equal(pointHitsPolygonAoi({ yaw: 0, pitch: 0 }, aoi), true);
+  assert.equal(pointHitsPolygonAoi({ yaw: 0, pitch: 11 }, aoi), true);
+  assert.equal(pointHitsPolygonAoi({ yaw: 0, pitch: 14 }, aoi), false);
 });
