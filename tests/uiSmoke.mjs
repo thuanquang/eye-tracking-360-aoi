@@ -32,6 +32,19 @@ function hasColorVariance(samples) {
   return false;
 }
 
+async function recordMouseExport(page, viewerBox) {
+  await page.mouse.move(viewerBox.x + viewerBox.width / 2, viewerBox.y + viewerBox.height / 2);
+  await page.locator('#recordButton').click();
+  await page.waitForFunction(() => document.querySelector('#sampleCount')?.textContent !== '0');
+  await page.locator('#recordButton').click();
+
+  const downloadPromise = page.waitForEvent('download');
+  await page.locator('#exportButton').click();
+  const download = await downloadPromise;
+
+  return JSON.parse(await readFile(await download.path(), 'utf8'));
+}
+
 const browser = await chromium.launch();
 const page = await browser.newPage({
   acceptDownloads: true,
@@ -164,49 +177,6 @@ try {
     'AOIs partly outside the player viewport should still render as clipped anchored shapes.',
   );
 
-  const polygonSidecarPath = join(tmpDir, 'polygon-video.aoi.json');
-  await writeFile(polygonSidecarPath, JSON.stringify({
-    video: {
-      name: 'test-video.mp4',
-      projection: 'flat',
-      stereoLayout: 'mono',
-    },
-    aois: [
-      {
-        id: 'polygon-object',
-        label: 'Polygon object',
-        color: '#ffd166',
-        space: 'video',
-        shape: 'polygon',
-        points: [
-          { x: 0.3, y: 0.2 },
-          { x: 0.55, y: 0.24 },
-          { x: 0.52, y: 0.5 },
-          { x: 0.33, y: 0.46 },
-        ],
-        keyframes: [
-          {
-            t: 0,
-            points: [
-              { x: 0.3, y: 0.2 },
-              { x: 0.55, y: 0.24 },
-              { x: 0.52, y: 0.5 },
-              { x: 0.33, y: 0.46 },
-            ],
-          },
-        ],
-      },
-    ],
-  }, null, 2));
-
-  await page.locator('#aoiFileInput').setInputFiles(polygonSidecarPath);
-  await page.waitForFunction(() => document.querySelector('#aoiList')?.textContent?.includes('Polygon object'));
-  assert.equal(
-    await page.locator('#aoiOverlay [data-aoi-id="polygon-object"]').count(),
-    1,
-    'Imported polygon AOIs should render as object-shaped overlay polygons.',
-  );
-
   const viewerBox = await page.locator('#viewer').boundingBox();
   const mouseMoveLeakCount = await page.locator('#viewer').evaluate((viewerElement) => {
     window.__aoiMouseMoveLeakCount = 0;
@@ -260,15 +230,141 @@ try {
 
   await page.locator('#mouseModeButton').click();
   assert.equal(await page.locator('#modeLabel').innerText(), 'mouse');
-  await page.mouse.move(viewerBox.x + viewerBox.width / 2, viewerBox.y + viewerBox.height / 2);
-  await page.locator('#recordButton').click();
-  await page.waitForFunction(() => document.querySelector('#sampleCount')?.textContent !== '0');
-  await page.locator('#recordButton').click();
 
-  const downloadPromise = page.waitForEvent('download');
-  await page.locator('#exportButton').click();
-  const download = await downloadPromise;
-  const exportedJson = JSON.parse(await readFile(await download.path(), 'utf8'));
+  const boxExportedJson = await recordMouseExport(page, viewerBox);
+  const [boxSample] = boxExportedJson.samples;
+
+  assert.equal(boxExportedJson.samples.length > 0, true, 'Mouse recording should export at least one 360 sidecar sample.');
+  assert.equal(
+    boxExportedJson.aoiSource,
+    'test-video.aoi.json',
+    'Export should identify the registered 360 AOI sidecar source.',
+  );
+  assert.equal(
+    boxExportedJson.aois.some((aoi) => aoi.id === 'sidecar-center'),
+    true,
+    'Export should package AOI definitions from the registered 360 sidecar file.',
+  );
+  assert.equal(
+    boxExportedJson.project.video.projection,
+    'equirectangular',
+    'Export should preserve 360 video projection metadata from the AOI sidecar.',
+  );
+  assert.equal(
+    boxExportedJson.project.video.stereoLayout,
+    'top-bottom',
+    'Export should preserve 3D stereo layout metadata from the AOI sidecar.',
+  );
+  assert.equal(
+    boxSample.activeAois.some((aoi) => aoi.id === 'sidecar-center' && Number.isFinite(aoi.yawMin)),
+    true,
+    'Time-resolved 360 AOI bounds should be inspectable by AOI id.',
+  );
+
+  await page.locator('#clearButton').click();
+  assert.equal(await page.locator('#sampleCount').innerText(), '0', 'Clear should reset samples before polygon export coverage.');
+
+  const invalidPolygonSidecarPath = join(tmpDir, 'invalid-polygon-video.aoi.json');
+  await writeFile(invalidPolygonSidecarPath, JSON.stringify({
+    video: {
+      name: 'test-video.mp4',
+      projection: 'flat',
+      stereoLayout: 'mono',
+    },
+    aois: [
+      {
+        id: 'invalid-polygon-object',
+        label: 'Invalid polygon object',
+        color: '#ffd166',
+        space: 'video',
+        shape: 'polygon',
+        points: [
+          { x: 0.3, y: 0.2 },
+          { x: 0.55, y: 0.24 },
+          { x: 0.52, y: 0.5 },
+          { x: 0.33, y: 0.46 },
+        ],
+        keyframes: [
+          {
+            t: 0,
+            points: [
+              { x: 0.3, y: 0.2 },
+              { x: '', y: 0.24 },
+              { x: 0.52, y: 0.5 },
+              { x: 0.33, y: 0.46 },
+            ],
+          },
+        ],
+      },
+    ],
+  }, null, 2));
+
+  await page.locator('#aoiFileInput').setInputFiles(invalidPolygonSidecarPath);
+  await page.waitForFunction(() => (
+    document.querySelector('#viewerNotice')?.textContent?.includes('Could not load AOI JSON') ||
+    document.querySelector('#aoiSourceLabel')?.textContent === 'invalid-polygon-video.aoi.json'
+  ));
+  assert.match(
+    await page.locator('#viewerNotice').innerText(),
+    /Could not load AOI JSON/,
+    'Invalid polygon keyframe coordinates should be rejected.',
+  );
+  assert.equal(
+    await page.locator('#aoiSourceLabel').innerText(),
+    'test-video.aoi.json',
+    'Rejected polygon sidecars should not replace the active AOI source.',
+  );
+  assert.equal(
+    (await page.locator('#aoiList').innerText()).includes('Invalid polygon object'),
+    false,
+    'Rejected polygon sidecars should not switch the AOI list.',
+  );
+
+  const polygonSidecarPath = join(tmpDir, 'polygon-video.aoi.json');
+  await writeFile(polygonSidecarPath, JSON.stringify({
+    video: {
+      name: 'test-video.mp4',
+      projection: 'flat',
+      stereoLayout: 'mono',
+    },
+    aois: [
+      {
+        id: 'polygon-object',
+        label: 'Polygon object',
+        color: '#ffd166',
+        space: 'video',
+        shape: 'polygon',
+        points: [
+          { x: 0.3, y: 0.2 },
+          { x: 0.55, y: 0.24 },
+          { x: 0.52, y: 0.5 },
+          { x: 0.33, y: 0.46 },
+        ],
+        keyframes: [
+          {
+            t: 0,
+            points: [
+              { x: 0.3, y: 0.2 },
+              { x: 0.55, y: 0.24 },
+              { x: 0.52, y: 0.5 },
+              { x: 0.33, y: 0.46 },
+            ],
+          },
+        ],
+      },
+    ],
+  }, null, 2));
+
+  await page.locator('#aoiFileInput').setInputFiles(polygonSidecarPath);
+  await page.waitForFunction(() => document.querySelector('#aoiList')?.textContent?.includes('Polygon object'));
+  await page.waitForFunction(() => document.querySelector('#aoiOverlay [data-aoi-id="polygon-object"]'));
+  assert.equal(
+    await page.locator('#aoiOverlay [data-aoi-id="polygon-object"]').count(),
+    1,
+    'Imported polygon AOIs should render as object-shaped overlay polygons.',
+  );
+
+  const exportedJson = await recordMouseExport(page, viewerBox);
   const [sample] = exportedJson.samples;
 
   assert.equal(exportedJson.samples.length > 0, true, 'Mouse recording should export at least one sample.');

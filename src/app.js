@@ -760,6 +760,10 @@ function isValidPanoramaAoiBounds(aoi) {
   );
 }
 
+function isStrictFiniteNumber(value) {
+  return typeof value === 'number' && Number.isFinite(value);
+}
+
 function isValidPolygonPoints(points, space) {
   if (!Array.isArray(points) || points.length < 3) {
     return false;
@@ -769,8 +773,8 @@ function isValidPolygonPoints(points, space) {
     point != null &&
     typeof point === 'object' &&
     (space === 'panorama'
-      ? isFiniteNumber(point.yaw) && isFiniteNumber(point.pitch)
-      : isFiniteNumber(point.x) && isFiniteNumber(point.y))
+      ? isStrictFiniteNumber(point.yaw) && isStrictFiniteNumber(point.pitch)
+      : isStrictFiniteNumber(point.x) && isStrictFiniteNumber(point.y))
   ));
 }
 
