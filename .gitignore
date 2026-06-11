@@ -1,4 +1,5 @@
 node_modules/
+.worktrees/
 server.log
 server.err.log
 verification-*.png
