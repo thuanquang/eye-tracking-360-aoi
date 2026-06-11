@@ -33,6 +33,46 @@ test('builds a Colab auto-AOI job from video metadata and prompts', () => {
   assert.equal(job.aoiPolicy.segmenterModel, 'facebook/sam2.1-hiera-small');
   assert.equal(job.aoiPolicy.maxPolygonPoints, 80);
   assert.equal(job.aoiPolicy.polygonSimplificationEpsilon, 0.003);
+  assert.equal(job.aoiPolicy.analysisPaddingPx, 18);
+  assert.equal(job.aoiPolicy.recommendedNotebook, 'notebooks/google-colab-auto-aoi.ipynb');
+});
+
+test('sanitizes Colab auto-AOI polygon policy numbers conservatively', () => {
+  const highJob = buildColabAoiJob({
+    maxPolygonPoints: 999,
+    polygonSimplificationEpsilon: 0.1,
+    analysisPaddingPx: 999,
+  });
+  assert.equal(highJob.aoiPolicy.maxPolygonPoints, 240);
+  assert.equal(highJob.aoiPolicy.polygonSimplificationEpsilon, 0.02);
+  assert.equal(highJob.aoiPolicy.analysisPaddingPx, 128);
+
+  const lowJob = buildColabAoiJob({
+    maxPolygonPoints: -5,
+    polygonSimplificationEpsilon: 0,
+    analysisPaddingPx: -12,
+  });
+  assert.equal(lowJob.aoiPolicy.maxPolygonPoints, 12);
+  assert.equal(lowJob.aoiPolicy.polygonSimplificationEpsilon, 0.001);
+  assert.equal(lowJob.aoiPolicy.analysisPaddingPx, 0);
+
+  const fractionalJob = buildColabAoiJob({
+    maxPolygonPoints: 37.6,
+    polygonSimplificationEpsilon: 0.0034567,
+    analysisPaddingPx: 18.4,
+  });
+  assert.equal(fractionalJob.aoiPolicy.maxPolygonPoints, 38);
+  assert.equal(fractionalJob.aoiPolicy.polygonSimplificationEpsilon, 0.003457);
+  assert.equal(fractionalJob.aoiPolicy.analysisPaddingPx, 18);
+
+  const fallbackJob = buildColabAoiJob({
+    maxPolygonPoints: Number.NaN,
+    polygonSimplificationEpsilon: Number.POSITIVE_INFINITY,
+    analysisPaddingPx: 'not-a-number',
+  });
+  assert.equal(fallbackJob.aoiPolicy.maxPolygonPoints, 80);
+  assert.equal(fallbackJob.aoiPolicy.polygonSimplificationEpsilon, 0.003);
+  assert.equal(fallbackJob.aoiPolicy.analysisPaddingPx, 18);
 });
 
 test('converts flat video pixel boxes to normalized AOI keyframes', () => {

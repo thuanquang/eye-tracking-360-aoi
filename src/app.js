@@ -2985,8 +2985,8 @@ function exportColabAoiJob() {
     video: buildVideoPackageMetadata(),
     prompts: cloudAoiPromptsInput.value,
     sampleIntervalSec: Number(cloudAoiSampleIntervalInput.value),
-    maxPolygonPoints: Number(cloudAoiMaxPointsInput.value),
-    polygonSimplificationEpsilon: Number(cloudAoiSimplifyInput.value),
+    maxPolygonPoints: cloudAoiMaxPointsInput.valueAsNumber,
+    polygonSimplificationEpsilon: cloudAoiSimplifyInput.valueAsNumber,
   });
 
   downloadJson(job, `colab-aoi-job-${Date.now()}.json`);

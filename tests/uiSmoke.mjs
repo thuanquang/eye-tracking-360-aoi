@@ -226,6 +226,22 @@ try {
     0.012,
     'Colab job export should preserve polygon simplification tolerance.',
   );
+  await page.locator('#cloudAoiMaxPointsInput').fill('');
+  await page.locator('#cloudAoiSimplifyInput').fill('');
+  const blankColabJobDownloadPromise = page.waitForEvent('download');
+  await page.locator('#exportColabJobButton').click();
+  const blankColabJobDownload = await blankColabJobDownloadPromise;
+  const blankColabJob = JSON.parse(await readFile(await blankColabJobDownload.path(), 'utf8'));
+  assert.equal(
+    blankColabJob.aoiPolicy.maxPolygonPoints,
+    80,
+    'Blank polygon point budget should export the builder default.',
+  );
+  assert.equal(
+    blankColabJob.aoiPolicy.polygonSimplificationEpsilon,
+    0.003,
+    'Blank polygon simplification tolerance should export the builder default.',
+  );
   const tmpDir = await mkdtemp(join(tmpdir(), 'aoi-sidecar-'));
   const sidecarPath = join(tmpDir, 'test-video.aoi.json');
   await writeFile(sidecarPath, JSON.stringify({
