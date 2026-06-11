@@ -180,6 +180,10 @@ const manualAoiLabelInput = document.querySelector('#manualAoiLabelInput');
 const manualAoiSizeInput = document.querySelector('#manualAoiSizeInput');
 const manualAoiColorInput = document.querySelector('#manualAoiColorInput');
 const addManualAoiButton = document.querySelector('#addManualAoiButton');
+const drawPolygonAoiButton = document.querySelector('#drawPolygonAoiButton');
+const finishPolygonAoiButton = document.querySelector('#finishPolygonAoiButton');
+const cancelPolygonAoiButton = document.querySelector('#cancelPolygonAoiButton');
+const manualAoiStatus = document.querySelector('#manualAoiStatus');
 const cloudAoiPromptsInput = document.querySelector('#cloudAoiPromptsInput');
 const cloudAoiSampleIntervalInput = document.querySelector('#cloudAoiSampleIntervalInput');
 const exportColabJobButton = document.querySelector('#exportColabJobButton');
@@ -264,6 +268,12 @@ const state = {
   accuracyIndex: 0,
   accuracySamples: [],
   resumeVideoAfterTargetMode: false,
+  selectedAoiId: null,
+  manualAnnotation: {
+    mode: 'idle',
+    points: [],
+    dragIndex: null,
+  },
 };
 
 const scene = new THREE.Scene();
@@ -631,11 +641,142 @@ function appendAoiOverlayLabel(fragment, aoi, point) {
   fragment.appendChild(label);
 }
 
+function cloneAoiPoints(points) {
+  return (points || []).map((point) => ({ ...point }));
+}
+
+function screenToAoiSpacePoint(screenPoint, space) {
+  const rect = viewer.getBoundingClientRect();
+  const x = clampNumber(screenPoint.x, 0, rect.width);
+  const y = clampNumber(screenPoint.y, 0, rect.height);
+
+  if (space === 'video') {
+    return {
+      x: Number((x / rect.width).toFixed(6)),
+      y: Number((y / rect.height).toFixed(6)),
+    };
+  }
+
+  const panorama = screenPointToYawPitch({
+    x,
+    y,
+    width: rect.width,
+    height: rect.height,
+    cameraYaw: state.cameraYaw,
+    cameraPitch: state.cameraPitch,
+    fov: camera.fov,
+  });
+
+  return {
+    yaw: Number(panorama.yaw.toFixed(6)),
+    pitch: Number(panorama.pitch.toFixed(6)),
+  };
+}
+
+function screenToCurrentAoiPoint(screenPoint) {
+  return screenToAoiSpacePoint(
+    screenPoint,
+    getCurrentProjection() === 'flat' ? 'video' : 'panorama',
+  );
+}
+
+function getDraftScreenPoints(rect) {
+  const points = state.manualAnnotation.points || [];
+
+  if (getCurrentProjection() === 'flat') {
+    return points.map((point) => ({ x: point.x * rect.width, y: point.y * rect.height }));
+  }
+
+  return points
+    .map((point) => panoramaPointToScreen({
+      yaw: point.yaw,
+      pitch: point.pitch,
+      width: rect.width,
+      height: rect.height,
+      cameraYaw: state.cameraYaw,
+      cameraPitch: state.cameraPitch,
+      fov: camera.fov,
+    }))
+    .filter((point) => point.visible);
+}
+
+function appendAoiVertexHandle(fragment, point, index, aoiId = '') {
+  if (!Number.isFinite(point?.x) || !Number.isFinite(point?.y)) {
+    return;
+  }
+
+  const handle = document.createElementNS(SVG_NS, 'circle');
+  handle.setAttribute('class', 'aoi-vertex-handle');
+  handle.setAttribute('cx', String(point.x));
+  handle.setAttribute('cy', String(point.y));
+  handle.setAttribute('r', '5');
+  handle.dataset.vertexIndex = String(index);
+  if (aoiId) {
+    handle.dataset.aoiId = aoiId;
+  }
+  fragment.appendChild(handle);
+}
+
+function appendDraftPolygon(fragment, rect) {
+  if (state.manualAnnotation.mode !== 'drawing') {
+    return;
+  }
+
+  const points = getDraftScreenPoints(rect);
+  appendAoiOverlayPolygon(fragment, { id: 'draft-polygon' }, points, manualAoiColorInput.value || '#ffd166');
+  points.forEach((point, index) => {
+    appendAoiVertexHandle(fragment, point, index);
+  });
+}
+
+function getPolygonHandleScreenPoints(aoi, rect) {
+  const points = aoi.points || [];
+
+  if (getAoiSpace(aoi) === 'video') {
+    return points.map((point, index) => ({
+      x: point.x * rect.width,
+      y: point.y * rect.height,
+      vertexIndex: index,
+    }));
+  }
+
+  return points
+    .map((point, index) => ({
+      ...panoramaPointToScreen({
+        yaw: point.yaw,
+        pitch: point.pitch,
+        width: rect.width,
+        height: rect.height,
+        cameraYaw: state.cameraYaw,
+        cameraPitch: state.cameraPitch,
+        fov: camera.fov,
+      }),
+      vertexIndex: index,
+    }))
+    .filter((point) => point.visible);
+}
+
+function appendSelectedPolygonHandles(fragment, rect) {
+  if (state.manualAnnotation.mode !== 'editing' || !state.selectedAoiId) {
+    return;
+  }
+
+  const selectedAoi = getRenderableAois().find((aoi) => aoi.id === state.selectedAoiId);
+  if (selectedAoi?.shape !== 'polygon') {
+    return;
+  }
+
+  getPolygonHandleScreenPoints(selectedAoi, rect).forEach((point) => {
+    appendAoiVertexHandle(fragment, point, point.vertexIndex, selectedAoi.id);
+  });
+}
+
 function drawAoiOverlay() {
   const rect = viewer.getBoundingClientRect();
 
   if (!rect.width || !rect.height) {
     aoiOverlay.replaceChildren();
+    aoiOverlay.__renderSignature = '';
     return;
   }
 
@@ -701,6 +842,17 @@ function drawAoiOverlay() {
     });
   });
 
+  appendSelectedPolygonHandles(fragment, rect);
+  appendDraftPolygon(fragment, rect);
+  const renderSignature = Array.from(fragment.childNodes)
+    .map((node) => node.outerHTML || node.textContent || '')
+    .join('');
+
+  if (aoiOverlay.__renderSignature === renderSignature) {
+    return;
+  }
+
+  aoiOverlay.__renderSignature = renderSignature;
   aoiOverlay.replaceChildren(fragment);
 }
 
@@ -718,20 +870,29 @@ function getAoiBoundsLabel(aoi) {
 
 function renderAoiList() {
   aoiSourceLabel.textContent = aoiSource;
-  aoiList.innerHTML = activeAois.map((aoi) => {
+  const items = activeAois.map((aoi) => {
     const bounds = getAoiBoundsLabel(aoi);
     const dynamicLabel = Array.isArray(aoi.keyframes) && aoi.keyframes.length ? ' (dynamic)' : '';
+    const item = document.createElement('li');
+    const swatch = document.createElement('span');
+    const content = document.createElement('span');
+    const label = document.createElement('strong');
+    const boundsLabel = document.createElement('span');
 
-    return `
-      <li>
-        <span class="swatch" style="background: ${aoi.color}"></span>
-        <span>
-          <strong>${aoi.label}${dynamicLabel}</strong>
-          <span>${bounds}</span>
-        </span>
-      </li>
-    `;
-  }).join('');
+    item.dataset.aoiId = aoi.id;
+    item.classList.toggle('is-selected', aoi.id === state.selectedAoiId);
+    item.tabIndex = 0;
+    swatch.className = 'swatch';
+    swatch.style.background = aoi.color;
+    label.textContent = `${aoi.label}${dynamicLabel}`;
+    boundsLabel.textContent = bounds;
+    content.append(label, boundsLabel);
+    item.append(swatch, content);
+
+    return item;
+  });
+
+  aoiList.replaceChildren(...items);
 }
 
 function isFiniteNumber(value) {
@@ -863,6 +1024,8 @@ function registerAois(aois, source) {
 
   activeAois = loadedAois;
   aoiSource = source;
+  state.selectedAoiId = null;
+  setManualAnnotationIdle('Click Draw Polygon, then click around the object edge. Double-click or press Finish to close.');
   registeredProjectMetadata = extractProjectMetadataFromJson(aois);
   applyVideoMetadataControls(registeredProjectMetadata.video || {});
   renderAoiList();
@@ -2186,6 +2349,10 @@ function startDrag(event) {
     return;
   }
 
+  if (state.manualAnnotation.mode === 'drawing' || event.target.closest?.('.aoi-vertex-handle')) {
+    return;
+  }
+
   viewer.classList.add('is-dragging');
   viewer.setPointerCapture(event.pointerId);
   viewer.dataset.lastX = String(event.clientX);
@@ -2473,6 +2640,242 @@ function createUniqueAoiId(label) {
   return `${base}-${suffix}`;
 }
 
+function setManualAnnotationIdle(message = 'Click Draw Polygon, then click around the object edge.') {
+  state.manualAnnotation = { mode: 'idle', points: [], dragIndex: null };
+  drawPolygonAoiButton.disabled = false;
+  finishPolygonAoiButton.disabled = true;
+  cancelPolygonAoiButton.disabled = true;
+  aoiOverlay.classList.remove('is-authoring');
+  manualAoiStatus.textContent = message;
+}
+
+function startPolygonAnnotation() {
+  state.selectedAoiId = null;
+  state.manualAnnotation = { mode: 'drawing', points: [], dragIndex: null };
+  drawPolygonAoiButton.disabled = true;
+  finishPolygonAoiButton.disabled = true;
+  cancelPolygonAoiButton.disabled = false;
+  aoiOverlay.classList.add('is-authoring');
+  manualAoiStatus.textContent = 'Click around the object edge. Double-click to finish.';
+  renderAoiList();
+  drawAoiOverlay();
+}
+
+function cancelPolygonAnnotation() {
+  setManualAnnotationIdle('Click Draw Polygon, then click around the object edge.');
+  drawAoiOverlay();
+}
+
+function addDraftPolygonPoint(event) {
+  if (state.manualAnnotation.mode !== 'drawing' || event.detail > 1) {
+    return;
+  }
+
+  event.preventDefault();
+  event.stopPropagation();
+  const rect = viewer.getBoundingClientRect();
+  const point = screenToCurrentAoiPoint({
+    x: event.clientX - rect.left,
+    y: event.clientY - rect.top,
+  });
+  state.manualAnnotation.points.push(point);
+  finishPolygonAoiButton.disabled = state.manualAnnotation.points.length < 3;
+  drawAoiOverlay();
+}
+
+function finishPolygonAnnotation() {
+  if (state.manualAnnotation.points.length < 3) {
+    return;
+  }
+
+  const label = manualAoiLabelInput.value.trim() || 'Manual polygon AOI';
+  const id = createUniqueAoiId(label);
+  const space = getCurrentProjection() === 'flat' ? 'video' : 'panorama';
+  const points = cloneAoiPoints(state.manualAnnotation.points);
+  const aoi = {
+    id,
+    label,
+    color: manualAoiColorInput.value || '#ffd166',
+    space,
+    shape: 'polygon',
+    points,
+    keyframes: [
+      {
+        t: Number((sourceVideo.currentTime || 0).toFixed(3)),
+        points: cloneAoiPoints(points),
+      },
+    ],
+  };
+
+  activeAois = [...activeAois, aoi];
+  aoiSource = 'manual';
+  cancelPolygonAnnotation();
+  renderAoiList();
+  drawAoiOverlay();
+  setNotice(`Added polygon AOI: ${label}`, true);
+}
+
+function getActiveAoiById(aoiId) {
+  return activeAois.find((aoi) => aoi.id === aoiId);
+}
+
+function selectAoiForEditing(aoiId) {
+  const selectedAoi = getActiveAoiById(aoiId);
+
+  if (!selectedAoi) {
+    return;
+  }
+
+  state.selectedAoiId = selectedAoi.id;
+  state.manualAnnotation = {
+    mode: selectedAoi.shape === 'polygon' ? 'editing' : 'idle',
+    points: [],
+    dragIndex: null,
+  };
+  drawPolygonAoiButton.disabled = false;
+  finishPolygonAoiButton.disabled = true;
+  cancelPolygonAoiButton.disabled = true;
+  aoiOverlay.classList.remove('is-authoring');
+  manualAoiStatus.textContent = selectedAoi.shape === 'polygon'
+    ? 'Drag polygon vertices to refine the selected AOI.'
+    : 'Selected AOI. Polygon vertices are editable for polygon AOIs.';
+  renderAoiList();
+  drawAoiOverlay();
+}
+
+function handleAoiListClick(event) {
+  const item = event.target.closest('[data-aoi-id]');
+
+  if (item) {
+    selectAoiForEditing(item.dataset.aoiId);
+  }
+}
+
+function handleAoiListKeydown(event) {
+  if (event.key !== 'Enter' && event.key !== ' ') {
+    return;
+  }
+
+  const item = event.target.closest('[data-aoi-id]');
+  if (item) {
+    event.preventDefault();
+    selectAoiForEditing(item.dataset.aoiId);
+  }
+}
+
+function findCurrentKeyframeIndex(keyframes) {
+  const timeSec = sourceVideo.currentTime || 0;
+
+  return keyframes.reduce((closestIndex, keyframe, index) => {
+    const closestDistance = Math.abs((keyframes[closestIndex]?.t || 0) - timeSec);
+    const distance = Math.abs((keyframe?.t || 0) - timeSec);
+    return distance < closestDistance ? index : closestIndex;
+  }, 0);
+}
+
+function updatePolygonKeyframes(aoi, points) {
+  if (!Array.isArray(aoi.keyframes) || !aoi.keyframes.length) {
+    return [
+      {
+        t: Number((sourceVideo.currentTime || 0).toFixed(3)),
+        points: cloneAoiPoints(points),
+      },
+    ];
+  }
+
+  const keyframeIndex = findCurrentKeyframeIndex(aoi.keyframes);
+  return aoi.keyframes.map((keyframe, index) => (
+    index === keyframeIndex
+      ? { ...keyframe, points: cloneAoiPoints(points) }
+      : keyframe
+  ));
+}
+
+function updateSelectedPolygonPoint(vertexIndex, point) {
+  const selectedAoi = getActiveAoiById(state.selectedAoiId);
+
+  if (selectedAoi?.shape !== 'polygon') {
+    return;
+  }
+
+  const points = cloneAoiPoints(selectedAoi.points);
+  if (!points[vertexIndex]) {
+    return;
+  }
+
+  points[vertexIndex] = point;
+  activeAois = activeAois.map((aoi) => (
+    aoi.id === selectedAoi.id
+      ? {
+        ...aoi,
+        points: cloneAoiPoints(points),
+        keyframes: updatePolygonKeyframes(aoi, points),
+      }
+      : aoi
+  ));
+}
+
+function startVertexHandleDrag(event) {
+  if (state.manualAnnotation.mode === 'drawing') {
+    event.stopPropagation();
+    return;
+  }
+
+  const handle = event.target.closest?.('.aoi-vertex-handle');
+  if (!handle?.dataset.aoiId) {
+    return;
+  }
+
+  const dragIndex = Number(handle.dataset.vertexIndex);
+  if (!Number.isInteger(dragIndex)) {
+    return;
+  }
+
+  state.selectedAoiId = handle.dataset.aoiId;
+  state.manualAnnotation = { mode: 'editing', points: [], dragIndex };
+  aoiOverlay.setPointerCapture(event.pointerId);
+  manualAoiStatus.textContent = 'Dragging polygon vertex.';
+  renderAoiList();
+  event.preventDefault();
+  event.stopPropagation();
+}
+
+function dragSelectedVertex(event) {
+  if (state.manualAnnotation.mode !== 'editing' || state.manualAnnotation.dragIndex === null) {
+    return;
+  }
+
+  const selectedAoi = getActiveAoiById(state.selectedAoiId);
+  if (selectedAoi?.shape !== 'polygon') {
+    return;
+  }
+
+  const rect = viewer.getBoundingClientRect();
+  const point = screenToAoiSpacePoint({
+    x: event.clientX - rect.left,
+    y: event.clientY - rect.top,
+  }, getAoiSpace(selectedAoi));
+  updateSelectedPolygonPoint(state.manualAnnotation.dragIndex, point);
+  drawAoiOverlay();
+  event.preventDefault();
+  event.stopPropagation();
+}
+
+function finishVertexHandleDrag(event) {
+  if (state.manualAnnotation.dragIndex === null) {
+    return;
+  }
+
+  state.manualAnnotation = { ...state.manualAnnotation, dragIndex: null };
+  if (aoiOverlay.hasPointerCapture(event.pointerId)) {
+    aoiOverlay.releasePointerCapture(event.pointerId);
+  }
+  manualAoiStatus.textContent = 'Drag polygon vertices to refine the selected AOI.';
+  drawAoiOverlay();
+  event.preventDefault();
+  event.stopPropagation();
+}
+
 function addManualAoi() {
   const label = manualAoiLabelInput.value.trim() || 'Manual AOI';
   const color = manualAoiColorInput.value || '#ffd166';
@@ -2592,6 +2995,18 @@ sourceVideo.addEventListener('error', () => {
   setNotice('Could not load assets/test-video.mp4. Download the test video or load a local MP4.');
 });
 
+aoiOverlay.addEventListener('click', addDraftPolygonPoint);
+aoiOverlay.addEventListener('dblclick', (event) => {
+  if (state.manualAnnotation.mode === 'drawing') {
+    event.preventDefault();
+    event.stopPropagation();
+    finishPolygonAnnotation();
+  }
+});
+aoiOverlay.addEventListener('pointerdown', startVertexHandleDrag);
+aoiOverlay.addEventListener('pointermove', dragSelectedVertex);
+aoiOverlay.addEventListener('pointerup', finishVertexHandleDrag);
+aoiOverlay.addEventListener('pointercancel', finishVertexHandleDrag);
 viewer.addEventListener('pointerdown', startDrag);
 viewer.addEventListener('pointermove', drag);
 viewer.addEventListener('pointerup', endDrag);
@@ -2613,6 +3028,11 @@ aoiFileInput.addEventListener('change', loadAoiFile);
 projectionSelect.addEventListener('change', syncSourceVideoMetadataFromControls);
 stereoLayoutSelect.addEventListener('change', syncSourceVideoMetadataFromControls);
 addManualAoiButton.addEventListener('click', addManualAoi);
+drawPolygonAoiButton.addEventListener('click', startPolygonAnnotation);
+finishPolygonAoiButton.addEventListener('click', finishPolygonAnnotation);
+cancelPolygonAoiButton.addEventListener('click', cancelPolygonAnnotation);
+aoiList.addEventListener('click', handleAoiListClick);
+aoiList.addEventListener('keydown', handleAoiListKeydown);
 exportColabJobButton.addEventListener('click', exportColabAoiJob);
 cloudAoiResultInput.addEventListener('change', loadCloudAoiResultFile);
 recordingFileInput.addEventListener('change', loadRecordingFile);

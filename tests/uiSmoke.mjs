@@ -107,6 +107,31 @@ try {
     'UI should show whether AOIs came from the editable JSON file.',
   );
   await page.locator('#projectionSelect').selectOption('flat');
+  await page.locator('#manualAoiLabelInput').fill('Drawn object');
+  await page.locator('#drawPolygonAoiButton').click();
+  const drawBox = await page.locator('#viewer').boundingBox();
+
+  await page.mouse.click(drawBox.x + drawBox.width * 0.35, drawBox.y + drawBox.height * 0.25);
+  await page.mouse.click(drawBox.x + drawBox.width * 0.55, drawBox.y + drawBox.height * 0.28);
+  await page.mouse.click(drawBox.x + drawBox.width * 0.50, drawBox.y + drawBox.height * 0.50);
+  await page.mouse.dblclick(drawBox.x + drawBox.width * 0.32, drawBox.y + drawBox.height * 0.45);
+
+  await page.waitForFunction(() => document.querySelector('#aoiList')?.textContent?.includes('Drawn object'));
+  assert.equal(
+    await page.locator('#aoiOverlay [data-aoi-id="drawn-object"]').count(),
+    1,
+    'Drawn polygon AOIs should appear on the overlay.',
+  );
+  await page.locator('#aoiList li').filter({ hasText: 'Drawn object' }).click();
+  const firstHandle = page.locator('#aoiOverlay .aoi-vertex-handle').first();
+  const before = await firstHandle.boundingBox();
+  await page.mouse.move(before.x + before.width / 2, before.y + before.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(before.x + 20, before.y + 16);
+  await page.mouse.up();
+  const after = await firstHandle.boundingBox();
+  assert.notEqual(Math.round(after.x), Math.round(before.x));
+
   await page.locator('#manualAoiLabelInput').fill('Manual flat AOI');
   await page.locator('#manualAoiSizeInput').fill('24');
   await page.locator('#addManualAoiButton').click();
