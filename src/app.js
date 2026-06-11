@@ -16,6 +16,12 @@ import {
   normalizeAoiId,
 } from './aois/aoiGeneration.js?v=colab-aoi-1';
 import {
+  extractAoisFromJson,
+  extractProjectMetadataFromJson,
+  isFiniteNumber,
+  isValidAoi,
+} from './aois/aoiImport.js?v=aoi-schema-1';
+import {
   applyViewportCalibration,
   buildAccuracyCorrection,
   buildLocalAccuracyErrorModel,
@@ -661,64 +667,6 @@ function renderAoiList() {
   }).join('');
 }
 
-function isFiniteNumber(value) {
-  return Number.isFinite(Number(value));
-}
-
-function getAoiSpace(aoi) {
-  return aoi?.space === 'video' ? 'video' : 'panorama';
-}
-
-function isValidVideoAoiBounds(aoi) {
-  return (
-    isFiniteNumber(aoi.xMin) &&
-    isFiniteNumber(aoi.xMax) &&
-    isFiniteNumber(aoi.yMin) &&
-    isFiniteNumber(aoi.yMax)
-  );
-}
-
-function isValidPanoramaAoiBounds(aoi) {
-  return (
-    isFiniteNumber(aoi.yawMin) &&
-    isFiniteNumber(aoi.yawMax) &&
-    isFiniteNumber(aoi.pitchMin) &&
-    isFiniteNumber(aoi.pitchMax)
-  );
-}
-
-function isValidAoiBounds(aoi, space = getAoiSpace(aoi)) {
-  return space === 'video'
-    ? isValidVideoAoiBounds(aoi)
-    : isValidPanoramaAoiBounds(aoi);
-}
-
-function isValidAoiKeyframes(aoi) {
-  if (!Array.isArray(aoi.keyframes)) {
-    return true;
-  }
-
-  const space = getAoiSpace(aoi);
-
-  return (
-    aoi.keyframes.length > 0 &&
-    aoi.keyframes.every((keyframe) => (
-      isFiniteNumber(keyframe.t) &&
-      isValidAoiBounds(keyframe, space)
-    ))
-  );
-}
-
-function isValidAoi(aoi) {
-  return (
-    typeof aoi?.id === 'string' &&
-    typeof aoi?.label === 'string' &&
-    typeof aoi?.color === 'string' &&
-    isValidAoiBounds(aoi) &&
-    isValidAoiKeyframes(aoi)
-  );
-}
-
 function isValidReviewSample(sample) {
   return (
     isFiniteNumber(sample?.t) &&
@@ -733,28 +681,6 @@ function extractRecordingSamplesFromJson(json) {
   }
 
   throw new Error('Recording JSON must be an exported object with a samples array.');
-}
-
-function extractProjectMetadataFromJson(json) {
-  if (!json || Array.isArray(json) || typeof json !== 'object') {
-    return {};
-  }
-
-  return {
-    video: json.video && typeof json.video === 'object' ? { ...json.video } : null,
-  };
-}
-
-function extractAoisFromJson(json) {
-  if (Array.isArray(json)) {
-    return json;
-  }
-
-  if (Array.isArray(json?.aois)) {
-    return json.aois;
-  }
-
-  throw new Error('AOI JSON must be an array or an object with an aois array.');
 }
 
 function registerAois(aois, source) {
