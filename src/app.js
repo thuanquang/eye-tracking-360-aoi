@@ -2773,22 +2773,54 @@ function findCurrentKeyframeIndex(keyframes) {
   }, 0);
 }
 
-function updatePolygonKeyframes(aoi, points) {
+function replacePolygonVertex(points, vertexIndex, point) {
+  const nextPoints = cloneAoiPoints(points);
+
+  if (!nextPoints[vertexIndex]) {
+    return null;
+  }
+
+  nextPoints[vertexIndex] = point;
+  return nextPoints;
+}
+
+function updatePolygonKeyframes(aoi, vertexIndex, point) {
+  let editedKeyframePoints = null;
+
   if (!Array.isArray(aoi.keyframes) || !aoi.keyframes.length) {
-    return [
-      {
-        t: Number((sourceVideo.currentTime || 0).toFixed(3)),
-        points: cloneAoiPoints(points),
-      },
-    ];
+    editedKeyframePoints = replacePolygonVertex(aoi.points, vertexIndex, point);
+
+    return {
+      keyframes: [
+        editedKeyframePoints && {
+          t: Number((sourceVideo.currentTime || 0).toFixed(3)),
+          points: cloneAoiPoints(editedKeyframePoints),
+        },
+      ].filter(Boolean),
+      editedKeyframePoints,
+    };
   }
 
   const keyframeIndex = findCurrentKeyframeIndex(aoi.keyframes);
-  return aoi.keyframes.map((keyframe, index) => (
-    index === keyframeIndex
-      ? { ...keyframe, points: cloneAoiPoints(points) }
-      : keyframe
-  ));
+  const keyframes = aoi.keyframes.map((keyframe, index) => {
+    if (index !== keyframeIndex) {
+      return keyframe;
+    }
+
+    const sourcePoints = Array.isArray(keyframe.points) && keyframe.points.length
+      ? keyframe.points
+      : aoi.points;
+    const nextPoints = replacePolygonVertex(sourcePoints, vertexIndex, point);
+
+    if (!nextPoints) {
+      return keyframe;
+    }
+
+    editedKeyframePoints = nextPoints;
+    return { ...keyframe, points: cloneAoiPoints(nextPoints) };
+  });
+
+  return { keyframes, editedKeyframePoints };
 }
 
 function updateSelectedPolygonPoint(vertexIndex, point) {
@@ -2798,18 +2830,23 @@ function updateSelectedPolygonPoint(vertexIndex, point) {
     return;
   }
 
-  const points = cloneAoiPoints(selectedAoi.points);
-  if (!points[vertexIndex]) {
+  const { keyframes, editedKeyframePoints } = updatePolygonKeyframes(selectedAoi, vertexIndex, point);
+
+  if (!editedKeyframePoints) {
     return;
   }
 
-  points[vertexIndex] = point;
+  const hasMultipleKeyframes = Array.isArray(selectedAoi.keyframes) && selectedAoi.keyframes.length > 1;
+  const points = hasMultipleKeyframes
+    ? cloneAoiPoints(selectedAoi.points)
+    : cloneAoiPoints(editedKeyframePoints);
+
   activeAois = activeAois.map((aoi) => (
     aoi.id === selectedAoi.id
       ? {
         ...aoi,
         points: cloneAoiPoints(points),
-        keyframes: updatePolygonKeyframes(aoi, points),
+        keyframes,
       }
       : aoi
   ));

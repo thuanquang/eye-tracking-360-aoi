@@ -521,6 +521,86 @@ try {
     'Mouse-mode samples should export zero gaze uncertainty.',
   );
 
+  await page.locator('#clearButton').click();
+  const dynamicPolygonSidecarPath = join(tmpDir, 'dynamic-polygon-video.aoi.json');
+  const dynamicTopLevelPoints = [
+    { x: 0.18, y: 0.18 },
+    { x: 0.38, y: 0.18 },
+    { x: 0.36, y: 0.38 },
+    { x: 0.16, y: 0.36 },
+  ];
+  const dynamicStartPoints = [
+    { x: 0.30, y: 0.22 },
+    { x: 0.58, y: 0.24 },
+    { x: 0.54, y: 0.52 },
+    { x: 0.28, y: 0.48 },
+  ];
+  const dynamicEndPoints = [
+    { x: 0.36, y: 0.28 },
+    { x: 0.62, y: 0.31 },
+    { x: 0.57, y: 0.57 },
+    { x: 0.34, y: 0.54 },
+  ];
+  await writeFile(dynamicPolygonSidecarPath, JSON.stringify({
+    video: {
+      name: 'test-video.mp4',
+      projection: 'flat',
+      stereoLayout: 'mono',
+    },
+    aois: [
+      {
+        id: 'dynamic-polygon-object',
+        label: 'Dynamic polygon object',
+        color: '#ffd166',
+        space: 'video',
+        shape: 'polygon',
+        points: dynamicTopLevelPoints,
+        keyframes: [
+          { t: 0, points: dynamicStartPoints },
+          { t: 8, points: dynamicEndPoints },
+        ],
+      },
+    ],
+  }, null, 2));
+  await page.locator('#aoiFileInput').setInputFiles(dynamicPolygonSidecarPath);
+  await page.waitForFunction(() => document.querySelector('#aoiList')?.textContent?.includes('Dynamic polygon object'));
+  await page.locator('#sourceVideo').evaluate((video) => {
+    video.currentTime = 0;
+  });
+  await page.locator('#aoiList li').filter({ hasText: 'Dynamic polygon object' }).click();
+  const dynamicHandle = page.locator('#aoiOverlay .aoi-vertex-handle').first();
+  const dynamicBefore = await dynamicHandle.boundingBox();
+  await page.mouse.move(dynamicBefore.x + dynamicBefore.width / 2, dynamicBefore.y + dynamicBefore.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(dynamicBefore.x + 20, dynamicBefore.y + 16);
+  await page.mouse.up();
+
+  const dynamicExportPromise = page.waitForEvent('download');
+  await page.locator('#exportButton').click();
+  const dynamicExportDownload = await dynamicExportPromise;
+  const dynamicExportJson = JSON.parse(await readFile(await dynamicExportDownload.path(), 'utf8'));
+  const editedDynamicAoi = dynamicExportJson.aois.find((aoi) => aoi.id === 'dynamic-polygon-object');
+  assert.deepEqual(
+    editedDynamicAoi.points,
+    dynamicTopLevelPoints,
+    'Dynamic polygon edits should leave top-level base points unchanged.',
+  );
+  assert.notDeepEqual(
+    editedDynamicAoi.keyframes[0].points[0],
+    dynamicStartPoints[0],
+    'Dragging a dynamic polygon handle should update the dragged keyframe vertex.',
+  );
+  assert.deepEqual(
+    editedDynamicAoi.keyframes[0].points.slice(1),
+    dynamicStartPoints.slice(1),
+    'Dragging one dynamic polygon handle should preserve non-dragged vertices in the edited keyframe.',
+  );
+  assert.deepEqual(
+    editedDynamicAoi.keyframes[1].points,
+    dynamicEndPoints,
+    'Dragging one dynamic polygon handle should not corrupt other keyframes.',
+  );
+
   const reviewPath = join(tmpDir, 'recording-review.json');
   await writeFile(reviewPath, JSON.stringify(exportedJson), 'utf8');
   await page.locator('#recordingFileInput').setInputFiles(reviewPath);
