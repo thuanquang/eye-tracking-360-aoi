@@ -70,6 +70,12 @@ For the best shot at accuracy:
 
 The prototype pauses the video during calibration and accuracy checks so moving video content does not distract your gaze.
 
+## Benchmark Protocol
+
+Use `docs/eye-tracking-benchmark-protocol.md` for repeatable Phase 2 pilot benchmarking across participants, devices, and calibration profiles. It covers the 30 Hz recording cadence, research validation policy, stream quality checks, face/head stability notes, and fixation/dwell metrics to report. Treat benchmark output as evidence for pilot readiness, not as a claim of RealEye-level precision.
+
+Exported JSON includes compact benchmark metadata at `benchmark` and `summary.benchmark`. These fields are designed for manual reports without duplicating the raw sample stream. The helper module `src/gaze/benchmark.js` can summarize exported benchmark objects with `summarizeBenchmarkRuns(runs)` and generate markdown with `buildBenchmarkReport({ summary, runs })`.
+
 ## Reading The Result
 
 Exported JSON contains:
@@ -87,6 +93,7 @@ Exported JSON contains:
 - `summary.likelyAoiDwellSec`: estimated seconds in AOIs where the validated webcam error still fits inside the AOI.
 - `summary.ambiguousSampleCount`: samples near an AOI boundary or inside the gaze uncertainty radius.
 - `summary.trustedSampleCount`: samples trusted for AOI analysis.
+- `benchmark` and `summary.benchmark`: compact report metadata including participant id/device when available, accuracy summary, gaze and validation stream quality, calibration profile, validation policy result/failures, recording sample interval, duration, face quality availability, and face stability invalidation count.
 - `accuracy`: independent validation result after correction, including mean, median, p90, worst-target pixel error, and target-capture dispersion.
 - `accuracyValidated`: whether webcam data was trusted for recording.
 - `gazeUncertainty`: per-sample webcam uncertainty; after validation it grows near player regions that had larger local error or capture dispersion.

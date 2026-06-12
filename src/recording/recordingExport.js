@@ -42,6 +42,86 @@ function cloneFaceQualityInvalidations(faceQualityInvalidations) {
     : [];
 }
 
+function compactString(value) {
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+function finiteNumberOrNull(value) {
+  return Number.isFinite(value) ? value : null;
+}
+
+function cloneAccuracySummary(summary) {
+  return summary && typeof summary === 'object'
+    ? { ...summary }
+    : null;
+}
+
+function cloneGazeStreamQuality(quality) {
+  if (!quality || typeof quality !== 'object') {
+    return null;
+  }
+
+  const { events, droppedReasons, ...rest } = quality;
+
+  return {
+    ...rest,
+    droppedReasons: droppedReasons && typeof droppedReasons === 'object'
+      ? { ...droppedReasons }
+      : {},
+  };
+}
+
+function getParticipantId(participant) {
+  return compactString(participant?.id)
+    ?? compactString(participant?.participantId);
+}
+
+function getParticipantDevice(participant, explicitDevice = null) {
+  return compactString(explicitDevice)
+    ?? compactString(participant?.device)
+    ?? compactString(participant?.participantDevice);
+}
+
+function buildBenchmarkMetadata({
+  participant = null,
+  device = null,
+  accuracy = null,
+  gazeStreamQuality = null,
+  validationGazeStreamQuality = null,
+  selectedCalibrationProfile = null,
+  calibrationProfileUsed = null,
+  selectedValidationPolicyId = 'prototype',
+  validationPolicyId = null,
+  policyPassed = null,
+  policyFailures = [],
+  recordingSampleIntervalMs = null,
+  durationSec = null,
+  faceQualityAvailable = false,
+  faceQualityUnavailableReason = null,
+  faceQualityInvalidations = [],
+} = {}) {
+  return {
+    participantId: getParticipantId(participant),
+    device: getParticipantDevice(participant, device),
+    accuracy: cloneAccuracySummary(accuracy),
+    gazeStreamQuality: cloneGazeStreamQuality(gazeStreamQuality),
+    validationGazeStreamQuality: cloneGazeStreamQuality(validationGazeStreamQuality),
+    selectedCalibrationProfile: buildCalibrationProfileMetadata(selectedCalibrationProfile),
+    calibrationProfileUsed: buildCalibrationProfileMetadata(calibrationProfileUsed),
+    selectedValidationPolicyId: selectedValidationPolicyId ?? 'prototype',
+    validationPolicyId: validationPolicyId ?? null,
+    policyPassed: policyPassed ?? null,
+    policyFailures: clonePolicyFailures(policyFailures),
+    recordingSampleIntervalMs: finiteNumberOrNull(recordingSampleIntervalMs),
+    durationSec: finiteNumberOrNull(durationSec),
+    faceQualityAvailable: Boolean(faceQualityAvailable),
+    faceQualityUnavailableReason: faceQualityUnavailableReason ?? null,
+    faceStabilityInvalidationCount: Array.isArray(faceQualityInvalidations)
+      ? faceQualityInvalidations.length
+      : 0,
+  };
+}
+
 function summarizeOptionalGazeStreamQuality(stats) {
   return stats ? summarizeGazeStreamQuality(stats) : null;
 }
@@ -99,6 +179,25 @@ export function buildExportSummary(samples, stateLike, sampleIntervalMs = DEFAUL
   const faceQualityBaseline = cloneFaceQualityBaseline(stateLike.faceQualityBaseline);
   const faceQualityInvalidations = cloneFaceQualityInvalidations(stateLike.faceQualityInvalidations);
 
+  const benchmark = buildBenchmarkMetadata({
+    participant: stateLike.participant ?? null,
+    device: stateLike.device ?? null,
+    accuracy: correctedAccuracySummary,
+    gazeStreamQuality,
+    validationGazeStreamQuality,
+    selectedCalibrationProfile,
+    calibrationProfileUsed: calibrationProfile,
+    selectedValidationPolicyId: stateLike.selectedValidationPolicyId ?? 'prototype',
+    validationPolicyId: stateLike.validationPolicyId ?? null,
+    policyPassed: stateLike.policyPassed ?? null,
+    policyFailures,
+    recordingSampleIntervalMs,
+    durationSec: Number(durationSec.toFixed(3)),
+    faceQualityAvailable: stateLike.faceQualityAvailable ?? false,
+    faceQualityUnavailableReason: stateLike.faceQualityUnavailableReason ?? null,
+    faceQualityInvalidations,
+  });
+
   return {
     totalSamples: samples.length,
     recordingSampleIntervalMs,
@@ -132,6 +231,7 @@ export function buildExportSummary(samples, stateLike, sampleIntervalMs = DEFAUL
     faceQualityUnavailableReason: stateLike.faceQualityUnavailableReason ?? null,
     faceQualityBaseline,
     faceQualityInvalidations,
+    benchmark,
   };
 }
 
@@ -263,6 +363,36 @@ export function buildExportPayload({
       ?? summary?.faceQualityInvalidations
       ?? project?.faceQualityInvalidations,
   );
+  const gazeStreamQuality = state.gazeStreamQuality
+    ?? summary?.gazeStreamQuality
+    ?? summarizeGazeStreamQuality(state.gazeStreamStats);
+  const benchmark = buildBenchmarkMetadata({
+    participant,
+    device: state.device
+      ?? summary?.benchmark?.device
+      ?? project?.benchmark?.device
+      ?? null,
+    accuracy: state.correctedAccuracySummary
+      ?? summary?.benchmark?.accuracy
+      ?? null,
+    gazeStreamQuality,
+    validationGazeStreamQuality,
+    selectedCalibrationProfile,
+    calibrationProfileUsed: calibrationProfile,
+    selectedValidationPolicyId,
+    validationPolicyId,
+    policyPassed: state.policyPassed ?? summary?.policyPassed ?? null,
+    policyFailures,
+    recordingSampleIntervalMs: summary?.recordingSampleIntervalMs
+      ?? summary?.benchmark?.recordingSampleIntervalMs
+      ?? null,
+    durationSec: summary?.durationSec
+      ?? summary?.benchmark?.durationSec
+      ?? null,
+    faceQualityAvailable,
+    faceQualityUnavailableReason,
+    faceQualityInvalidations,
+  });
 
   return {
     sourceVideo,
@@ -294,10 +424,9 @@ export function buildExportPayload({
     faceQualityUnavailableReason,
     faceQualityBaseline: cloneFaceQualityBaseline(faceQualityBaseline),
     faceQualityInvalidations,
-    gazeStreamQuality: state.gazeStreamQuality
-      ?? summary?.gazeStreamQuality
-      ?? summarizeGazeStreamQuality(state.gazeStreamStats),
+    gazeStreamQuality,
     droppedGazeSamples: state.droppedGazeSamples,
+    benchmark,
     samples: state.samples,
   };
 }

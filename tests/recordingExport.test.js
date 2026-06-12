@@ -94,6 +94,23 @@ test('builds summary counts and duration from samples', () => {
   assert.equal(summary.faceQualityUnavailableReason, 'provider-no-face-quality');
   assert.equal(summary.faceQualityBaseline, null);
   assert.deepEqual(summary.faceQualityInvalidations, []);
+  assert.equal(summary.benchmark.participantId, null);
+  assert.equal(summary.benchmark.device, null);
+  assert.equal(summary.benchmark.accuracy, null);
+  assert.equal(summary.benchmark.recordingSampleIntervalMs, RECORDING_SAMPLE_INTERVAL_MS);
+  assert.equal(summary.benchmark.durationSec, 0.067);
+  assert.equal(summary.benchmark.gazeStreamQuality.effectiveHz, 50);
+  assert.equal(summary.benchmark.validationGazeStreamQuality.effectiveHz, 40);
+  assert.deepEqual(summary.benchmark.selectedCalibrationProfile, RESEARCH_39_PROFILE);
+  assert.equal(summary.benchmark.calibrationProfileUsed, null);
+  assert.equal(summary.benchmark.selectedValidationPolicyId, 'research');
+  assert.equal(summary.benchmark.validationPolicyId, 'research');
+  assert.equal(summary.benchmark.policyPassed, false);
+  assert.deepEqual(summary.benchmark.policyFailures, [POLICY_FAILURE]);
+  assert.equal(summary.benchmark.faceQualityAvailable, false);
+  assert.equal(summary.benchmark.faceQualityUnavailableReason, 'provider-no-face-quality');
+  assert.equal(summary.benchmark.faceStabilityInvalidationCount, 0);
+  assert.equal(summary.benchmark.samples, undefined);
   assert.equal(summary.sources.mouse, 2);
   assert.equal(summary.aoiHitCounts.logo, 2);
   assert.equal(summary.likelyAoiHitCounts.logo, 1);
@@ -205,10 +222,10 @@ test('builds export payload with state-derived accuracy and samples', () => {
   const payload = buildExportPayload({
     sourceVideo: 'blob:demo',
     exportedAt: '2026-06-11T00:00:00.000Z',
-    participant: { id: 'p1' },
+    participant: { id: 'p1', device: 'lab laptop' },
     project: { version: 1 },
     video: { name: 'demo.mp4' },
-    summary: { totalSamples: 1 },
+    summary: { totalSamples: 1, recordingSampleIntervalMs: 1000 / 30, durationSec: 0.033 },
     namedAoiMetrics: { Front: { samples: 1 } },
     aoiSource: 'manual',
     aois: [{ id: 'front' }],
@@ -259,7 +276,71 @@ test('builds export payload with state-derived accuracy and samples', () => {
   assert.equal(payload.faceQualityBaseline, null);
   assert.deepEqual(payload.faceQualityInvalidations, []);
   assert.equal(payload.gazeStreamQuality.effectiveHz, 20);
+  assert.equal(payload.benchmark.participantId, 'p1');
+  assert.equal(payload.benchmark.device, 'lab laptop');
+  assert.deepEqual(payload.benchmark.accuracy, { meanPx: 8 });
+  assert.equal(payload.benchmark.gazeStreamQuality.effectiveHz, 20);
+  assert.equal(payload.benchmark.validationGazeStreamQuality.effectiveHz, 40);
+  assert.deepEqual(payload.benchmark.selectedCalibrationProfile, RESEARCH_78_PROFILE);
+  assert.deepEqual(payload.benchmark.calibrationProfileUsed, RESEARCH_39_PROFILE);
+  assert.equal(payload.benchmark.selectedValidationPolicyId, 'research');
+  assert.equal(payload.benchmark.validationPolicyId, 'research');
+  assert.equal(payload.benchmark.policyPassed, true);
+  assert.deepEqual(payload.benchmark.policyFailures, []);
+  assert.equal(payload.benchmark.recordingSampleIntervalMs, 1000 / 30);
+  assert.equal(payload.benchmark.durationSec, 0.033);
+  assert.equal(payload.benchmark.faceQualityAvailable, false);
+  assert.equal(payload.benchmark.faceQualityUnavailableReason, 'provider-no-face-quality');
+  assert.equal(payload.benchmark.faceStabilityInvalidationCount, 0);
+  assert.equal(payload.benchmark.samples, undefined);
   assert.deepEqual(payload.samples, [{ t: 0 }]);
+});
+
+test('clones compact benchmark metadata without sample or nested quality references', () => {
+  const accuracy = { meanPx: 42, p90Px: 80, maxPx: 120 };
+  const gazeStreamQuality = {
+    effectiveHz: 29.97,
+    dataIntegrityPercent: 96.5,
+    droppedReasons: { stale: 1 },
+  };
+  const validationGazeStreamQuality = {
+    effectiveHz: 30,
+    dataIntegrityPercent: 100,
+    droppedReasons: {},
+  };
+  const summary = buildExportSummary([
+    { t: 0, source: 'webcam', hits: [], likelyHits: [], possibleHits: [], ambiguousHits: [], quality: { trustedForAoiAnalysis: true } },
+  ], {
+    participant: { id: 'P007', device: 'desktop webcam' },
+    accuracyValidated: true,
+    correctedAccuracySummary: accuracy,
+    selectedCalibrationProfile: RESEARCH_78_PROFILE,
+    calibrationProfile: RESEARCH_39_PROFILE,
+    selectedValidationPolicyId: 'research',
+    validationPolicyId: 'research',
+    policyPassed: false,
+    policyFailures: [POLICY_FAILURE],
+    gazeStreamQuality,
+    validationGazeStreamQuality,
+    faceQualityAvailable: true,
+    faceQualityUnavailableReason: null,
+    faceQualityInvalidations: [
+      { atMs: 10, reason: 'face-pose-drift', reasons: ['center-shift'] },
+      { atMs: 20, reason: 'face-pose-drift', reasons: ['scale-change'] },
+    ],
+  });
+
+  summary.benchmark.accuracy.meanPx = 999;
+  summary.benchmark.gazeStreamQuality.droppedReasons.stale = 999;
+  summary.benchmark.policyFailures[0].actual = 999;
+
+  assert.equal(accuracy.meanPx, 42);
+  assert.equal(gazeStreamQuality.droppedReasons.stale, 1);
+  assert.equal(POLICY_FAILURE.actual, 12);
+  assert.equal(summary.benchmark.participantId, 'P007');
+  assert.equal(summary.benchmark.device, 'desktop webcam');
+  assert.equal(summary.benchmark.faceStabilityInvalidationCount, 2);
+  assert.equal(summary.benchmark.samples, undefined);
 });
 
 test('clones face quality metadata in export summary', () => {
