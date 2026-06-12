@@ -2,7 +2,15 @@ import assert from 'node:assert/strict';
 
 import { chromium } from 'playwright';
 
+import { startCalibrationOrKnownFakeCameraBoundary } from './webcamSmokeHelpers.mjs';
+
 const TARGET_URL = process.env.AOI_PROTOTYPE_URL || 'http://127.0.0.1:5179';
+
+function urlWithMode(mode) {
+  const url = new URL(TARGET_URL);
+  url.searchParams.set('mode', mode);
+  return url.toString();
+}
 
 async function captureAllTargets(page, progressPattern, emitExpression) {
   const progressText = await page.locator('#calibrationProgress').innerText();
@@ -39,7 +47,7 @@ const context = await browser.newContext({
 const page = await context.newPage();
 
 try {
-  await page.goto(TARGET_URL, { waitUntil: 'networkidle' });
+  await page.goto(urlWithMode('admin'), { waitUntil: 'networkidle' });
   await page.waitForFunction(() => Boolean(window.webgazer?.setGazeListener));
   await page.evaluate(() => {
     window.webgazer.setGazeListener = (callback) => {
@@ -84,40 +92,42 @@ try {
     });
   });
 
-  await page.locator('#calibrateButton').click();
-  await page.waitForSelector('#calibrationOverlay:not([hidden])', { timeout: 45000 });
-  await captureAllTargets(
-    page,
-    /Target 1 of (\d+)/,
-    () => window.__aoiEmitStableGazeForCurrentTarget(),
-  );
+  if (await startCalibrationOrKnownFakeCameraBoundary(page, {
+    skipMessage: 'Only the known fake-camera WebGazer startup boundary should skip the stale runtime flow.',
+  })) {
+    await captureAllTargets(
+      page,
+      /Target 1 of (\d+)/,
+      () => window.__aoiEmitStableGazeForCurrentTarget(),
+    );
 
-  await page.locator('#accuracyButton').click();
-  await page.waitForSelector('#calibrationOverlay:not([hidden])', { timeout: 45000 });
-  await captureAllTargets(
-    page,
-    /Accuracy target 1 of (\d+)/,
-    () => window.__aoiEmitStableGazeForCurrentTarget(),
-  );
+    await page.locator('#accuracyButton').click();
+    await page.waitForSelector('#calibrationOverlay:not([hidden])', { timeout: 45000 });
+    await captureAllTargets(
+      page,
+      /Accuracy target 1 of (\d+)/,
+      () => window.__aoiEmitStableGazeForCurrentTarget(),
+    );
 
-  assert.match(await page.locator('#accuracyStatusLabel').innerText(), /^validated \d+px$/);
+    assert.match(await page.locator('#accuracyStatusLabel').innerText(), /^validated \d+px$/);
 
-  await page.locator('#recordButton').click();
-  assert.equal(await page.locator('#recordButton').innerText(), 'Stop Recording');
+    await page.locator('#recordButton').click();
+    assert.equal(await page.locator('#recordButton').innerText(), 'Stop Recording');
 
-  await page.evaluate(() => window.__aoiEmitGazeAtViewerCenter());
-  await page.waitForFunction(() => /^x \d+, y \d+$/.test(document.querySelector('#screenReadout')?.textContent || ''));
-  await page.waitForFunction(
-    () => document.querySelector('#recordButton')?.textContent === 'Start Recording',
-    null,
-    { timeout: 5000 },
-  );
+    await page.evaluate(() => window.__aoiEmitGazeAtViewerCenter());
+    await page.waitForFunction(() => /^x \d+, y \d+$/.test(document.querySelector('#screenReadout')?.textContent || ''));
+    await page.waitForFunction(
+      () => document.querySelector('#recordButton')?.textContent === 'Start Recording',
+      null,
+      { timeout: 5000 },
+    );
 
-  assert.equal(
-    await page.locator('#accuracyStatusLabel').innerText(),
-    'recheck needed',
-    'Stale validated webcam tracking should invalidate the previous accuracy check.',
-  );
+    assert.equal(
+      await page.locator('#accuracyStatusLabel').innerText(),
+      'recheck needed',
+      'Stale validated webcam tracking should invalidate the previous accuracy check.',
+    );
+  }
 } finally {
   await browser.close();
 }

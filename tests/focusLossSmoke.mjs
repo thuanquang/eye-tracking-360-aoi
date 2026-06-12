@@ -2,7 +2,15 @@ import assert from 'node:assert/strict';
 
 import { chromium } from 'playwright';
 
+import { startCalibrationOrKnownFakeCameraBoundary } from './webcamSmokeHelpers.mjs';
+
 const TARGET_URL = process.env.AOI_PROTOTYPE_URL || 'http://127.0.0.1:5179';
+
+function urlWithMode(mode) {
+  const url = new URL(TARGET_URL);
+  url.searchParams.set('mode', mode);
+  return url.toString();
+}
 
 async function captureAllTargets(page, progressPattern, emitExpression) {
   const progressText = await page.locator('#calibrationProgress').innerText();
@@ -39,7 +47,7 @@ const context = await browser.newContext({
 const page = await context.newPage();
 
 try {
-  await page.goto(TARGET_URL, { waitUntil: 'networkidle' });
+  await page.goto(urlWithMode('admin'), { waitUntil: 'networkidle' });
   await page.waitForFunction(() => Boolean(window.webgazer?.setGazeListener));
   await page.evaluate(() => {
     window.webgazer.setGazeListener = (callback) => {
@@ -84,8 +92,9 @@ try {
     };
   });
 
-  await page.locator('#calibrateButton').click();
-  await page.waitForSelector('#calibrationOverlay:not([hidden])', { timeout: 45000 });
+  if (await startCalibrationOrKnownFakeCameraBoundary(page, {
+    skipMessage: 'Only the known fake-camera WebGazer startup boundary should skip the focus loss smoke.',
+  })) {
   await captureAllTargets(
     page,
     /Target 1 of (\d+)/,
@@ -124,6 +133,7 @@ try {
     await page.locator('#viewerNotice').innerText(),
     /focus|Check accuracy|recheck/i,
   );
+  }
 } finally {
   await browser.close();
 }

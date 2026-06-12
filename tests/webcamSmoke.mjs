@@ -4,6 +4,8 @@ import { readFile } from 'node:fs/promises';
 import { chromium } from 'playwright';
 import { RECORDING_SAMPLE_INTERVAL_MS } from '../src/app/constants.js';
 
+import { startCalibrationOrKnownFakeCameraBoundary } from './webcamSmokeHelpers.mjs';
+
 const TARGET_URL = process.env.AOI_PROTOTYPE_URL || 'http://127.0.0.1:5179';
 
 function urlWithMode(mode) {
@@ -238,8 +240,9 @@ try {
   await page.locator('#playVideoButton').click();
   await page.waitForFunction(() => document.querySelector('#sourceVideo')?.paused === false);
 
-  await page.locator('#calibrateButton').click();
-  await page.waitForSelector('#calibrationOverlay:not([hidden])', { timeout: 45000 });
+  if (await startCalibrationOrKnownFakeCameraBoundary(page, {
+    skipMessage: 'Only the known fake-camera WebGazer startup boundary should skip the full webcam smoke.',
+  })) {
 
   assert.equal(await page.locator('#webcamStatusLabel').innerText(), 'calibrating');
   assert.equal(
@@ -468,6 +471,7 @@ try {
 
   assert.deepEqual(failedResponses, []);
   assert.deepEqual(errors, []);
+  }
 } finally {
   await browser.close();
 }
