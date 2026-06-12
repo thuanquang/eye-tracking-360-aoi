@@ -1,4 +1,5 @@
 import { DEFAULT_RECORDING_SAMPLE_INTERVAL_MS } from './sampleScheduler.js';
+import { detectFixationsByDispersion } from './fixations.js';
 
 const DEFAULT_SAMPLE_INTERVAL_SEC = DEFAULT_RECORDING_SAMPLE_INTERVAL_MS / 1000;
 const MIN_FIXATION_DURATION_SEC = 0.1;
@@ -95,6 +96,38 @@ function primaryAoiForSample(sample) {
     || null;
 }
 
+function hasFiniteScreenPosition(sample) {
+  return Number.isFinite(sample?.screen?.x) && Number.isFinite(sample?.screen?.y);
+}
+
+function samplesWithinFixation(samples, fixation) {
+  return samples.filter((sample) => sample.t >= fixation.startSec && sample.t <= fixation.endSec);
+}
+
+function primaryAoiForFixation(samples) {
+  const counts = new Map();
+
+  samples.forEach((sample) => {
+    const aoiId = primaryAoiForSample(sample);
+
+    if (!aoiId) {
+      return;
+    }
+
+    counts.set(aoiId, (counts.get(aoiId) || 0) + 1);
+  });
+
+  let primary = null;
+
+  counts.forEach((count, aoiId) => {
+    if (!primary || count > primary.count) {
+      primary = { aoiId, count };
+    }
+  });
+
+  return primary?.aoiId || null;
+}
+
 function detectAoiFixations(samples, durations) {
   const fixations = [];
   let current = null;
@@ -134,6 +167,36 @@ function detectAoiFixations(samples, durations) {
   }
 
   return fixations;
+}
+
+function detectScreenAoiFixations(samples) {
+  if (!samples.some(hasFiniteScreenPosition)) {
+    return null;
+  }
+
+  return detectFixationsByDispersion(samples)
+    .map((fixation) => {
+      const aoiId = primaryAoiForFixation(samplesWithinFixation(samples, fixation));
+
+      if (!aoiId) {
+        return null;
+      }
+
+      return {
+        ...fixation,
+        aoiId,
+        durationSec: fixation.durationMs / 1000,
+      };
+    })
+    .filter(Boolean);
+}
+
+function fixationDurationMs(fixation) {
+  if (Number.isFinite(fixation.durationMs)) {
+    return fixation.durationMs;
+  }
+
+  return fixation.durationSec * 1000;
 }
 
 export function buildNamedAoiMetrics(samples = [], aois = [], { sampleIntervalMs = DEFAULT_RECORDING_SAMPLE_INTERVAL_MS } = {}) {
@@ -192,7 +255,7 @@ export function buildNamedAoiMetrics(samples = [], aois = [], { sampleIntervalMs
     });
   });
 
-  const fixations = detectAoiFixations(safeSamples, durations);
+  const fixations = detectScreenAoiFixations(safeSamples) ?? detectAoiFixations(safeSamples, durations);
 
   fixations.forEach((fixation) => {
     if (!perAoi[fixation.aoiId]) {
@@ -201,7 +264,7 @@ export function buildNamedAoiMetrics(samples = [], aois = [], { sampleIntervalMs
 
     const metric = perAoi[fixation.aoiId];
     metric.fixationCount += 1;
-    metric.totalFixationDurationMs += fixation.durationSec * 1000;
+    metric.totalFixationDurationMs += fixationDurationMs(fixation);
     metric.timeToFirstFixationMs = metric.timeToFirstFixationMs
       ?? Math.round(fixation.startSec * 1000);
   });
@@ -220,7 +283,7 @@ export function buildNamedAoiMetrics(samples = [], aois = [], { sampleIntervalMs
       : 0;
   });
 
-  const fixationDurationsMs = fixations.map((fixation) => fixation.durationSec * 1000);
+  const fixationDurationsMs = fixations.map(fixationDurationMs);
   const fixatedAoiIds = uniqueValues(fixations.map((fixation) => fixation.aoiId));
   const aoiCount = Object.keys(perAoi).length;
   const totalDwellSec = Object.values(perAoi)

@@ -91,9 +91,9 @@ Exported JSON contains:
 - `accuracyValidated`: whether webcam data was trusted for recording.
 - `gazeUncertainty`: per-sample webcam uncertainty; after validation it grows near player regions that had larger local error or capture dispersion.
 
-`namedAoiMetrics.perAoi` is keyed by AOI id and keeps the human AOI label from the AOI JSON. Each AOI includes hit counts, likely/possible/ambiguous counts, dwell seconds, first hit time, simple fixation count, average fixation duration, time to first fixation, and percentage of viewing time.
+`namedAoiMetrics.perAoi` is keyed by AOI id and keeps the human AOI label from the AOI JSON. Each AOI includes hit counts, likely/possible/ambiguous counts, dwell seconds, first hit time, fixation count, average fixation duration, time to first fixation, and percentage of viewing time. When exported samples include finite `screen.x/y` coordinates, fixation metrics use explicit dispersion-based detection and then map each fixation window back to its primary AOI. Legacy or no-screen recordings fall back to the earlier consecutive-AOI approximation.
 
-`namedAoiMetrics.session` includes total samples, total duration, total fixations, average fixation duration, average number of AOIs fixated, AOI coverage percent, and an MVP-level overall processing efficiency score based on time spent in AOIs. These fixation-style metrics are useful for the research demo, but with webcam tracking they should be described as approximations unless validated in a pilot.
+`namedAoiMetrics.session` includes total samples, total duration, total AOI-mapped fixations, average fixation duration, average number of AOIs fixated, AOI coverage percent, and an MVP-level overall processing efficiency score based on time spent in AOIs. Dispersion-based fixation metrics are still bounded by webcam accuracy and should be validated in a pilot before being treated as final research measures; fallback fixation metrics are approximations for older exports.
 
 For the MVP demo, prefer `likelyAoiDwellSec` when webcam accuracy is noisy. Use exact `aoiDwellSec` for mouse-mode sanity checks or very good webcam validation.
 
