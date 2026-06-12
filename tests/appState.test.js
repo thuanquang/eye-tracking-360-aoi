@@ -17,7 +17,12 @@ test('creates fresh app state without shared mutable arrays', () => {
   assert.equal(second.samples.length, 0);
   assert.equal(second.gaze.x, 0);
   assert.equal(second.gaze.visible, false);
-  assert.deepEqual(second.selectedCalibrationProfile, { id: 'standard', label: 'Standard', pointCount: 14 });
+  assert.deepEqual(second.selectedCalibrationProfile, {
+    id: 'standard',
+    label: 'Standard',
+    pointCount: 14,
+    samplesPerPoint: 12,
+  });
   assert.equal(second.calibrationProfile, null);
   assert.equal(second.selectedValidationPolicyId, 'prototype');
   assert.equal(second.validationPolicyId, null);

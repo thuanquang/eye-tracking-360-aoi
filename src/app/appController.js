@@ -73,6 +73,7 @@ import {
   VALIDATION_POINTS,
   getCalibrationProfile,
   getCalibrationProfileMetadata,
+  getCalibrationSamplesPerPoint,
 } from '../gaze/calibrationTargets.js';
 import { evaluateAccuracyCheck } from '../gaze/accuracyValidation.js';
 import {
@@ -310,6 +311,13 @@ export function createAppController({
   function getActiveCalibrationProfile() {
     return activeCalibrationProfile
       ?? getCalibrationProfile(state.selectedCalibrationProfile?.id ?? calibrationProfileSelect.value);
+  }
+
+  function getActiveCalibrationSamplesPerPoint() {
+    return getCalibrationSamplesPerPoint(
+      getActiveCalibrationProfile().id,
+      CALIBRATION_SAMPLES_PER_POINT,
+    );
   }
 
   function setCalibrationProfileSelectLocked(isLocked) {
@@ -1729,11 +1737,12 @@ export function createAppController({
     const x = rect.left + rect.width / 2;
     const y = rect.top + rect.height / 2;
     const calibrationTargetCount = getActiveCalibrationProfile().calibrationPoints.length;
+    const calibrationSamplesPerPoint = getActiveCalibrationSamplesPerPoint();
 
     calibrationProgress.textContent = `Target ${state.calibrationIndex + 1} of ${calibrationTargetCount} - hold steady`;
     await delay(TARGET_SETTLE_DELAY_MS);
 
-    for (let sample = 0; sample < CALIBRATION_SAMPLES_PER_POINT; sample += 1) {
+    for (let sample = 0; sample < calibrationSamplesPerPoint; sample += 1) {
       calibrationProgress.textContent = `Target ${state.calibrationIndex + 1} of ${calibrationTargetCount} - training ${sample + 1}`;
       webcamProvider.recordCalibrationPoint({ x, y });
       await delay(TARGET_SAMPLE_DELAY_MS);

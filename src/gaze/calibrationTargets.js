@@ -91,11 +91,13 @@ const CALIBRATION_PROFILES = {
   standard: {
     id: 'standard',
     label: 'Standard',
+    samplesPerPoint: 12,
     calibrationPoints: CALIBRATION_POINTS,
   },
   'research-39': {
     id: 'research-39',
     label: 'Research 39',
+    samplesPerPoint: 8,
     calibrationPoints: [
       ...buildGridCalibrationPoints({
         columns: 7,
@@ -112,6 +114,7 @@ const CALIBRATION_PROFILES = {
   'research-78': {
     id: 'research-78',
     label: 'Research 78',
+    samplesPerPoint: 4,
     calibrationPoints: buildGridCalibrationPoints({
       columns: 13,
       rows: 6,
@@ -137,7 +140,17 @@ export function getCalibrationProfileMetadata(profileId = 'standard') {
     id: profile.id,
     label: profile.label,
     pointCount: profile.pointCount,
+    samplesPerPoint: profile.samplesPerPoint,
   };
+}
+
+export function getCalibrationSamplesPerPoint(profileId = 'standard', fallback = 12) {
+  const profile = CALIBRATION_PROFILES[profileId];
+  const resolvedFallback = Number.isInteger(fallback) && fallback > 0 ? fallback : 12;
+
+  return Number.isInteger(profile?.samplesPerPoint) && profile.samplesPerPoint > 0
+    ? profile.samplesPerPoint
+    : resolvedFallback;
 }
 
 export function getTargetPointsForMode(mode) {
