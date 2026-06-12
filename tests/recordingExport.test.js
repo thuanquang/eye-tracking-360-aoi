@@ -13,6 +13,7 @@ import {
 const STANDARD_PROFILE = { id: 'standard', label: 'Standard', pointCount: 14 };
 const RESEARCH_39_PROFILE = { id: 'research-39', label: 'Research 39', pointCount: 39 };
 const RESEARCH_78_PROFILE = { id: 'research-78', label: 'Research 78', pointCount: 78 };
+const POLICY_FAILURE = { metric: 'effectiveHz', actual: 12, limit: 20, comparator: '>=' };
 
 test('builds recording samples with raw, corrected, AOI, and quality fields', () => {
   const sample = buildRecordingSample({
@@ -52,6 +53,11 @@ test('builds summary counts and duration from samples', () => {
     correctedAccuracySummary: null,
     selectedCalibrationProfile: RESEARCH_39_PROFILE,
     calibrationProfile: null,
+    selectedValidationPolicyId: 'research',
+    validationPolicyId: 'research',
+    policyPassed: false,
+    policyFailures: [POLICY_FAILURE],
+    validationGazeStreamQuality: { effectiveHz: 12, dataIntegrityPercent: 92 },
     gazeStreamStats: {
       events: [
         { atMs: 0, accepted: true },
@@ -67,6 +73,11 @@ test('builds summary counts and duration from samples', () => {
   assert.deepEqual(summary.selectedCalibrationProfile, RESEARCH_39_PROFILE);
   assert.equal(summary.calibrationProfile, null);
   assert.equal(summary.calibrationProfileUsed, null);
+  assert.equal(summary.selectedValidationPolicyId, 'research');
+  assert.equal(summary.validationPolicyId, 'research');
+  assert.equal(summary.policyPassed, false);
+  assert.deepEqual(summary.policyFailures, [POLICY_FAILURE]);
+  assert.deepEqual(summary.validationGazeStreamQuality, { effectiveHz: 12, dataIntegrityPercent: 92 });
   assert.equal(summary.sources.mouse, 2);
   assert.equal(summary.aoiHitCounts.logo, 2);
   assert.equal(summary.likelyAoiHitCounts.logo, 1);
@@ -99,11 +110,15 @@ test('builds project package with selected and used calibration profile metadata
     aois: [{ id: 'front' }],
     selectedCalibrationProfile: RESEARCH_78_PROFILE,
     calibrationProfile: STANDARD_PROFILE,
+    selectedValidationPolicyId: 'research',
+    validationPolicyId: 'prototype',
   });
 
   assert.deepEqual(project.selectedCalibrationProfile, RESEARCH_78_PROFILE);
   assert.deepEqual(project.calibrationProfile, STANDARD_PROFILE);
   assert.deepEqual(project.calibrationProfileUsed, STANDARD_PROFILE);
+  assert.equal(project.selectedValidationPolicyId, 'research');
+  assert.equal(project.validationPolicyId, 'prototype');
 });
 
 test('builds export payload with state-derived accuracy and samples', () => {
@@ -121,6 +136,11 @@ test('builds export payload with state-derived accuracy and samples', () => {
       correctedAccuracySummary: { meanPx: 8 },
       selectedCalibrationProfile: RESEARCH_78_PROFILE,
       calibrationProfile: RESEARCH_39_PROFILE,
+      selectedValidationPolicyId: 'research',
+      validationPolicyId: 'research',
+      policyPassed: true,
+      policyFailures: [],
+      validationGazeStreamQuality: { effectiveHz: 30, dataIntegrityPercent: 96 },
       accuracySummary: { meanPx: 10 },
       refinementAccuracySummary: { meanPx: 9 },
       gazeCorrection: { dx: 1, dy: -1 },
@@ -144,6 +164,11 @@ test('builds export payload with state-derived accuracy and samples', () => {
   assert.deepEqual(payload.selectedCalibrationProfile, RESEARCH_78_PROFILE);
   assert.deepEqual(payload.calibrationProfile, RESEARCH_39_PROFILE);
   assert.deepEqual(payload.calibrationProfileUsed, RESEARCH_39_PROFILE);
+  assert.equal(payload.selectedValidationPolicyId, 'research');
+  assert.equal(payload.validationPolicyId, 'research');
+  assert.equal(payload.policyPassed, true);
+  assert.deepEqual(payload.policyFailures, []);
+  assert.deepEqual(payload.validationGazeStreamQuality, { effectiveHz: 30, dataIntegrityPercent: 96 });
   assert.equal(payload.gazeStreamQuality.effectiveHz, 20);
   assert.deepEqual(payload.samples, [{ t: 0 }]);
 });

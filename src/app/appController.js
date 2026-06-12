@@ -61,6 +61,7 @@ import {
   summarizeGazeStreamQuality,
   updateGazeStreamStats,
 } from '../gaze/qualityMonitor.js';
+import { getValidationPolicy } from '../gaze/validationPolicy.js';
 import {
   ACCURACY_REFINEMENT_POINTS,
   VALIDATION_POINTS,
@@ -139,6 +140,7 @@ export function createAppController({
     calibrateButton,
     accuracyButton,
     calibrationProfileSelect,
+    validationPolicySelect,
     videoFileInput,
     aoiFileInput,
     projectionSelect,
@@ -264,11 +266,25 @@ export function createAppController({
     return state.selectedCalibrationProfile;
   }
 
+  function syncSelectedValidationPolicyState() {
+    const policy = getValidationPolicy(validationPolicySelect.value);
+
+    state.selectedValidationPolicyId = policy.id;
+    setSelectValueIfOptionExists(validationPolicySelect, policy.id);
+    return policy;
+  }
+
   function freezeSelectedCalibrationProfileForCalibration() {
     const selectedProfile = syncSelectedCalibrationProfileState();
     activeCalibrationProfile = getCalibrationProfile(selectedProfile.id);
     state.calibrationProfile = getCalibrationProfileMetadata(activeCalibrationProfile.id);
     return activeCalibrationProfile;
+  }
+
+  function freezeSelectedValidationPolicyForAccuracy() {
+    const policy = syncSelectedValidationPolicyState();
+    state.validationPolicyId = policy.id;
+    return policy;
   }
 
   function getActiveCalibrationProfile() {
@@ -278,6 +294,10 @@ export function createAppController({
 
   function setCalibrationProfileSelectLocked(isLocked) {
     calibrationProfileSelect.disabled = isLocked;
+  }
+
+  function setValidationPolicySelectLocked(isLocked) {
+    validationPolicySelect.disabled = isLocked;
   }
 
   function hasSelectOption(select, value) {
@@ -731,6 +751,10 @@ export function createAppController({
     state.accuracyValidated = false;
     state.accuracyValidatedAt = null;
     state.accuracyInvalidationReason = null;
+    state.validationPolicyId = null;
+    state.policyPassed = null;
+    state.policyFailures = [];
+    state.validationGazeStreamQuality = null;
     state.liveGazeQuality = null;
     setAccuracySummary(null);
   }
@@ -762,7 +786,9 @@ export function createAppController({
   }
 
   function registerGazeStreamEvent(event) {
-    if (!state.isRecording || state.reviewActive) {
+    const isAccuracyRun = state.targetMode === 'accuracy' && !calibrationOverlay.hidden;
+
+    if ((!state.isRecording && !isAccuracyRun) || state.reviewActive) {
       return;
     }
 
@@ -789,6 +815,54 @@ export function createAppController({
 
   function getCurrentGazeStreamQuality() {
     return summarizeGazeStreamQuality(state.gazeStreamStats);
+  }
+
+  function applyAccuracyPolicyState(evaluation) {
+    state.validationPolicyId = evaluation.validationPolicyId;
+    state.policyPassed = evaluation.policyPassed;
+    state.policyFailures = Array.isArray(evaluation.policyFailures)
+      ? evaluation.policyFailures
+      : [];
+  }
+
+  function formatPolicyMetric(metric) {
+    return {
+      meanPx: 'mean',
+      p90Px: 'p90',
+      maxPx: 'worst target',
+      p90DispersionPx: 'capture p90',
+      maxDispersionPx: 'capture worst',
+      effectiveHz: 'stream Hz',
+      dataIntegrityPercent: 'data integrity',
+    }[metric] || metric;
+  }
+
+  function formatPolicyValue(value, metric) {
+    if (!Number.isFinite(value)) {
+      return 'missing';
+    }
+
+    return metric === 'dataIntegrityPercent'
+      ? `${Math.round(value)}%`
+      : String(Math.round(value));
+  }
+
+  function formatPolicyFailure(failure) {
+    return `${formatPolicyMetric(failure.metric)} ${formatPolicyValue(failure.actual, failure.metric)} ${failure.comparator} ${formatPolicyValue(failure.limit, failure.metric)}`;
+  }
+
+  function formatPolicyFailureNotice(evaluation) {
+    const policyLabel = evaluation.validationPolicyId === 'research'
+      ? 'Research policy'
+      : 'Validation policy';
+    const details = (evaluation.policyFailures || [])
+      .filter((failure) => failure.metric !== 'validation')
+      .map(formatPolicyFailure)
+      .join(', ');
+
+    return details
+      ? `${policyLabel} failed: ${details}. Recalibrate before recording.`
+      : `${policyLabel} failed. Recalibrate before recording.`;
   }
 
   function resetRecordingSampleScheduler() {
@@ -1089,6 +1163,7 @@ export function createAppController({
       calibrationOverlay.hidden = true;
       setTargetCapturing(false);
       setCalibrationProfileSelectLocked(false);
+      setValidationPolicySelectLocked(false);
       setWebcamStatus(state.webcamStarted ? 'active' : 'idle');
       setNotice('Target sequence changed. Start calibration again.', true);
       void restoreVideoAfterTargetMode();
@@ -1169,6 +1244,7 @@ export function createAppController({
     calibrationOverlay.hidden = true;
     setTargetCapturing(false);
     setCalibrationProfileSelectLocked(false);
+    setValidationPolicySelectLocked(false);
     setWebcamStatus(state.webcamStarted ? 'active' : 'idle');
     void restoreVideoAfterTargetMode();
   }
@@ -1206,6 +1282,7 @@ export function createAppController({
     if (state.calibrationIndex >= calibrationTargetCount) {
       calibrationOverlay.hidden = true;
       setCalibrationProfileSelectLocked(false);
+      setValidationPolicySelectLocked(false);
       setWebcamStatus('calibrated');
       setNotice('Webcam calibration complete. Run Check accuracy before recording.', false);
       await restoreVideoAfterTargetMode();
@@ -1222,6 +1299,8 @@ export function createAppController({
       return;
     }
 
+    const validationPolicy = freezeSelectedValidationPolicyForAccuracy();
+
     state.targetMode = 'accuracy';
     state.accuracyIndex = 0;
     state.accuracySamples = [];
@@ -1229,16 +1308,22 @@ export function createAppController({
     state.accuracyValidated = false;
     state.accuracyValidatedAt = null;
     state.accuracyInvalidationReason = null;
+    state.policyPassed = null;
+    state.policyFailures = [];
+    state.validationGazeStreamQuality = null;
     resetLiveGazeQuality();
     state.refinementAccuracySummary = null;
     state.accuracySummary = null;
     state.correctedAccuracySummary = null;
     state.localAccuracyErrorModel = null;
+    state.gazeStreamStats = null;
     pauseVideoForTargetMode();
     setCalibrationProfileSelectLocked(true);
+    setValidationPolicySelectLocked(true);
     calibrationOverlay.hidden = false;
     setWebcamStatus('validating');
     setAccuracySummary(null);
+    state.validationPolicyId = validationPolicy.id;
     positionTargetOverlay();
   }
 
@@ -1314,12 +1399,17 @@ export function createAppController({
     state.accuracyIndex += 1;
 
     if (state.accuracyIndex >= VALIDATION_POINTS.length) {
+      const validationGazeStreamQuality = getCurrentGazeStreamQuality();
       const evaluation = evaluateAccuracyCheck({
         refinementSamples: state.accuracySamples,
         validationSamples: state.validationSamples,
         minAcceptedRefinementTargets: MIN_ACCEPTED_REFINEMENT_TARGETS,
         minAcceptedValidationTargets: MIN_ACCEPTED_VALIDATION_TARGETS,
+        policy: getValidationPolicy(state.validationPolicyId),
+        streamQuality: validationGazeStreamQuality,
       });
+      state.validationGazeStreamQuality = validationGazeStreamQuality;
+      applyAccuracyPolicyState(evaluation);
 
       if (evaluation.reason === 'too-few-targets') {
         state.gazeCorrection = null;
@@ -1331,6 +1421,7 @@ export function createAppController({
         state.accuracyValidatedAt = null;
         calibrationOverlay.hidden = true;
         setCalibrationProfileSelectLocked(false);
+        setValidationPolicySelectLocked(false);
         setWebcamStatus('calibrated');
         setAccuracySummary(evaluation.accuracySummary);
         setNotice('Accuracy check could not collect enough fresh stable gaze predictions. Keep your face steady, then run Check accuracy again.', true);
@@ -1348,6 +1439,7 @@ export function createAppController({
         state.accuracyValidatedAt = null;
         calibrationOverlay.hidden = true;
         setCalibrationProfileSelectLocked(false);
+        setValidationPolicySelectLocked(false);
         setWebcamStatus('calibrated');
         setAccuracySummary(evaluation.accuracySummary);
         setNotice('Accuracy check did not cover enough of the player. Keep your face steady and retry all targets before recording.', true);
@@ -1368,6 +1460,7 @@ export function createAppController({
       resetLiveGazeQuality();
       calibrationOverlay.hidden = true;
       setCalibrationProfileSelectLocked(false);
+      setValidationPolicySelectLocked(false);
       setWebcamStatus('calibrated');
       setAccuracySummary(correctedValidationSummary);
       if (correctedValidationSummary.quality === 'untested') {
@@ -1376,6 +1469,8 @@ export function createAppController({
         setNotice(
           evaluation.validationPassed
             ? `Accuracy validated independently: mean ${Math.round(correctedValidationSummary.meanPx)}px, p90 ${Math.round(correctedValidationSummary.p90Px || 0)}px, capture p90 ${Math.round(correctedValidationSummary.p90DispersionPx || 0)}px, worst target ${Math.round(correctedValidationSummary.maxPx || 0)}px.`
+            : evaluation.reason === 'failed-validation-policy'
+              ? formatPolicyFailureNotice(evaluation)
             : `Accuracy validation is ${correctedValidationSummary.quality}, mean error ${Math.round(correctedValidationSummary.meanPx)}px, capture p90 ${Math.round(correctedValidationSummary.p90DispersionPx || 0)}px, worst target ${Math.round(correctedValidationSummary.maxPx || 0)}px. Recalibrate before recording.`,
           true,
         );
@@ -1792,6 +1887,9 @@ export function createAppController({
         accuracyP90DispersionPx: state.correctedAccuracySummary?.p90DispersionPx ?? null,
         accuracyMaxDispersionPx: state.correctedAccuracySummary?.maxDispersionPx ?? null,
         accuracyInvalidationReason: state.accuracyInvalidationReason,
+        validationPolicyId: state.validationPolicyId,
+        policyPassed: state.policyPassed,
+        policyFailures: state.policyFailures,
         droppedGazeSamples: state.droppedGazeSamples,
       },
       gazeStreamQuality: getCurrentGazeStreamQuality(),
@@ -2025,11 +2123,14 @@ export function createAppController({
       aois: activeAois,
       selectedCalibrationProfile: state.selectedCalibrationProfile,
       calibrationProfile: state.calibrationProfile,
+      selectedValidationPolicyId: state.selectedValidationPolicyId,
+      validationPolicyId: state.validationPolicyId,
     });
   }
 
   function exportSamples() {
     syncSelectedCalibrationProfileState();
+    syncSelectedValidationPolicyState();
     const namedAoiMetrics = buildNamedAoiMetrics(state.samples, activeAois, {
       sampleIntervalMs: recordingSampleScheduler.intervalMs,
     });
@@ -2206,6 +2307,7 @@ export function createAppController({
       videoFileInput.addEventListener('change', loadLocalVideo);
       aoiFileInput.addEventListener('change', loadAoiFile);
       calibrationProfileSelect.addEventListener('change', syncSelectedCalibrationProfileState);
+      validationPolicySelect.addEventListener('change', syncSelectedValidationPolicyState);
       projectionSelect.addEventListener('change', syncSourceVideoMetadataFromControls);
       stereoLayoutSelect.addEventListener('change', syncSourceVideoMetadataFromControls);
       addManualAoiButton.addEventListener('click', addManualAoi);
@@ -2228,6 +2330,7 @@ export function createAppController({
       renderAoiList();
       applyVideoMetadataControls(sourceVideoInfo);
       syncSelectedCalibrationProfileState();
+      syncSelectedValidationPolicyState();
       void loadAois();
       resize();
       updateCamera();

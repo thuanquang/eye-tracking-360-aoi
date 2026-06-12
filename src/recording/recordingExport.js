@@ -19,6 +19,12 @@ function buildCalibrationProfileMetadata(profile) {
   };
 }
 
+function clonePolicyFailures(policyFailures) {
+  return Array.isArray(policyFailures)
+    ? policyFailures.map((failure) => ({ ...failure }))
+    : [];
+}
+
 function countValues(samples, getValues) {
   return samples.reduce((counts, sample) => {
     const values = getValues(sample);
@@ -66,6 +72,7 @@ export function buildExportSummary(samples, stateLike, sampleIntervalMs = DEFAUL
   const selectedCalibrationProfile = buildCalibrationProfileMetadata(stateLike.selectedCalibrationProfile);
   const calibrationProfile = buildCalibrationProfileMetadata(stateLike.calibrationProfileUsed)
     ?? buildCalibrationProfileMetadata(stateLike.calibrationProfile);
+  const policyFailures = clonePolicyFailures(stateLike.policyFailures);
 
   return {
     totalSamples: samples.length,
@@ -89,6 +96,11 @@ export function buildExportSummary(samples, stateLike, sampleIntervalMs = DEFAUL
     selectedCalibrationProfile,
     calibrationProfile,
     calibrationProfileUsed: calibrationProfile,
+    selectedValidationPolicyId: stateLike.selectedValidationPolicyId ?? 'prototype',
+    validationPolicyId: stateLike.validationPolicyId ?? null,
+    policyPassed: stateLike.policyPassed ?? null,
+    policyFailures,
+    validationGazeStreamQuality: stateLike.validationGazeStreamQuality ?? null,
     droppedGazeSamples: stateLike.droppedGazeSamples,
     gazeStreamQuality,
   };
@@ -131,6 +143,8 @@ export function buildProjectPackage({
   selectedCalibrationProfile,
   calibrationProfile,
   calibrationProfileUsed,
+  selectedValidationPolicyId,
+  validationPolicyId,
 }) {
   const selectedProfileMetadata = buildCalibrationProfileMetadata(selectedCalibrationProfile);
   const calibrationProfileMetadata = buildCalibrationProfileMetadata(calibrationProfileUsed)
@@ -153,6 +167,8 @@ export function buildProjectPackage({
     selectedCalibrationProfile: selectedProfileMetadata,
     calibrationProfile: calibrationProfileMetadata,
     calibrationProfileUsed: calibrationProfileMetadata,
+    selectedValidationPolicyId: selectedValidationPolicyId ?? 'prototype',
+    validationPolicyId: validationPolicyId ?? null,
     includesVideoBinary: false,
   };
 }
@@ -178,6 +194,17 @@ export function buildExportPayload({
     ?? buildCalibrationProfileMetadata(summary?.calibrationProfile)
     ?? buildCalibrationProfileMetadata(project?.calibrationProfileUsed)
     ?? buildCalibrationProfileMetadata(project?.calibrationProfile);
+  const selectedValidationPolicyId = state.selectedValidationPolicyId
+    ?? summary?.selectedValidationPolicyId
+    ?? project?.selectedValidationPolicyId
+    ?? 'prototype';
+  const validationPolicyId = state.validationPolicyId
+    ?? summary?.validationPolicyId
+    ?? project?.validationPolicyId
+    ?? null;
+  const policyFailures = clonePolicyFailures(
+    state.policyFailures ?? summary?.policyFailures,
+  );
 
   return {
     sourceVideo,
@@ -192,6 +219,13 @@ export function buildExportPayload({
     selectedCalibrationProfile,
     calibrationProfile,
     calibrationProfileUsed: calibrationProfile,
+    selectedValidationPolicyId,
+    validationPolicyId,
+    policyPassed: state.policyPassed ?? summary?.policyPassed ?? null,
+    policyFailures,
+    validationGazeStreamQuality: state.validationGazeStreamQuality
+      ?? summary?.validationGazeStreamQuality
+      ?? null,
     accuracy: state.correctedAccuracySummary,
     rawValidationAccuracy: state.accuracySummary,
     correctionFitAccuracy: state.refinementAccuracySummary,

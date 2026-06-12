@@ -8,6 +8,7 @@ import {
   getTargetPointsForMode,
 } from '../src/gaze/calibrationTargets.js';
 import { evaluateAccuracyCheck } from '../src/gaze/accuracyValidation.js';
+import { getValidationPolicy } from '../src/gaze/validationPolicy.js';
 
 const VIEWPORT = { width: 1000, height: 800 };
 
@@ -55,11 +56,33 @@ test('passes accuracy check using separate holdout validation targets', () => {
   });
 
   assert.equal(result.validationPassed, true);
+  assert.equal(result.validationPolicyId, 'prototype');
+  assert.equal(result.policyPassed, true);
+  assert.deepEqual(result.policyFailures, []);
   assert.equal(result.reason, null);
   assert.equal(result.correctedValidationSummary.quality, 'good');
   assert.equal(result.correctedValidationSummary.count, ACCURACY_VALIDATION_POINTS.length);
   assert.equal(Boolean(result.liveCalibration), true);
   assert.equal(Boolean(result.localAccuracyErrorModel), true);
+});
+
+test('reports research policy failures with stream quality details', () => {
+  const result = evaluateAccuracyCheck({
+    refinementSamples: ACCURACY_REFINEMENT_POINTS.map(sampleFromTargetPoint),
+    validationSamples: ACCURACY_VALIDATION_POINTS.map(sampleFromTargetPoint),
+    minAcceptedRefinementTargets: 8,
+    minAcceptedValidationTargets: 7,
+    policy: getValidationPolicy('research'),
+    streamQuality: { effectiveHz: 12, dataIntegrityPercent: 92 },
+  });
+
+  assert.equal(result.validationPassed, false);
+  assert.equal(result.reason, 'failed-validation-policy');
+  assert.equal(result.validationPolicyId, 'research');
+  assert.equal(result.policyPassed, false);
+  assert.deepEqual(result.policyFailures.map((failure) => failure.metric), ['effectiveHz']);
+  assert.equal(result.policyFailures[0].actual, 12);
+  assert.equal(result.policyFailures[0].limit, 20);
 });
 
 test('reports too few accepted accuracy targets', () => {

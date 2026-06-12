@@ -7,15 +7,33 @@ import {
   normalizeAccuracySample,
   summarizeAccuracy,
 } from './gazeQuality.js';
+import {
+  getValidationPolicy,
+  getValidationPolicyFailures,
+} from './validationPolicy.js';
 
 function normalizeSamples(samples) {
   return samples.map((sample) => normalizeAccuracySample(sample, sample.viewport));
 }
 
-function buildFailedResult(reason) {
+function buildValidationFailure(reason) {
+  return {
+    metric: 'validation',
+    actual: reason,
+    limit: 'pass',
+    comparator: '==',
+  };
+}
+
+function buildFailedResult(reason, policy) {
+  const validationPolicy = getValidationPolicy(policy);
+
   return {
     validationPassed: false,
     reason,
+    validationPolicyId: validationPolicy.id,
+    policyPassed: false,
+    policyFailures: [buildValidationFailure(reason)],
     accuracySummary: summarizeAccuracy([]),
   };
 }
@@ -25,12 +43,16 @@ export function evaluateAccuracyCheck({
   validationSamples,
   minAcceptedRefinementTargets,
   minAcceptedValidationTargets,
+  policy = getValidationPolicy(),
+  streamQuality = null,
 }) {
+  const validationPolicy = getValidationPolicy(policy);
+
   if (
     refinementSamples.length < minAcceptedRefinementTargets ||
     validationSamples.length < minAcceptedValidationTargets
   ) {
-    return buildFailedResult('too-few-targets');
+    return buildFailedResult('too-few-targets', validationPolicy);
   }
 
   const normalizedRefinementSamples = normalizeSamples(refinementSamples);
@@ -40,7 +62,7 @@ export function evaluateAccuracyCheck({
     !hasSufficientSpatialCoverage(normalizedRefinementSamples, { minXRange: 0.45, minYRange: 0.45 }) ||
     !hasSufficientSpatialCoverage(normalizedValidationSamples, { minXRange: 0.22, minYRange: 0.22 })
   ) {
-    return buildFailedResult('insufficient-coverage');
+    return buildFailedResult('insufficient-coverage', validationPolicy);
   }
 
   const refinement = buildAccuracyCorrection(normalizedRefinementSamples, {
@@ -52,9 +74,16 @@ export function evaluateAccuracyCheck({
   }));
   const validationSummary = summarizeAccuracy(validationSamples);
   const correctedValidationSummary = summarizeAccuracy(correctedValidationSamples);
-  const validationPassed = isAccuracyValidationUsable(correctedValidationSummary, {
+  const accuracyThresholdsPassed = isAccuracyValidationUsable(correctedValidationSummary, {
     minSamples: minAcceptedValidationTargets,
   });
+  const policyFailures = getValidationPolicyFailures({
+    summary: correctedValidationSummary,
+    streamQuality,
+    policy: validationPolicy,
+  });
+  const policyPassed = policyFailures.length === 0;
+  const validationPassed = accuracyThresholdsPassed && policyPassed;
   const finalCorrection = validationPassed
     ? buildAccuracyCorrection([
       ...normalizedRefinementSamples,
@@ -69,7 +98,12 @@ export function evaluateAccuracyCheck({
 
   return {
     validationPassed,
-    reason: validationPassed ? null : 'failed-validation-thresholds',
+    reason: validationPassed
+      ? null
+      : accuracyThresholdsPassed ? 'failed-validation-policy' : 'failed-validation-thresholds',
+    validationPolicyId: validationPolicy.id,
+    policyPassed,
+    policyFailures,
     refinement,
     validationSummary,
     accuracySummary: validationSummary,

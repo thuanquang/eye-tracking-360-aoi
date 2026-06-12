@@ -19,6 +19,11 @@ test('creates fresh app state without shared mutable arrays', () => {
   assert.equal(second.gaze.visible, false);
   assert.deepEqual(second.selectedCalibrationProfile, { id: 'standard', label: 'Standard', pointCount: 14 });
   assert.equal(second.calibrationProfile, null);
+  assert.equal(second.selectedValidationPolicyId, 'prototype');
+  assert.equal(second.validationPolicyId, null);
+  assert.equal(second.policyPassed, null);
+  assert.deepEqual(second.policyFailures, []);
+  assert.equal(second.validationGazeStreamQuality, null);
 });
 
 test('creates initial video metadata for bundled equirectangular demo', () => {
