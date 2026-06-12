@@ -1,3 +1,10 @@
+import {
+  distanceToPolygonEdges,
+  interpolatePolygonPoints,
+  normalizePolygonPoints,
+  pointHitsPolygonAoi,
+} from '../aoiShapes.js';
+
 const HALF_TURN = 180;
 const FULL_TURN = 360;
 
@@ -204,6 +211,23 @@ function getAoiSpace(aoi) {
   return aoi?.space === 'video' ? 'video' : 'panorama';
 }
 
+function getPolygonPointKeys(aoi) {
+  return getAoiSpace(aoi) === 'video'
+    ? { x: 'x', y: 'y' }
+    : { x: 'yaw', y: 'pitch' };
+}
+
+function isPanoramaPolygonAoi(aoi) {
+  return aoi?.shape === 'polygon' && getAoiSpace(aoi) === 'panorama';
+}
+
+function distanceToPanoramaPolygonEdge(point, aoi) {
+  const pointKeys = getPolygonPointKeys(aoi);
+  const points = normalizePolygonPoints(aoi?.points || [], pointKeys);
+
+  return distanceToPolygonEdges(point, points, pointKeys);
+}
+
 function hitTestPanoramaAoi(point, aoi) {
   const pitchMin = Math.min(aoi.pitchMin, aoi.pitchMax);
   const pitchMax = Math.max(aoi.pitchMin, aoi.pitchMax);
@@ -233,8 +257,12 @@ function hitTestVideoAoi(point, aoi) {
   );
 }
 
-export function hitTestAois(point, aois) {
+export function hitTestAois(point, aois, dimensions) {
   return aois.filter((aoi) => {
+    if (aoi.shape === 'polygon') {
+      return pointHitsPolygonAoi(point, aoi, dimensions);
+    }
+
     return getAoiSpace(aoi) === 'video'
       ? hitTestVideoAoi(point, aoi)
       : hitTestPanoramaAoi(point, aoi);
@@ -293,6 +321,15 @@ function resolveDynamicAoiAtTime(aoi, timeSec) {
   const [start, end] = pair;
   const duration = end.t - start.t;
   const ratio = duration > 0 ? (timeSec - start.t) / duration : 0;
+
+  if (aoi.shape === 'polygon') {
+    const pointKeys = getPolygonPointKeys(aoi);
+
+    return {
+      ...aoi,
+      points: interpolatePolygonPoints(start.points || [], end.points || [], ratio, pointKeys),
+    };
+  }
 
   if (getAoiSpace(aoi) === 'video') {
     return {
@@ -377,19 +414,37 @@ export function classifyAoisWithUncertainty(
   {
     yawRadius = 0,
     pitchRadius = 0,
+    viewport = null,
   } = {},
 ) {
   const safeYawRadius = Math.max(0, yawRadius);
   const safePitchRadius = Math.max(0, pitchRadius);
-  const exactHits = hitTestAois(point, aois);
-  const possibleHits = aois.filter((aoi) => (
-    distanceToYawRange(point.yaw, aoi.yawMin, aoi.yawMax) <= safeYawRadius &&
-    distanceToPitchRange(point.pitch, aoi.pitchMin, aoi.pitchMax) <= safePitchRadius
-  ));
-  const likelyHits = exactHits.filter((aoi) => (
-    yawMarginInsideRange(point.yaw, aoi.yawMin, aoi.yawMax) >= safeYawRadius &&
-    pitchMarginInsideRange(point.pitch, aoi.pitchMin, aoi.pitchMax) >= safePitchRadius
-  ));
+  const exactHits = hitTestAois(point, aois, viewport);
+  const exactHitIds = new Set(exactHits.map((aoi) => aoi.id));
+  const polygonRadius = Math.hypot(safeYawRadius, safePitchRadius);
+  const possibleHits = aois.filter((aoi) => {
+    if (isPanoramaPolygonAoi(aoi)) {
+      return (
+        exactHitIds.has(aoi.id) ||
+        distanceToPanoramaPolygonEdge(point, aoi) <= polygonRadius
+      );
+    }
+
+    return (
+      distanceToYawRange(point.yaw, aoi.yawMin, aoi.yawMax) <= safeYawRadius &&
+      distanceToPitchRange(point.pitch, aoi.pitchMin, aoi.pitchMax) <= safePitchRadius
+    );
+  });
+  const likelyHits = exactHits.filter((aoi) => {
+    if (isPanoramaPolygonAoi(aoi)) {
+      return distanceToPanoramaPolygonEdge(point, aoi) >= polygonRadius;
+    }
+
+    return (
+      yawMarginInsideRange(point.yaw, aoi.yawMin, aoi.yawMax) >= safeYawRadius &&
+      pitchMarginInsideRange(point.pitch, aoi.pitchMin, aoi.pitchMax) >= safePitchRadius
+    );
+  });
   const likelyHitIds = new Set(likelyHits.map((aoi) => aoi.id));
   const ambiguousHits = possibleHits.filter((aoi) => !likelyHitIds.has(aoi.id));
 

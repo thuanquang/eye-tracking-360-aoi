@@ -37,4 +37,5 @@ export const LIVE_QUALITY = {
 export const DEFAULT_VALIDATION_MAX_AGE_MS = 5 * 60 * 1000;
 export const REVIEW_GAZE_EDGE_PADDING_PX = 12;
 export const REVIEW_LOOP_GRACE_SEC = 0.25;
+export const POLYGON_KEYFRAME_EDIT_EPSILON_SEC = 0.05;
 export const SVG_NS = 'http://www.w3.org/2000/svg';

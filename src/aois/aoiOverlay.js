@@ -142,6 +142,31 @@ export function projectVideoAoiRange(aoi, rect) {
   ];
 }
 
+export function projectVideoPolygon(aoi, rect) {
+  return (aoi.points || []).map((point) => ({
+    x: point.x * rect.width,
+    y: point.y * rect.height,
+  }));
+}
+
+export function projectPanoramaPolygon(aoi, rect, camera) {
+  const points = (aoi.points || []).map((point) => panoramaPointToScreen({
+    yaw: point.yaw,
+    pitch: point.pitch,
+    width: rect.width,
+    height: rect.height,
+    cameraYaw: camera.yaw,
+    cameraPitch: camera.pitch,
+    fov: camera.fov,
+  }));
+
+  if (!points.every((point) => point.inFront && Number.isFinite(point.x) && Number.isFinite(point.y))) {
+    return null;
+  }
+
+  return clipPolygonToRect(points, rect.width, rect.height);
+}
+
 export function getAoiOverlayColor(aoi, supportsColor = null) {
   if (typeof aoi.color !== 'string' || !aoi.color.trim()) {
     return DEFAULT_AOI_OVERLAY_COLOR;
@@ -196,6 +221,20 @@ export function buildAoiOverlayModels({
 }) {
   return (aois ?? []).flatMap((aoi) => {
     const color = getAoiOverlayColor(aoi, supportsColor);
+
+    if (aoi.shape === 'polygon') {
+      const points = aoi.space === 'video'
+        ? projectVideoPolygon(aoi, rect)
+        : projectPanoramaPolygon(aoi, rect, camera);
+
+      return points && points.length >= 3 ? [{
+        id: aoi.id,
+        label: aoi.label,
+        color,
+        points,
+        labelPoint: points[0],
+      }] : [];
+    }
 
     if (aoi.space === 'video') {
       const points = projectVideoAoiRange(aoi, rect);

@@ -242,6 +242,34 @@
             </label>
           </div>
           <button id="addManualAoiButton" class="wide-action" type="button">Add Center AOI</button>
+          <div class="recording-actions">
+            <button id="drawPolygonAoiButton" type="button">Draw Polygon</button>
+            <button id="finishPolygonAoiButton" type="button" disabled>Finish</button>
+            <button id="cancelPolygonAoiButton" type="button" disabled>Cancel</button>
+          </div>
+          <p id="manualAoiStatus" class="fine-print">Click Draw Polygon, then click around the object edge. Double-click or press Finish to close.</p>
+        </section>
+
+        <section id="selectedAoiPanel" class="panel-section" hidden>
+          <p class="section-label">Selected AOI</p>
+          <label class="field-label">
+            <span>Label</span>
+            <input id="selectedAoiLabelInput" type="text" autocomplete="off" />
+          </label>
+          <div class="metadata-grid">
+            <label class="field-label compact-field">
+              <span>Padding px</span>
+              <input id="selectedAoiPaddingInput" type="number" min="0" step="1" value="0" />
+            </label>
+            <label class="field-label compact-field">
+              <span>Color</span>
+              <input id="selectedAoiColorInput" type="color" value="#ffd166" />
+            </label>
+          </div>
+          <div class="recording-actions selected-aoi-actions">
+            <button id="saveSelectedAoiButton" class="primary" type="button">Save AOI</button>
+            <button id="deleteSelectedAoiButton" class="danger-action" type="button">Delete</button>
+          </div>
         </section>
 
         <section id="cloudAoiPanel" class="panel-section admin-panel-section" data-step="02">
@@ -259,6 +287,14 @@ product</textarea>
           <label class="field-label compact-field">
             <span>Sample seconds</span>
             <input id="cloudAoiSampleIntervalInput" type="number" min="0.25" step="0.25" value="1" />
+          </label>
+          <label class="field-label compact-field">
+            <span>Max polygon points</span>
+            <input id="cloudAoiMaxPointsInput" type="number" min="12" max="240" value="80" />
+          </label>
+          <label class="field-label compact-field">
+            <span>Edge simplify</span>
+            <input id="cloudAoiSimplifyInput" type="number" min="0.001" max="0.02" step="0.001" value="0.003" />
           </label>
           <div class="recording-actions">
             <button id="exportColabJobButton" type="button">Export Colab Job</button>

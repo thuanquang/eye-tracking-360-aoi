@@ -33,17 +33,52 @@ function hasColorVariance(samples) {
   return false;
 }
 
+async function recordMouseExport(page, viewerBox) {
+  await page.mouse.move(viewerBox.x + viewerBox.width / 2, viewerBox.y + viewerBox.height / 2);
+  await page.locator('#recordButton').click();
+  await page.waitForFunction(() => document.querySelector('#sampleCount')?.textContent !== '0');
+  await page.locator('#recordButton').click();
+
+  const downloadPromise = page.waitForEvent('download');
+  await page.locator('#exportButton').click();
+  const download = await downloadPromise;
+
+  return JSON.parse(await readFile(await download.path(), 'utf8'));
+}
+
+async function getSvgHandleScreenPoint(page, handle) {
+  const overlayBox = await page.locator('#aoiOverlay').boundingBox();
+  assert.notEqual(overlayBox, null, 'AOI overlay should have a screen box for vertex dragging.');
+  const point = await handle.evaluate((element) => ({
+    x: Number(element.getAttribute('cx')),
+    y: Number(element.getAttribute('cy')),
+  }));
+  assert.equal(Number.isFinite(point.x), true, 'Vertex handle should expose a finite SVG cx.');
+  assert.equal(Number.isFinite(point.y), true, 'Vertex handle should expose a finite SVG cy.');
+
+  return {
+    x: overlayBox.x + point.x,
+    y: overlayBox.y + point.y,
+    svgX: point.x,
+    svgY: point.y,
+  };
+}
+
 const browser = await chromium.launch();
 const page = await browser.newPage({
   acceptDownloads: true,
   viewport: { width: 1366, height: 900 },
 });
 const consoleErrors = [];
+const pageErrors = [];
 
 page.on('console', (message) => {
   if (message.type() === 'error') {
     consoleErrors.push(message.text());
   }
+});
+page.on('pageerror', (error) => {
+  pageErrors.push(error.message);
 });
 
 try {
@@ -141,12 +176,115 @@ try {
     'UI should show whether AOIs came from the editable JSON file.',
   );
   await page.locator('#projectionSelect').selectOption('flat');
+  await page.locator('#manualAoiLabelInput').fill('Drawn object');
+  await page.locator('#drawPolygonAoiButton').click();
+  const drawBox = await page.locator('#viewer').boundingBox();
+
+  await page.mouse.click(drawBox.x + drawBox.width * 0.35, drawBox.y + drawBox.height * 0.25);
+  await page.mouse.click(drawBox.x + drawBox.width * 0.55, drawBox.y + drawBox.height * 0.28);
+  await page.mouse.click(drawBox.x + drawBox.width * 0.50, drawBox.y + drawBox.height * 0.50);
+  await page.mouse.dblclick(drawBox.x + drawBox.width * 0.32, drawBox.y + drawBox.height * 0.45);
+
+  await page.waitForFunction(() => document.querySelector('#aoiList')?.textContent?.includes('Drawn object'));
+  assert.equal(
+    await page.locator('#aoiOverlay [data-aoi-id="drawn-object"]').count(),
+    1,
+    'Drawn polygon AOIs should appear on the overlay.',
+  );
+  const drawnAoiButton = page.locator('#aoiList button[data-aoi-id="drawn-object"]');
+  await drawnAoiButton.focus();
+  await page.keyboard.press('Enter');
+  await page.waitForFunction(() => (
+    document.activeElement?.matches('#aoiList button[data-aoi-id="drawn-object"][aria-pressed="true"]')
+  ));
+  assert.equal(
+    await drawnAoiButton.getAttribute('aria-pressed'),
+    'true',
+    'Keyboard-selected AOIs should expose selected state on the list button.',
+  );
+  assert.equal(
+    await page.locator(':focus').getAttribute('data-aoi-id'),
+    'drawn-object',
+    'Keyboard AOI selection should keep focus on the selected AOI button after rerender.',
+  );
+  const firstHandle = page.locator('#aoiOverlay .aoi-vertex-handle').first();
+  const before = await getSvgHandleScreenPoint(page, firstHandle);
+  await page.mouse.move(before.x, before.y);
+  await page.mouse.down();
+  await page.mouse.move(before.x + 20, before.y + 16);
+  await page.mouse.up();
+  const after = await getSvgHandleScreenPoint(page, firstHandle);
+  assert.notEqual(Math.round(after.svgX), Math.round(before.svgX));
+
+  const drawnExportPromise = page.waitForEvent('download');
+  await page.locator('#exportButton').click();
+  const drawnExportDownload = await drawnExportPromise;
+  const drawnExportJson = JSON.parse(await readFile(await drawnExportDownload.path(), 'utf8'));
+  const drawnAoi = drawnExportJson.aois.find((aoi) => aoi.id === 'drawn-object');
+  assert.equal(drawnAoi.shape, 'polygon', 'Manual drawn AOIs should export as polygons.');
+  assert.equal(drawnAoi.space, 'video', 'Manual flat drawn AOIs should export in video space.');
+  assert.equal(drawnAoi.points.length >= 4, true, 'Manual drawn polygon AOIs should export vertex points.');
+  assert.equal(
+    drawnAoi.keyframes[0].points.length,
+    drawnAoi.points.length,
+    'Manual drawn polygon AOIs should export matching keyframe points.',
+  );
+
+  await page.locator('#projectionSelect').selectOption('flat');
+  await page.locator('#manualAoiLabelInput').fill('Locked projection polygon');
+  await page.locator('#drawPolygonAoiButton').click();
+  const lockedBox = await page.locator('#viewer').boundingBox();
+  await page.mouse.click(lockedBox.x + lockedBox.width * 0.24, lockedBox.y + lockedBox.height * 0.24);
+  await page.locator('#projectionSelect').selectOption('equirectangular');
+  await page.mouse.click(lockedBox.x + lockedBox.width * 0.42, lockedBox.y + lockedBox.height * 0.25);
+  await page.mouse.click(lockedBox.x + lockedBox.width * 0.40, lockedBox.y + lockedBox.height * 0.42);
+  await page.mouse.dblclick(lockedBox.x + lockedBox.width * 0.23, lockedBox.y + lockedBox.height * 0.40);
+  await page.waitForFunction(() => document.querySelector('#aoiList')?.textContent?.includes('Locked projection polygon'));
+  const lockedExportPromise = page.waitForEvent('download');
+  await page.locator('#exportButton').click();
+  const lockedExportDownload = await lockedExportPromise;
+  const lockedExportJson = JSON.parse(await readFile(await lockedExportDownload.path(), 'utf8'));
+  const lockedAoi = lockedExportJson.aois.find((aoi) => aoi.id === 'locked-projection-polygon');
+  assert.equal(
+    lockedAoi.space,
+    'video',
+    'Polygon drawing should keep the AOI coordinate space chosen when drawing started.',
+  );
+  assert.equal(
+    lockedAoi.points.every((point) => Number.isFinite(point.x) && Number.isFinite(point.y) && point.yaw === undefined && point.pitch === undefined),
+    true,
+    'Projection changes during drawing should not mix video and panorama point formats.',
+  );
+
+  await page.locator('#projectionSelect').selectOption('flat');
+  await page.locator('#manualAoiLabelInput').fill('Degenerate manual polygon');
+  await page.locator('#drawPolygonAoiButton').click();
+  const degenerateManualBox = await page.locator('#viewer').boundingBox();
+  await page.mouse.click(degenerateManualBox.x + degenerateManualBox.width * 0.22, degenerateManualBox.y + degenerateManualBox.height * 0.32);
+  await page.mouse.click(degenerateManualBox.x + degenerateManualBox.width * 0.42, degenerateManualBox.y + degenerateManualBox.height * 0.32);
+  await page.mouse.click(degenerateManualBox.x + degenerateManualBox.width * 0.62, degenerateManualBox.y + degenerateManualBox.height * 0.32);
+  await page.mouse.dblclick(degenerateManualBox.x + degenerateManualBox.width * 0.82, degenerateManualBox.y + degenerateManualBox.height * 0.32);
+  assert.equal(
+    (await page.locator('#aoiList').innerText()).includes('Degenerate manual polygon'),
+    false,
+    'Manual polygon authoring should reject degenerate zero-area polygons.',
+  );
+  assert.match(
+    await page.locator('#manualAoiStatus').innerText(),
+    /area|shape/i,
+    'Rejected manual degenerate polygons should explain the geometry problem.',
+  );
+  await page.locator('#cancelPolygonAoiButton').click();
+
+  await page.locator('#projectionSelect').selectOption('flat');
   await page.locator('#manualAoiLabelInput').fill('Manual flat AOI');
   await page.locator('#manualAoiSizeInput').fill('24');
   await page.locator('#addManualAoiButton').click();
   await page.waitForFunction(() => document.querySelector('#aoiList')?.textContent?.includes('Manual flat AOI'));
   await page.locator('#cloudAoiPromptsInput').fill('person\nscreen, sign');
   await page.locator('#cloudAoiSampleIntervalInput').fill('0.75');
+  await page.locator('#cloudAoiMaxPointsInput').fill('42');
+  await page.locator('#cloudAoiSimplifyInput').fill('0.012');
   const colabJobDownloadPromise = page.waitForEvent('download');
   await page.locator('#exportColabJobButton').click();
   const colabJobDownload = await colabJobDownloadPromise;
@@ -157,6 +295,41 @@ try {
     colabJob.aoiPolicy.prompts,
     ['person', 'screen', 'sign'],
     'Colab job export should parse newline and comma separated AOI prompts.',
+  );
+  assert.equal(colabJob.aoiPolicy.sampleIntervalSec, 0.75, 'Colab job export should preserve the sample interval.');
+  assert.equal(colabJob.aoiPolicy.output, 'aoi-json', 'Colab job export should preserve the AOI JSON output marker.');
+  assert.equal(colabJob.aoiPolicy.outputShape, 'polygon', 'Colab job export should request polygon output.');
+  assert.equal(
+    colabJob.aoiPolicy.detectorModel,
+    'microsoft/Florence-2-base',
+    'Colab job export should name the object detector model.',
+  );
+  assert.equal(
+    colabJob.aoiPolicy.segmenterModel,
+    'facebook/sam2.1-hiera-small',
+    'Colab job export should name the mask segmenter model.',
+  );
+  assert.equal(colabJob.aoiPolicy.maxPolygonPoints, 42, 'Colab job export should preserve polygon point budget.');
+  assert.equal(
+    colabJob.aoiPolicy.polygonSimplificationEpsilon,
+    0.012,
+    'Colab job export should preserve polygon simplification tolerance.',
+  );
+  await page.locator('#cloudAoiMaxPointsInput').fill('');
+  await page.locator('#cloudAoiSimplifyInput').fill('');
+  const blankColabJobDownloadPromise = page.waitForEvent('download');
+  await page.locator('#exportColabJobButton').click();
+  const blankColabJobDownload = await blankColabJobDownloadPromise;
+  const blankColabJob = JSON.parse(await readFile(await blankColabJobDownload.path(), 'utf8'));
+  assert.equal(
+    blankColabJob.aoiPolicy.maxPolygonPoints,
+    80,
+    'Blank polygon point budget should export the builder default.',
+  );
+  assert.equal(
+    blankColabJob.aoiPolicy.polygonSimplificationEpsilon,
+    0.003,
+    'Blank polygon simplification tolerance should export the builder default.',
   );
   const tmpDir = await mkdtemp(join(tmpdir(), 'aoi-sidecar-'));
   const sidecarPath = join(tmpDir, 'test-video.aoi.json');
@@ -190,6 +363,18 @@ try {
         pitchMin: -8,
         pitchMax: 8,
       },
+      {
+        id: 'sidecar-seam-polygon',
+        label: 'Sidecar seam polygon',
+        color: '#ff0000',
+        shape: 'polygon',
+        points: [
+          { yaw: 170, pitch: 58 },
+          { yaw: -170, pitch: 58 },
+          { yaw: -170, pitch: 72 },
+          { yaw: 170, pitch: 72 },
+        ],
+      },
     ],
   }, null, 2));
   await page.locator('#aoiFileInput').setInputFiles(sidecarPath);
@@ -209,6 +394,16 @@ try {
     await page.locator('#aoiOverlay [data-aoi-id="sidecar-right-edge"]').count(),
     1,
     'AOIs partly outside the player viewport should still render as clipped anchored shapes.',
+  );
+  const seamMiddlePixel = await page.locator('#miniMap').evaluate((canvas) => {
+    const context = canvas.getContext('2d');
+    const pixel = context.getImageData(Math.floor(canvas.width * 0.53), Math.floor(canvas.height * 0.14), 1, 1).data;
+    return Array.from(pixel);
+  });
+  assert.equal(
+    seamMiddlePixel[0] < 40,
+    true,
+    'Seam-crossing panorama polygons should not fill the middle of the mini-map.',
   );
 
   const viewerBox = await page.locator('#viewer').boundingBox();
@@ -321,20 +516,256 @@ try {
   await page.waitForFunction(() => document.querySelector('#sampleCount')?.textContent !== '0');
   await page.locator('#recordButton').click();
 
-  const downloadPromise = page.waitForEvent('download');
-  await page.locator('#exportButton').click();
-  const download = await downloadPromise;
-  const exportedJson = JSON.parse(await readFile(await download.path(), 'utf8'));
+  const boxExportedJson = await recordMouseExport(page, viewerBox);
+  const [boxSample] = boxExportedJson.samples;
+
+  assert.equal(boxExportedJson.samples.length > 0, true, 'Mouse recording should export at least one 360 sidecar sample.');
+  assert.equal(
+    boxExportedJson.aoiSource,
+    'test-video.aoi.json',
+    'Export should identify the registered 360 AOI sidecar source.',
+  );
+  assert.equal(
+    boxExportedJson.aois.some((aoi) => aoi.id === 'sidecar-center'),
+    true,
+    'Export should package AOI definitions from the registered 360 sidecar file.',
+  );
+  assert.equal(
+    boxExportedJson.project.video.projection,
+    'equirectangular',
+    'Export should preserve 360 video projection metadata from the AOI sidecar.',
+  );
+  assert.equal(
+    boxExportedJson.project.video.stereoLayout,
+    'top-bottom',
+    'Export should preserve 3D stereo layout metadata from the AOI sidecar.',
+  );
+  assert.equal(
+    boxSample.activeAois.some((aoi) => aoi.id === 'sidecar-center' && Number.isFinite(aoi.yawMin)),
+    true,
+    'Time-resolved 360 AOI bounds should be inspectable by AOI id.',
+  );
+
+  await page.locator('#clearButton').click();
+  assert.equal(await page.locator('#sampleCount').innerText(), '0', 'Clear should reset samples before polygon export coverage.');
+
+  const invalidPolygonSidecarPath = join(tmpDir, 'invalid-polygon-video.aoi.json');
+  await writeFile(invalidPolygonSidecarPath, JSON.stringify({
+    video: {
+      name: 'test-video.mp4',
+      projection: 'flat',
+      stereoLayout: 'mono',
+    },
+    aois: [
+      {
+        id: 'invalid-polygon-object',
+        label: 'Invalid polygon object',
+        color: '#ffd166',
+        space: 'video',
+        shape: 'polygon',
+        points: [
+          { x: 0.3, y: 0.2 },
+          { x: 0.55, y: 0.24 },
+          { x: 0.52, y: 0.5 },
+          { x: 0.33, y: 0.46 },
+        ],
+        keyframes: [
+          {
+            t: 0,
+            points: [
+              { x: 0.3, y: 0.2 },
+              { x: '', y: 0.24 },
+              { x: 0.52, y: 0.5 },
+              { x: 0.33, y: 0.46 },
+            ],
+          },
+        ],
+      },
+    ],
+  }, null, 2));
+
+  await page.locator('#aoiFileInput').setInputFiles(invalidPolygonSidecarPath);
+  await page.waitForFunction(() => (
+    document.querySelector('#viewerNotice')?.textContent?.includes('Could not load AOI JSON') ||
+    document.querySelector('#aoiSourceLabel')?.textContent === 'invalid-polygon-video.aoi.json'
+  ));
+  assert.match(
+    await page.locator('#viewerNotice').innerText(),
+    /Could not load AOI JSON/,
+    'Invalid polygon keyframe coordinates should be rejected.',
+  );
+  assert.equal(
+    await page.locator('#aoiSourceLabel').innerText(),
+    'test-video.aoi.json',
+    'Rejected polygon sidecars should not replace the active AOI source.',
+  );
+  assert.equal(
+    (await page.locator('#aoiList').innerText()).includes('Invalid polygon object'),
+    false,
+    'Rejected polygon sidecars should not switch the AOI list.',
+  );
+
+  const degeneratePolygonSidecarPath = join(tmpDir, 'degenerate-polygon-video.aoi.json');
+  await writeFile(degeneratePolygonSidecarPath, JSON.stringify({
+    video: {
+      name: 'test-video.mp4',
+      projection: 'flat',
+      stereoLayout: 'mono',
+    },
+    aois: [
+      {
+        id: 'degenerate-polygon-object',
+        label: 'Degenerate polygon object',
+        color: '#ffd166',
+        space: 'video',
+        shape: 'polygon',
+        points: [
+          { x: 0.2, y: 0.2 },
+          { x: 0.4, y: 0.4 },
+          { x: 0.6, y: 0.6 },
+        ],
+      },
+    ],
+  }, null, 2));
+
+  await page.locator('#aoiFileInput').setInputFiles(degeneratePolygonSidecarPath);
+  await page.waitForFunction(() => (
+    document.querySelector('#viewerNotice')?.textContent?.includes('Could not load AOI JSON') ||
+    document.querySelector('#aoiSourceLabel')?.textContent === 'degenerate-polygon-video.aoi.json'
+  ));
+  assert.match(
+    await page.locator('#viewerNotice').innerText(),
+    /Could not load AOI JSON/,
+    'Degenerate polygon sidecars should be rejected.',
+  );
+  assert.equal(
+    await page.locator('#aoiSourceLabel').innerText(),
+    'test-video.aoi.json',
+    'Rejected degenerate polygon sidecars should not replace the active AOI source.',
+  );
+  assert.equal(
+    (await page.locator('#aoiList').innerText()).includes('Degenerate polygon object'),
+    false,
+    'Rejected degenerate polygon sidecars should not switch the AOI list.',
+  );
+
+  const polygonObjectPoints = [
+    { x: 0.3, y: 0.2 },
+    { x: 0.55, y: 0.24 },
+    { x: 0.52, y: 0.5 },
+    { x: 0.33, y: 0.46 },
+  ];
+  const importedPaddingOnlyPoints = [
+    { x: 0.72, y: 0.2 },
+    { x: 0.86, y: 0.2 },
+    { x: 0.86, y: 0.36 },
+    { x: 0.72, y: 0.36 },
+  ];
+  const importedExplicitPaddingPoints = [
+    { x: 0.72, y: 0.52 },
+    { x: 0.86, y: 0.52 },
+    { x: 0.86, y: 0.68 },
+    { x: 0.72, y: 0.68 },
+  ];
+  const polygonSidecarPath = join(tmpDir, 'polygon-video.aoi.json');
+  await writeFile(polygonSidecarPath, JSON.stringify({
+    video: {
+      name: 'test-video.mp4',
+      projection: 'flat',
+      stereoLayout: 'mono',
+    },
+    aois: [
+      {
+        id: 'polygon-object',
+        label: 'Polygon object',
+        color: '#ffd166',
+        space: 'video',
+        shape: 'polygon',
+        analysisPaddingPx: 6,
+        points: polygonObjectPoints,
+        keyframes: [
+          {
+            t: 0,
+            points: polygonObjectPoints,
+          },
+        ],
+      },
+      {
+        id: 'imported-padding-polygon',
+        label: 'Imported padding polygon',
+        color: '#5dd7c8',
+        space: 'video',
+        shape: 'polygon',
+        analysisPaddingPx: 8,
+        points: importedPaddingOnlyPoints,
+        keyframes: [
+          {
+            t: 0,
+            points: importedPaddingOnlyPoints,
+          },
+        ],
+      },
+      {
+        id: 'source-frame-padding-polygon',
+        label: 'Source frame padding polygon',
+        color: '#ff8a5c',
+        space: 'video',
+        shape: 'polygon',
+        analysisPaddingPx: 8,
+        analysisPadding: 0.123,
+        points: importedExplicitPaddingPoints,
+        keyframes: [
+          {
+            t: 0,
+            points: importedExplicitPaddingPoints,
+          },
+        ],
+      },
+    ],
+  }, null, 2));
+
+  await page.locator('#aoiFileInput').setInputFiles(polygonSidecarPath);
+  await page.waitForFunction(() => document.querySelector('#aoiList')?.textContent?.includes('Polygon object'));
+  await page.waitForFunction(() => document.querySelector('#aoiOverlay [data-aoi-id="polygon-object"]'));
+  assert.equal(
+    await page.locator('#aoiOverlay [data-aoi-id="polygon-object"]').count(),
+    1,
+    'Imported polygon AOIs should render as object-shaped overlay polygons.',
+  );
+  await page.locator('#aoiList button[data-aoi-id="polygon-object"]').click();
+  await page.locator('#selectedAoiPanel').waitFor({ state: 'visible' });
+  assert.equal(
+    await page.locator('#selectedAoiLabelInput').inputValue(),
+    'Polygon object',
+    'Selecting an imported polygon AOI should populate the selected AOI panel.',
+  );
+  assert.equal(
+    await page.locator('#selectedAoiPaddingInput').inputValue(),
+    '6',
+    'Selecting an imported polygon AOI should populate saved pixel padding.',
+  );
+  await page.locator('#selectedAoiLabelInput').fill('Reviewed polygon object');
+  await page.locator('#selectedAoiPaddingInput').fill('12');
+  await page.locator('#selectedAoiColorInput').fill('#00ffaa');
+  await page.locator('#saveSelectedAoiButton').click();
+  await page.waitForFunction(() => document.querySelector('#aoiList')?.textContent?.includes('Reviewed polygon object'));
+  assert.equal(
+    (await page.locator('#aoiList').innerText()).includes('Polygon object'),
+    false,
+    'Saving the selected AOI should update the AOI list label.',
+  );
+
+  const exportedJson = await recordMouseExport(page, viewerBox);
   const [sample] = exportedJson.samples;
 
   assert.equal(exportedJson.samples.length > 0, true, 'Mouse recording should export at least one sample.');
   assert.equal(
     exportedJson.aoiSource,
-    'test-video.aoi.json',
+    'polygon-video.aoi.json',
     'Export should identify the registered AOI sidecar source.',
   );
   assert.equal(
-    exportedJson.aois.some((aoi) => aoi.id === 'sidecar-center'),
+    exportedJson.aois.some((aoi) => aoi.id === 'polygon-object' && aoi.shape === 'polygon'),
     true,
     'Export should package AOI definitions from the registered sidecar file.',
   );
@@ -345,13 +776,13 @@ try {
   );
   assert.equal(
     exportedJson.project.video.projection,
-    'equirectangular',
-    'Export should preserve 360 video projection metadata from the AOI sidecar.',
+    'flat',
+    'Export should preserve flat video projection metadata from the AOI sidecar.',
   );
   assert.equal(
     exportedJson.project.video.stereoLayout,
-    'top-bottom',
-    'Export should preserve 3D stereo layout metadata from the AOI sidecar.',
+    'mono',
+    'Export should preserve mono video layout metadata from the AOI sidecar.',
   );
   assert.equal(
     exportedJson.project.aois.count,
@@ -360,7 +791,7 @@ try {
   );
   assert.equal(
     exportedJson.aois[0].keyframes.length,
-    2,
+    1,
     'Export should package dynamic AOI keyframes with the video.',
   );
   assert.equal(
@@ -428,12 +859,59 @@ try {
   );
   assert.equal(typeof exportedJson.namedAoiMetrics, 'object', 'Export should include named AOI metrics.');
   assert.equal(
-    exportedJson.namedAoiMetrics.perAoi['sidecar-center'].label,
-    'Sidecar center AOI',
+    exportedJson.namedAoiMetrics.perAoi['polygon-object'].label,
+    'Reviewed polygon object',
     'Named AOI metrics should retain AOI labels.',
   );
   assert.equal(
-    typeof exportedJson.namedAoiMetrics.perAoi['sidecar-center'].totalDwellSec,
+    exportedJson.aois[0].color,
+    '#00ffaa',
+    'Export should retain selected AOI color edits.',
+  );
+  assert.equal(
+    exportedJson.aois[0].analysisPaddingPx,
+    12,
+    'Export should retain selected AOI analysis padding edits.',
+  );
+  assert.equal(
+    typeof exportedJson.aois[0].analysisPadding,
+    'number',
+    'Export should include selected AOI effective polygon analysis padding.',
+  );
+  assert.equal(
+    exportedJson.aois[0].analysisPadding > 0,
+    true,
+    'Selected AOI effective polygon analysis padding should be positive.',
+  );
+  const importedPaddingAoi = exportedJson.aois.find((aoi) => aoi.id === 'imported-padding-polygon');
+  assert.equal(
+    importedPaddingAoi.analysisPaddingPx,
+    8,
+    'Export should retain imported polygon pixel padding.',
+  );
+  assert.equal(
+    typeof importedPaddingAoi.analysisPadding,
+    'number',
+    'Export should materialize imported polygon pixel padding for analysis.',
+  );
+  assert.equal(
+    importedPaddingAoi.analysisPadding > 0,
+    true,
+    'Imported polygon effective analysis padding should be positive.',
+  );
+  const explicitPaddingAoi = exportedJson.aois.find((aoi) => aoi.id === 'source-frame-padding-polygon');
+  assert.equal(
+    explicitPaddingAoi.analysisPaddingPx,
+    8,
+    'Export should retain imported polygon pixel padding when explicit analysis padding exists.',
+  );
+  assert.equal(
+    explicitPaddingAoi.analysisPadding,
+    0.123,
+    'Export should preserve imported explicit analysis padding without viewer-size recomputation.',
+  );
+  assert.equal(
+    typeof exportedJson.namedAoiMetrics.perAoi['polygon-object'].totalDwellSec,
     'number',
     'Named AOI metrics should include per-AOI dwell seconds.',
   );
@@ -458,10 +936,31 @@ try {
   assert.equal(Array.isArray(sample.possibleHits), true, 'Exported samples should include possible AOI hits.');
   assert.equal(Array.isArray(sample.ambiguousHits), true, 'Exported samples should include ambiguous AOI hits.');
   assert.equal(Array.isArray(sample.activeAois), true, 'Exported samples should include time-resolved AOI bounds.');
+  const samplePolygonAoi = sample.activeAois.find((aoi) => aoi.id === 'polygon-object');
   assert.equal(
-    sample.activeAois.some((aoi) => aoi.id === 'sidecar-center' && Number.isFinite(aoi.yawMin)),
+    samplePolygonAoi?.shape,
+    'polygon',
+    'Time-resolved polygon AOIs should be inspectable by AOI id.',
+  );
+  assert.deepEqual(
+    samplePolygonAoi.points,
+    polygonObjectPoints,
+    'Time-resolved polygon AOI points should preserve exported vertex coordinates.',
+  );
+  assert.equal(
+    samplePolygonAoi.analysisPaddingPx,
+    12,
+    'Time-resolved polygon AOIs should preserve selected pixel padding.',
+  );
+  assert.equal(
+    typeof samplePolygonAoi.analysisPadding,
+    'number',
+    'Time-resolved polygon AOIs should preserve effective analysis padding.',
+  );
+  assert.equal(
+    samplePolygonAoi.analysisPadding > 0,
     true,
-    'Time-resolved AOI bounds should be inspectable by AOI id.',
+    'Time-resolved polygon effective analysis padding should be positive.',
   );
   assert.equal(
     sample.quality.trustedForAoiAnalysis,
@@ -484,6 +983,126 @@ try {
     'Mouse-mode samples should export zero gaze uncertainty.',
   );
 
+  await page.locator('#clearButton').click();
+  const dynamicPolygonSidecarPath = join(tmpDir, 'dynamic-polygon-video.aoi.json');
+  const dynamicTopLevelPoints = [
+    { x: 0.18, y: 0.18 },
+    { x: 0.38, y: 0.18 },
+    { x: 0.36, y: 0.38 },
+    { x: 0.16, y: 0.36 },
+  ];
+  const dynamicStartPoints = [
+    { x: 0.30, y: 0.22 },
+    { x: 0.58, y: 0.24 },
+    { x: 0.54, y: 0.52 },
+    { x: 0.28, y: 0.48 },
+  ];
+  const dynamicEndPoints = [
+    { x: 0.36, y: 0.28 },
+    { x: 0.62, y: 0.31 },
+    { x: 0.57, y: 0.57 },
+    { x: 0.34, y: 0.54 },
+  ];
+  await writeFile(dynamicPolygonSidecarPath, JSON.stringify({
+    video: {
+      name: 'test-video.mp4',
+      projection: 'flat',
+      stereoLayout: 'mono',
+    },
+    aois: [
+      {
+        id: 'dynamic-polygon-object',
+        label: 'Dynamic polygon object',
+        color: '#ffd166',
+        space: 'video',
+        shape: 'polygon',
+        points: dynamicTopLevelPoints,
+        keyframes: [
+          { t: 0, points: dynamicStartPoints },
+          { t: 8, points: dynamicEndPoints },
+        ],
+      },
+    ],
+  }, null, 2));
+  await page.locator('#aoiFileInput').setInputFiles(dynamicPolygonSidecarPath);
+  await page.waitForFunction(() => document.querySelector('#aoiList')?.textContent?.includes('Dynamic polygon object'));
+  await page.locator('#sourceVideo').evaluate((video) => {
+    video.currentTime = 0;
+  });
+  await page.locator('#aoiList button[data-aoi-id="dynamic-polygon-object"]').click();
+  const dynamicHandle = page.locator('#aoiOverlay .aoi-vertex-handle').first();
+  const dynamicBefore = await getSvgHandleScreenPoint(page, dynamicHandle);
+  await page.mouse.move(dynamicBefore.x, dynamicBefore.y);
+  await page.mouse.down();
+  await page.mouse.move(dynamicBefore.x + 20, dynamicBefore.y + 16);
+  await page.mouse.up();
+
+  const dynamicExportPromise = page.waitForEvent('download');
+  await page.locator('#exportButton').click();
+  const dynamicExportDownload = await dynamicExportPromise;
+  const dynamicExportJson = JSON.parse(await readFile(await dynamicExportDownload.path(), 'utf8'));
+  const editedDynamicAoi = dynamicExportJson.aois.find((aoi) => aoi.id === 'dynamic-polygon-object');
+  assert.deepEqual(
+    editedDynamicAoi.points,
+    dynamicTopLevelPoints,
+    'Dynamic polygon edits should leave top-level base points unchanged.',
+  );
+  assert.notDeepEqual(
+    editedDynamicAoi.keyframes[0].points[0],
+    dynamicStartPoints[0],
+    'Dragging a dynamic polygon handle should update the dragged keyframe vertex.',
+  );
+  assert.deepEqual(
+    editedDynamicAoi.keyframes[0].points.slice(1),
+    dynamicStartPoints.slice(1),
+    'Dragging one dynamic polygon handle should preserve non-dragged vertices in the edited keyframe.',
+  );
+  assert.deepEqual(
+    editedDynamicAoi.keyframes[1].points,
+    dynamicEndPoints,
+    'Dragging one dynamic polygon handle should not corrupt other keyframes.',
+  );
+  await page.locator('#sourceVideo').evaluate((video) => {
+    video.currentTime = 4;
+    video.dispatchEvent(new Event('timeupdate'));
+  });
+  await page.waitForFunction(() => document.querySelector('#sourceVideo')?.currentTime >= 4);
+  await page.waitForFunction(() => (
+    document.querySelectorAll('#aoiOverlay .aoi-vertex-handle').length === 0 &&
+    /keyframe/i.test(document.querySelector('#manualAoiStatus')?.textContent || '')
+  ));
+  assert.equal(
+    await page.locator('#aoiOverlay .aoi-vertex-handle').count(),
+    0,
+    'Dynamic polygon vertex handles should be hidden between keyframes.',
+  );
+  assert.match(
+    await page.locator('#manualAoiStatus').innerText(),
+    /keyframe/i,
+    'Dynamic polygon midpoint editing should explain that handles are available at keyframes.',
+  );
+  await page.locator('#deleteSelectedAoiButton').click();
+  await page.waitForFunction(() => document.querySelector('#selectedAoiPanel')?.hidden === true);
+  assert.equal(
+    (await page.locator('#aoiList').innerText()).includes('Dynamic polygon object'),
+    false,
+    'Deleting the selected AOI should remove it from the AOI list.',
+  );
+  assert.equal(
+    await page.locator('#aoiOverlay [data-aoi-id="dynamic-polygon-object"]').count(),
+    0,
+    'Deleting the selected AOI should remove its overlay shape.',
+  );
+  const deletedAoiExportPromise = page.waitForEvent('download');
+  await page.locator('#exportButton').click();
+  const deletedAoiExportDownload = await deletedAoiExportPromise;
+  const deletedAoiExportJson = JSON.parse(await readFile(await deletedAoiExportDownload.path(), 'utf8'));
+  assert.equal(
+    deletedAoiExportJson.aois.some((aoi) => aoi.id === 'dynamic-polygon-object'),
+    false,
+    'Deleted AOIs should not be included in exports.',
+  );
+
   const reviewPath = join(tmpDir, 'recording-review.json');
   await writeFile(reviewPath, JSON.stringify(exportedJson), 'utf8');
   await page.locator('#recordingFileInput').setInputFiles(reviewPath);
@@ -496,9 +1115,19 @@ try {
   await page.locator('#reviewButton').click();
   await page.waitForFunction(() => document.querySelector('#modeLabel')?.textContent === 'review');
   await page.waitForFunction(() => /^x \d+, y \d+$/.test(document.querySelector('#screenReadout')?.textContent || ''));
+  assert.equal(
+    await page.locator('#projectionSelect').inputValue(),
+    'flat',
+    'Flat recording review should keep the packaged flat projection selected.',
+  );
+  assert.match(
+    await page.locator('#panoramaReadout').innerText(),
+    /^video x \d+\.\d{3}, y \d+\.\d{3}$/,
+    'Flat recording review should derive video-space coordinates from recorded screen samples.',
+  );
   assert.match(
     await page.locator('#hitReadout').innerText(),
-    /Sidecar center|none|possible|ambiguous/i,
+    /Polygon object|none|possible|ambiguous/i,
     'Review mode should replay recorded tracker and AOI readout state.',
   );
   assert.equal(
@@ -538,6 +1167,7 @@ try {
 
   assert.equal(hasColorVariance(canvasSamples), true, 'Three.js canvas should render nonblank video pixels.');
   assert.deepEqual(consoleErrors, [], 'Browser console should not contain errors.');
+  assert.deepEqual(pageErrors, [], 'Browser page should not throw uncaught errors.');
 } finally {
   await browser.close();
 }

@@ -78,6 +78,16 @@ button.is-active {
   font-weight: 750;
 }
 
+.danger-action {
+  border-color: rgba(255, 107, 107, 0.58);
+  color: var(--danger);
+}
+
+.danger-action:hover {
+  border-color: var(--danger);
+  background: rgba(255, 107, 107, 0.12);
+}
+
 .app-shell {
   height: 100vh;
   display: grid;
@@ -262,10 +272,27 @@ h1 {
   pointer-events: none;
 }
 
+.aoi-overlay.is-authoring {
+  pointer-events: auto;
+  cursor: crosshair;
+}
+
 .aoi-overlay-shape {
   vector-effect: non-scaling-stroke;
   stroke-width: 2.5;
   stroke-linejoin: round;
+}
+
+.aoi-vertex-handle {
+  fill: var(--ink);
+  stroke: #0a0b09;
+  stroke-width: 2;
+  cursor: grab;
+  pointer-events: all;
+}
+
+.aoi-vertex-handle:active {
+  cursor: grabbing;
 }
 
 .aoi-overlay-label {
@@ -639,6 +666,10 @@ h1 {
   border-bottom: 1px solid var(--line);
 }
 
+.panel-section[hidden] {
+  display: none;
+}
+
 .panel-section:last-child {
   border-bottom: 0;
 }
@@ -671,6 +702,14 @@ h1 {
 .wide-action {
   width: 100%;
   margin-top: 10px;
+}
+
+.wide-action + .recording-actions {
+  margin-top: 8px;
+}
+
+.selected-aoi-actions {
+  margin-top: 12px;
 }
 
 .status-grid {
@@ -731,11 +770,41 @@ h1 {
 }
 
 .aoi-list li {
+  padding: 0;
+  border-radius: 6px;
+}
+
+.aoi-list-button {
+  width: 100%;
+  min-height: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
   display: grid;
   grid-template-columns: 14px minmax(0, 1fr);
   gap: 10px;
   align-items: start;
   padding: 9px 0;
+  text-align: left;
+  cursor: pointer;
+}
+
+.aoi-list-button:hover {
+  background: transparent;
+}
+
+.aoi-list-button:active {
+  transform: none;
+}
+
+.aoi-list-button:focus-visible {
+  outline: 2px solid var(--accent-2);
+  outline-offset: 2px;
+}
+
+.aoi-list li.is-selected {
+  background: rgba(255, 209, 102, 0.08);
+  box-shadow: inset 0 0 0 1px var(--accent-2);
 }
 
 .swatch {
@@ -756,6 +825,13 @@ h1 {
   color: var(--muted);
   font-size: 0.8rem;
   line-height: 1.25;
+}
+
+.fine-print {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.35;
 }
 
 .calibration-overlay {

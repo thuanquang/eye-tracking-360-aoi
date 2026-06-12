@@ -6,15 +6,53 @@ function getIds(items = []) {
   return items.map((item) => item.id);
 }
 
+function serializeAoiCoordinate(value) {
+  return Number.isFinite(Number(value)) ? Number(Number(value).toFixed(3)) : null;
+}
+
+function serializeAoiPoints(points) {
+  return Array.isArray(points)
+    ? points.map((point) => (
+      point && typeof point === 'object'
+        ? { ...point }
+        : point
+    ))
+    : null;
+}
+
+function getAoiSpace(aoi) {
+  return aoi?.space === 'video' ? 'video' : 'panorama';
+}
+
 function buildActiveAoiSnapshot(aoi) {
-  return {
+  const snapshot = {
     id: aoi.id,
     label: aoi.label,
-    yawMin: roundNumber(aoi.yawMin),
-    yawMax: roundNumber(aoi.yawMax),
-    pitchMin: roundNumber(aoi.pitchMin),
-    pitchMax: roundNumber(aoi.pitchMax),
+    color: aoi.color,
+    space: getAoiSpace(aoi),
+    shape: aoi.shape || 'box',
+    points: serializeAoiPoints(aoi.points),
+    yawMin: serializeAoiCoordinate(aoi.yawMin),
+    yawMax: serializeAoiCoordinate(aoi.yawMax),
+    pitchMin: serializeAoiCoordinate(aoi.pitchMin),
+    pitchMax: serializeAoiCoordinate(aoi.pitchMax),
+    xMin: serializeAoiCoordinate(aoi.xMin),
+    xMax: serializeAoiCoordinate(aoi.xMax),
+    yMin: serializeAoiCoordinate(aoi.yMin),
+    yMax: serializeAoiCoordinate(aoi.yMax),
   };
+  const analysisPaddingPx = serializeAoiCoordinate(aoi.analysisPaddingPx);
+  const analysisPadding = serializeAoiCoordinate(aoi.analysisPadding);
+
+  if (analysisPaddingPx != null) {
+    snapshot.analysisPaddingPx = analysisPaddingPx;
+  }
+
+  if (analysisPadding != null) {
+    snapshot.analysisPadding = analysisPadding;
+  }
+
+  return snapshot;
 }
 
 function buildSampleQuality(quality, gazeStreamQuality) {
