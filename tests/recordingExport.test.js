@@ -10,6 +10,10 @@ import {
   buildVideoPackageMetadata,
 } from '../src/recording/recordingExport.js';
 
+const STANDARD_PROFILE = { id: 'standard', label: 'Standard', pointCount: 14 };
+const RESEARCH_39_PROFILE = { id: 'research-39', label: 'Research 39', pointCount: 39 };
+const RESEARCH_78_PROFILE = { id: 'research-78', label: 'Research 78', pointCount: 78 };
+
 test('builds recording samples with raw, corrected, AOI, and quality fields', () => {
   const sample = buildRecordingSample({
     timeSec: 1.2345,
@@ -46,7 +50,8 @@ test('builds summary counts and duration from samples', () => {
   ], {
     accuracyValidated: false,
     correctedAccuracySummary: null,
-    calibrationProfile: { id: 'research-39', label: 'Research 39', pointCount: 39 },
+    selectedCalibrationProfile: RESEARCH_39_PROFILE,
+    calibrationProfile: null,
     gazeStreamStats: {
       events: [
         { atMs: 0, accepted: true },
@@ -59,7 +64,9 @@ test('builds summary counts and duration from samples', () => {
   assert.equal(summary.totalSamples, 2);
   assert.equal(summary.durationSec, 0.067);
   assert.equal(summary.recordingSampleIntervalMs, RECORDING_SAMPLE_INTERVAL_MS);
-  assert.deepEqual(summary.calibrationProfile, { id: 'research-39', label: 'Research 39', pointCount: 39 });
+  assert.deepEqual(summary.selectedCalibrationProfile, RESEARCH_39_PROFILE);
+  assert.equal(summary.calibrationProfile, null);
+  assert.equal(summary.calibrationProfileUsed, null);
   assert.equal(summary.sources.mouse, 2);
   assert.equal(summary.aoiHitCounts.logo, 2);
   assert.equal(summary.likelyAoiHitCounts.logo, 1);
@@ -84,16 +91,19 @@ test('builds video package metadata from source info and video element', () => {
   assert.equal(metadata.height, 720);
 });
 
-test('builds project package with selected calibration profile metadata', () => {
+test('builds project package with selected and used calibration profile metadata', () => {
   const project = buildProjectPackage({
     sourceVideoInfo: { name: 'demo.mp4', kind: 'local-file', projection: 'flat', stereoLayout: 'mono' },
     sourceVideo: { duration: 12.345, videoWidth: 1280, videoHeight: 720, currentSrc: 'blob:demo' },
     aoiSource: 'manual',
     aois: [{ id: 'front' }],
-    calibrationProfile: { id: 'research-78', label: 'Research 78', pointCount: 78 },
+    selectedCalibrationProfile: RESEARCH_78_PROFILE,
+    calibrationProfile: STANDARD_PROFILE,
   });
 
-  assert.deepEqual(project.calibrationProfile, { id: 'research-78', label: 'Research 78', pointCount: 78 });
+  assert.deepEqual(project.selectedCalibrationProfile, RESEARCH_78_PROFILE);
+  assert.deepEqual(project.calibrationProfile, STANDARD_PROFILE);
+  assert.deepEqual(project.calibrationProfileUsed, STANDARD_PROFILE);
 });
 
 test('builds export payload with state-derived accuracy and samples', () => {
@@ -109,7 +119,8 @@ test('builds export payload with state-derived accuracy and samples', () => {
     aois: [{ id: 'front' }],
     state: {
       correctedAccuracySummary: { meanPx: 8 },
-      calibrationProfile: { id: 'research-39', label: 'Research 39', pointCount: 39 },
+      selectedCalibrationProfile: RESEARCH_78_PROFILE,
+      calibrationProfile: RESEARCH_39_PROFILE,
       accuracySummary: { meanPx: 10 },
       refinementAccuracySummary: { meanPx: 9 },
       gazeCorrection: { dx: 1, dy: -1 },
@@ -130,7 +141,9 @@ test('builds export payload with state-derived accuracy and samples', () => {
 
   assert.equal(payload.sourceVideo, 'blob:demo');
   assert.equal(payload.accuracy.meanPx, 8);
-  assert.deepEqual(payload.calibrationProfile, { id: 'research-39', label: 'Research 39', pointCount: 39 });
+  assert.deepEqual(payload.selectedCalibrationProfile, RESEARCH_78_PROFILE);
+  assert.deepEqual(payload.calibrationProfile, RESEARCH_39_PROFILE);
+  assert.deepEqual(payload.calibrationProfileUsed, RESEARCH_39_PROFILE);
   assert.equal(payload.gazeStreamQuality.effectiveHz, 20);
   assert.deepEqual(payload.samples, [{ t: 0 }]);
 });

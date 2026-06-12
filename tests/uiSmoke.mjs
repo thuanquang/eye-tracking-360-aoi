@@ -345,20 +345,24 @@ try {
     'Export summary should include the active recording sample cadence.',
   );
   assert.deepEqual(
-    exportedJson.calibrationProfile,
+    exportedJson.selectedCalibrationProfile,
     { id: 'research-39', label: 'Research 39', pointCount: 39 },
-    'Export should include selected calibration profile metadata.',
+    'Export should include selected calibration setup metadata.',
   );
+  assert.equal(exportedJson.calibrationProfile, null, 'Mouse exports without calibration should not report a used calibration profile.');
+  assert.equal(exportedJson.calibrationProfileUsed, null, 'Mouse exports without calibration should not report calibration-profile-used metadata.');
   assert.deepEqual(
-    exportedJson.summary.calibrationProfile,
-    exportedJson.calibrationProfile,
-    'Export summary should include selected calibration profile metadata.',
+    exportedJson.summary.selectedCalibrationProfile,
+    exportedJson.selectedCalibrationProfile,
+    'Export summary should include selected calibration setup metadata.',
   );
+  assert.equal(exportedJson.summary.calibrationProfile, null, 'Export summary should not report a used profile without calibration.');
   assert.deepEqual(
-    exportedJson.project.calibrationProfile,
-    exportedJson.calibrationProfile,
-    'Project package should include selected calibration profile metadata.',
+    exportedJson.project.selectedCalibrationProfile,
+    exportedJson.selectedCalibrationProfile,
+    'Project package should include selected calibration setup metadata.',
   );
+  assert.equal(exportedJson.project.calibrationProfile, null, 'Project package should not report a used profile without calibration.');
   assert.equal(
     typeof exportedJson.summary.aoiHitCounts,
     'object',

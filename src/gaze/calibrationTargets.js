@@ -104,9 +104,9 @@ const CALIBRATION_PROFILES = {
         maxPercent: 90,
         includeCenterRepeat: true,
       }),
-      { ...CENTER_POINT },
-      { ...CENTER_POINT },
-      { ...CENTER_POINT },
+      { x: 20, y: 50 },
+      { x: 80, y: 50 },
+      { x: 50, y: 20 },
     ],
   },
   'research-78': {

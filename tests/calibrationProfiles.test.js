@@ -25,3 +25,15 @@ test('exposes standard and research calibration profiles', () => {
   assert.equal(getCalibrationProfile('research-39').calibrationPoints.length, 39);
   assert.equal(getCalibrationProfile('research-78').calibrationPoints.length, 78);
 });
+
+test('keeps research 39 supplemental points spatially distributed', () => {
+  const points = getCalibrationProfile('research-39').calibrationPoints;
+  const centerRepeatCount = points.filter((point) => point.x === 50 && point.y === 50).length;
+
+  assert.equal(centerRepeatCount, 2);
+  assert.deepEqual(points.slice(-3), [
+    { x: 20, y: 50 },
+    { x: 80, y: 50 },
+    { x: 50, y: 20 },
+  ]);
+});

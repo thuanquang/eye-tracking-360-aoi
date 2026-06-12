@@ -191,6 +191,7 @@ export function createAppController({
   } = dom;
 
   const state = createInitialAppState();
+  let activeCalibrationProfile = null;
   const mouseProvider = createMouseProvider({
     viewer,
     onGaze: (gaze) => {
@@ -258,13 +259,25 @@ export function createAppController({
     };
   }
 
-  function syncCalibrationProfileState() {
-    state.calibrationProfile = getCalibrationProfileMetadata(calibrationProfileSelect.value);
-    return state.calibrationProfile;
+  function syncSelectedCalibrationProfileState() {
+    state.selectedCalibrationProfile = getCalibrationProfileMetadata(calibrationProfileSelect.value);
+    return state.selectedCalibrationProfile;
+  }
+
+  function freezeSelectedCalibrationProfileForCalibration() {
+    const selectedProfile = syncSelectedCalibrationProfileState();
+    activeCalibrationProfile = getCalibrationProfile(selectedProfile.id);
+    state.calibrationProfile = getCalibrationProfileMetadata(activeCalibrationProfile.id);
+    return activeCalibrationProfile;
   }
 
   function getActiveCalibrationProfile() {
-    return getCalibrationProfile(state.calibrationProfile?.id ?? calibrationProfileSelect.value);
+    return activeCalibrationProfile
+      ?? getCalibrationProfile(state.selectedCalibrationProfile?.id ?? calibrationProfileSelect.value);
+  }
+
+  function setCalibrationProfileSelectLocked(isLocked) {
+    calibrationProfileSelect.disabled = isLocked;
   }
 
   function hasSelectOption(select, value) {
@@ -1066,6 +1079,22 @@ export function createAppController({
     const index = state.targetMode === 'accuracy' ? state.accuracyIndex : state.calibrationIndex;
     const point = points[index];
     const label = state.targetMode === 'accuracy' ? 'Accuracy target' : 'Target';
+
+    if (!point) {
+      if (state.targetMode === 'calibration') {
+        activeCalibrationProfile = null;
+        state.calibrationProfile = null;
+      }
+
+      calibrationOverlay.hidden = true;
+      setTargetCapturing(false);
+      setCalibrationProfileSelectLocked(false);
+      setWebcamStatus(state.webcamStarted ? 'active' : 'idle');
+      setNotice('Target sequence changed. Start calibration again.', true);
+      void restoreVideoAfterTargetMode();
+      return;
+    }
+
     const cardVerticalPosition = point.y < 50 ? 'bottom' : 'top';
     const cardHorizontalPosition = point.x < 50 ? 'right' : 'left';
 
@@ -1121,18 +1150,25 @@ export function createAppController({
     }
 
     await resetWebcamCalibrationData();
-    syncCalibrationProfileState();
+    freezeSelectedCalibrationProfileForCalibration();
     state.targetMode = 'calibration';
     state.calibrationIndex = 0;
     pauseVideoForTargetMode();
+    setCalibrationProfileSelectLocked(true);
     calibrationOverlay.hidden = false;
     setWebcamStatus('calibrating');
     positionTargetOverlay();
   }
 
   function cancelCalibration() {
+    if (state.targetMode === 'calibration') {
+      activeCalibrationProfile = null;
+      state.calibrationProfile = null;
+    }
+
     calibrationOverlay.hidden = true;
     setTargetCapturing(false);
+    setCalibrationProfileSelectLocked(false);
     setWebcamStatus(state.webcamStarted ? 'active' : 'idle');
     void restoreVideoAfterTargetMode();
   }
@@ -1169,6 +1205,7 @@ export function createAppController({
 
     if (state.calibrationIndex >= calibrationTargetCount) {
       calibrationOverlay.hidden = true;
+      setCalibrationProfileSelectLocked(false);
       setWebcamStatus('calibrated');
       setNotice('Webcam calibration complete. Run Check accuracy before recording.', false);
       await restoreVideoAfterTargetMode();
@@ -1198,6 +1235,7 @@ export function createAppController({
     state.correctedAccuracySummary = null;
     state.localAccuracyErrorModel = null;
     pauseVideoForTargetMode();
+    setCalibrationProfileSelectLocked(true);
     calibrationOverlay.hidden = false;
     setWebcamStatus('validating');
     setAccuracySummary(null);
@@ -1292,6 +1330,7 @@ export function createAppController({
         state.accuracyValidated = false;
         state.accuracyValidatedAt = null;
         calibrationOverlay.hidden = true;
+        setCalibrationProfileSelectLocked(false);
         setWebcamStatus('calibrated');
         setAccuracySummary(evaluation.accuracySummary);
         setNotice('Accuracy check could not collect enough fresh stable gaze predictions. Keep your face steady, then run Check accuracy again.', true);
@@ -1308,6 +1347,7 @@ export function createAppController({
         state.accuracyValidated = false;
         state.accuracyValidatedAt = null;
         calibrationOverlay.hidden = true;
+        setCalibrationProfileSelectLocked(false);
         setWebcamStatus('calibrated');
         setAccuracySummary(evaluation.accuracySummary);
         setNotice('Accuracy check did not cover enough of the player. Keep your face steady and retry all targets before recording.', true);
@@ -1327,6 +1367,7 @@ export function createAppController({
       state.accuracyInvalidationReason = null;
       resetLiveGazeQuality();
       calibrationOverlay.hidden = true;
+      setCalibrationProfileSelectLocked(false);
       setWebcamStatus('calibrated');
       setAccuracySummary(correctedValidationSummary);
       if (correctedValidationSummary.quality === 'untested') {
@@ -1982,12 +2023,13 @@ export function createAppController({
       stereoLayout: getCurrentStereoLayout(),
       aoiSource,
       aois: activeAois,
+      selectedCalibrationProfile: state.selectedCalibrationProfile,
       calibrationProfile: state.calibrationProfile,
     });
   }
 
   function exportSamples() {
-    syncCalibrationProfileState();
+    syncSelectedCalibrationProfileState();
     const namedAoiMetrics = buildNamedAoiMetrics(state.samples, activeAois, {
       sampleIntervalMs: recordingSampleScheduler.intervalMs,
     });
@@ -2163,7 +2205,7 @@ export function createAppController({
       exportButton.addEventListener('click', exportSamples);
       videoFileInput.addEventListener('change', loadLocalVideo);
       aoiFileInput.addEventListener('change', loadAoiFile);
-      calibrationProfileSelect.addEventListener('change', syncCalibrationProfileState);
+      calibrationProfileSelect.addEventListener('change', syncSelectedCalibrationProfileState);
       projectionSelect.addEventListener('change', syncSourceVideoMetadataFromControls);
       stereoLayoutSelect.addEventListener('change', syncSourceVideoMetadataFromControls);
       addManualAoiButton.addEventListener('click', addManualAoi);
@@ -2185,7 +2227,7 @@ export function createAppController({
 
       renderAoiList();
       applyVideoMetadataControls(sourceVideoInfo);
-      syncCalibrationProfileState();
+      syncSelectedCalibrationProfileState();
       void loadAois();
       resize();
       updateCamera();

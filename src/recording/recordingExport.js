@@ -63,6 +63,9 @@ export function buildExportSummary(samples, stateLike, sampleIntervalMs = DEFAUL
   const correctedAccuracySummary = stateLike.correctedAccuracySummary;
   const gazeStreamQuality = stateLike.gazeStreamQuality
     ?? summarizeGazeStreamQuality(stateLike.gazeStreamStats);
+  const selectedCalibrationProfile = buildCalibrationProfileMetadata(stateLike.selectedCalibrationProfile);
+  const calibrationProfile = buildCalibrationProfileMetadata(stateLike.calibrationProfileUsed)
+    ?? buildCalibrationProfileMetadata(stateLike.calibrationProfile);
 
   return {
     totalSamples: samples.length,
@@ -83,7 +86,9 @@ export function buildExportSummary(samples, stateLike, sampleIntervalMs = DEFAUL
     accuracyMaxPx: correctedAccuracySummary?.maxPx ?? null,
     accuracyP90DispersionPx: correctedAccuracySummary?.p90DispersionPx ?? null,
     accuracyMaxDispersionPx: correctedAccuracySummary?.maxDispersionPx ?? null,
-    calibrationProfile: buildCalibrationProfileMetadata(stateLike.calibrationProfile),
+    selectedCalibrationProfile,
+    calibrationProfile,
+    calibrationProfileUsed: calibrationProfile,
     droppedGazeSamples: stateLike.droppedGazeSamples,
     gazeStreamQuality,
   };
@@ -123,8 +128,14 @@ export function buildProjectPackage({
   stereoLayout,
   aoiSource,
   aois,
+  selectedCalibrationProfile,
   calibrationProfile,
+  calibrationProfileUsed,
 }) {
+  const selectedProfileMetadata = buildCalibrationProfileMetadata(selectedCalibrationProfile);
+  const calibrationProfileMetadata = buildCalibrationProfileMetadata(calibrationProfileUsed)
+    ?? buildCalibrationProfileMetadata(calibrationProfile);
+
   return {
     version: 1,
     video: buildVideoPackageMetadata({
@@ -139,7 +150,9 @@ export function buildProjectPackage({
       count: aois.length,
       packaged: true,
     },
-    calibrationProfile: buildCalibrationProfileMetadata(calibrationProfile),
+    selectedCalibrationProfile: selectedProfileMetadata,
+    calibrationProfile: calibrationProfileMetadata,
+    calibrationProfileUsed: calibrationProfileMetadata,
     includesVideoBinary: false,
   };
 }
@@ -156,8 +169,14 @@ export function buildExportPayload({
   aois,
   state,
 }) {
-  const calibrationProfile = buildCalibrationProfileMetadata(state.calibrationProfile)
+  const selectedCalibrationProfile = buildCalibrationProfileMetadata(state.selectedCalibrationProfile)
+    ?? buildCalibrationProfileMetadata(summary?.selectedCalibrationProfile)
+    ?? buildCalibrationProfileMetadata(project?.selectedCalibrationProfile);
+  const calibrationProfile = buildCalibrationProfileMetadata(state.calibrationProfileUsed)
+    ?? buildCalibrationProfileMetadata(state.calibrationProfile)
+    ?? buildCalibrationProfileMetadata(summary?.calibrationProfileUsed)
     ?? buildCalibrationProfileMetadata(summary?.calibrationProfile)
+    ?? buildCalibrationProfileMetadata(project?.calibrationProfileUsed)
     ?? buildCalibrationProfileMetadata(project?.calibrationProfile);
 
   return {
@@ -170,7 +189,9 @@ export function buildExportPayload({
     namedAoiMetrics,
     aoiSource,
     aois,
+    selectedCalibrationProfile,
     calibrationProfile,
+    calibrationProfileUsed: calibrationProfile,
     accuracy: state.correctedAccuracySummary,
     rawValidationAccuracy: state.accuracySummary,
     correctionFitAccuracy: state.refinementAccuracySummary,

@@ -17,6 +17,8 @@ test('creates fresh app state without shared mutable arrays', () => {
   assert.equal(second.samples.length, 0);
   assert.equal(second.gaze.x, 0);
   assert.equal(second.gaze.visible, false);
+  assert.deepEqual(second.selectedCalibrationProfile, { id: 'standard', label: 'Standard', pointCount: 14 });
+  assert.equal(second.calibrationProfile, null);
 });
 
 test('creates initial video metadata for bundled equirectangular demo', () => {
