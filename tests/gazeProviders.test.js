@@ -91,6 +91,44 @@ test('webgazer provider configures controlled calibration and forwards gaze', as
   assert.equal(calls.some((call) => call[0] === 'clearData'), true);
 });
 
+test('webgazer provider reports unavailable face quality without blocking gaze', async () => {
+  let listener = null;
+  const faceQualityEvents = [];
+  const gazeEvents = [];
+  const webgazer = {
+    saveDataAcrossSessions() { return this; },
+    setRegression() { return this; },
+    setTracker() { return this; },
+    applyKalmanFilter() { return this; },
+    showFaceOverlay() { return this; },
+    showFaceFeedbackBox() { return this; },
+    showVideoPreview() { return this; },
+    showPredictionPoints() { return this; },
+    removeMouseEventListeners() { return this; },
+    setGazeListener(callback) { listener = callback; return this; },
+    async begin() {},
+  };
+  const provider = createWebGazerProvider({
+    webgazer,
+    onGaze: (gaze) => gazeEvents.push(gaze),
+    onFaceQuality: (quality) => faceQualityEvents.push(quality),
+  });
+
+  await provider.start();
+  listener({ x: 14, y: 28 });
+
+  assert.deepEqual(faceQualityEvents, [{
+    available: false,
+    reason: 'provider-no-face-quality',
+  }]);
+  assert.deepEqual(gazeEvents, [{
+    x: 14,
+    y: 28,
+    visible: true,
+    source: 'webcam',
+  }]);
+});
+
 test('webgazer provider prefers clearGazeListener during cleanup', () => {
   const calls = [];
   const webgazer = {

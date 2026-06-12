@@ -4,6 +4,56 @@ import { chromium } from 'playwright';
 
 const TARGET_URL = process.env.AOI_PROTOTYPE_URL || 'http://127.0.0.1:5179';
 
+function urlWithMode(mode) {
+  const url = new URL(TARGET_URL);
+  url.searchParams.set('mode', mode);
+  return url.toString();
+}
+
+async function waitForCalibrationOverlay(page, actionLabel) {
+  let result;
+
+  try {
+    const handle = await page.waitForFunction(() => {
+      const overlay = document.querySelector('#calibrationOverlay');
+      if (overlay && overlay.hidden === false) {
+        return { state: 'ready' };
+      }
+
+      const status = document.querySelector('#webcamStatusLabel')?.textContent?.trim();
+      if (['blocked', 'unloaded', 'no api'].includes(status)) {
+        return {
+          state: 'webcam-failed',
+          status,
+          notice: document.querySelector('#viewerNotice')?.textContent?.trim() || '',
+        };
+      }
+
+      return null;
+    }, null, { timeout: 45000 });
+    result = await handle.jsonValue();
+  } catch (error) {
+    const diagnostics = await page.evaluate(() => ({
+      status: document.querySelector('#webcamStatusLabel')?.textContent?.trim() || 'unknown',
+      notice: document.querySelector('#viewerNotice')?.textContent?.trim() || '',
+      overlayHidden: document.querySelector('#calibrationOverlay')?.hidden ?? null,
+    }));
+
+    throw new Error(
+      `${actionLabel} did not open calibration overlay before timeout. `
+      + `Webcam status: ${diagnostics.status}; notice: ${diagnostics.notice}; `
+      + `overlayHidden: ${diagnostics.overlayHidden}. Original error: ${error.message}`,
+    );
+  }
+
+  if (result?.state === 'webcam-failed') {
+    throw new Error(
+      `${actionLabel} could not start webcam gaze before calibration overlay. `
+      + `Webcam status: ${result.status}; notice: ${result.notice}`,
+    );
+  }
+}
+
 async function captureAllTargets(page, progressPattern, emitExpression) {
   const progressText = await page.locator('#calibrationProgress').innerText();
   const targetCount = Number(progressText.match(progressPattern)?.[1]);
@@ -39,7 +89,7 @@ const context = await browser.newContext({
 const page = await context.newPage();
 
 try {
-  await page.goto(TARGET_URL, { waitUntil: 'networkidle' });
+  await page.goto(urlWithMode('admin'), { waitUntil: 'networkidle' });
   await page.waitForFunction(() => Boolean(window.webgazer?.setGazeListener));
   await page.evaluate(() => {
     window.webgazer.setGazeListener = (callback) => {
@@ -87,7 +137,7 @@ try {
   });
 
   await page.locator('#calibrateButton').click();
-  await page.waitForSelector('#calibrationOverlay:not([hidden])', { timeout: 45000 });
+  await waitForCalibrationOverlay(page, 'Calibrate webcam');
   await captureAllTargets(
     page,
     /Target 1 of (\d+)/,
@@ -95,7 +145,7 @@ try {
   );
 
   await page.locator('#accuracyButton').click();
-  await page.waitForSelector('#calibrationOverlay:not([hidden])', { timeout: 45000 });
+  await waitForCalibrationOverlay(page, 'Check accuracy');
   await captureAllTargets(
     page,
     /Accuracy target 1 of (\d+)/,
@@ -103,6 +153,16 @@ try {
   );
 
   assert.match(await page.locator('#accuracyStatusLabel').innerText(), /^validated \d+px$/);
+  assert.deepEqual(
+    await page.evaluate(() => window.__aoiGetRuntimeQualityMetadata?.().faceQuality),
+    {
+      available: false,
+      unavailableReason: 'provider-no-face-quality',
+      baseline: null,
+      invalidations: [],
+    },
+    'Runtime quality metadata should record that WebGazer face quality is unavailable.',
+  );
 
   await page.locator('#recordButton').click();
   assert.equal(await page.locator('#recordButton').innerText(), 'Stop Recording');

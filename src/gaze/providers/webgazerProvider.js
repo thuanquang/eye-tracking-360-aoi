@@ -1,4 +1,11 @@
-export function createWebGazerProvider({ webgazer, onGaze }) {
+export function createWebGazerProvider({ webgazer, onGaze, onFaceQuality }) {
+  function emitUnavailableFaceQuality() {
+    onFaceQuality?.({
+      available: false,
+      reason: 'provider-no-face-quality',
+    });
+  }
+
   function configure() {
     webgazer.saveDataAcrossSessions?.(false);
     webgazer.setRegression?.('ridge');
@@ -30,6 +37,7 @@ export function createWebGazerProvider({ webgazer, onGaze }) {
         });
       });
       await webgazer.begin();
+      emitUnavailableFaceQuality();
       webgazer.removeMouseEventListeners?.();
     },
     async resetCalibration() {

@@ -61,6 +61,7 @@ import {
   summarizeGazeStreamQuality,
   updateGazeStreamStats,
 } from '../gaze/qualityMonitor.js';
+import { compareFacePoseToBaseline } from '../gaze/faceQuality.js?v=face-quality-1';
 import { getValidationPolicy } from '../gaze/validationPolicy.js';
 import {
   ACCURACY_REFINEMENT_POINTS,
@@ -122,6 +123,7 @@ export function createAppController({
   const LIVE_QUALITY_MIN_EVENTS = LIVE_QUALITY.minEvents;
   const LIVE_QUALITY_MAX_BAD_RATE = LIVE_QUALITY.maxBadRate;
   const LIVE_QUALITY_MAX_CONSECUTIVE_BAD = LIVE_QUALITY.maxConsecutiveBad;
+  const FACE_QUALITY_MAX_CONSECUTIVE_FAILURES = 3;
 
   const dom = queryAppDom(document);
   const {
@@ -758,6 +760,7 @@ export function createAppController({
     state.validationGazeStreamStats = null;
     state.validationGazeStreamQuality = null;
     state.liveGazeQuality = null;
+    resetFaceQualityValidationState();
     setAccuracySummary(null);
   }
 
@@ -785,6 +788,21 @@ export function createAppController({
 
   function resetLiveGazeQuality() {
     state.liveGazeQuality = null;
+  }
+
+  function resetFaceQualityValidationState() {
+    state.faceQualityBaseline = null;
+    state.faceQualityInvalidations = [];
+    state.faceQualityConsecutiveFailures = 0;
+  }
+
+  function getFaceQualityRuntimeMetadata() {
+    return {
+      available: state.faceQualityAvailable,
+      unavailableReason: state.faceQualityUnavailableReason,
+      baseline: state.faceQualityBaseline,
+      invalidations: state.faceQualityInvalidations.map((invalidation) => ({ ...invalidation })),
+    };
   }
 
   function hasActiveAccuracyValidation() {
@@ -1011,6 +1029,70 @@ export function createAppController({
     }
   }
 
+  function recordFaceQualityInvalidation(drift) {
+    state.faceQualityInvalidations.push({
+      atMs: performance.now(),
+      reason: 'face-pose-drift',
+      reasons: [...drift.reasons],
+      centerShift: drift.centerShift ?? null,
+      scaleChange: drift.scaleChange ?? null,
+    });
+  }
+
+  function registerFacePoseQuality(summary) {
+    if (
+      state.mode !== 'webcam' ||
+      !state.accuracyValidated ||
+      !state.isRecording ||
+      !state.faceQualityAvailable ||
+      !state.faceQualityBaseline
+    ) {
+      return;
+    }
+
+    const drift = compareFacePoseToBaseline(summary, state.faceQualityBaseline);
+
+    if (drift.accepted) {
+      state.faceQualityConsecutiveFailures = 0;
+      return;
+    }
+
+    state.faceQualityConsecutiveFailures += 1;
+
+    if (state.faceQualityConsecutiveFailures < FACE_QUALITY_MAX_CONSECUTIVE_FAILURES) {
+      return;
+    }
+
+    recordFaceQualityInvalidation(drift);
+    invalidateAccuracyForSetupChange('face-pose-drift');
+  }
+
+  function handleFaceQuality(quality = {}) {
+    if (quality.available === false) {
+      state.faceQualityAvailable = false;
+      state.faceQualityUnavailableReason = quality.reason || 'provider-face-quality-unavailable';
+      state.currentFaceQuality = null;
+      state.faceQualityConsecutiveFailures = 0;
+      return;
+    }
+
+    state.faceQualityAvailable = true;
+    state.faceQualityUnavailableReason = null;
+    state.currentFaceQuality = quality.summary ?? null;
+    registerFacePoseQuality(state.currentFaceQuality);
+  }
+
+  function captureFaceQualityBaseline() {
+    if (!state.faceQualityAvailable || !state.currentFaceQuality) {
+      state.faceQualityBaseline = null;
+      state.faceQualityConsecutiveFailures = 0;
+      return;
+    }
+
+    state.faceQualityBaseline = { ...state.currentFaceQuality };
+    state.faceQualityConsecutiveFailures = 0;
+  }
+
   function canHoldLastWebcamGaze(now = performance.now()) {
     return (
       state.mode === 'webcam' &&
@@ -1159,6 +1241,7 @@ export function createAppController({
 
           processWebcamGaze(data);
         },
+        onFaceQuality: handleFaceQuality,
       });
       await webcamProvider.start();
       state.webcamStarted = true;
@@ -1288,6 +1371,7 @@ export function createAppController({
       state.activeValidationPolicyId = null;
       state.validationGazeStreamStats = null;
       state.validationGazeStreamQuality = null;
+      resetFaceQualityValidationState();
     }
 
     calibrationOverlay.hidden = true;
@@ -1364,6 +1448,7 @@ export function createAppController({
     state.validationGazeStreamStats = null;
     state.validationGazeStreamQuality = null;
     resetLiveGazeQuality();
+    resetFaceQualityValidationState();
     state.refinementAccuracySummary = null;
     state.accuracySummary = null;
     state.correctedAccuracySummary = null;
@@ -1509,6 +1594,11 @@ export function createAppController({
       state.accuracyValidated = evaluation.validationPassed;
       state.accuracyValidatedAt = evaluation.validationPassed ? performance.now() : null;
       state.accuracyInvalidationReason = null;
+      if (evaluation.validationPassed) {
+        captureFaceQualityBaseline();
+      } else {
+        resetFaceQualityValidationState();
+      }
       resetLiveGazeQuality();
       calibrationOverlay.hidden = true;
       setCalibrationProfileSelectLocked(false);
@@ -1943,6 +2033,8 @@ export function createAppController({
         policyPassed: state.policyPassed,
         policyFailures: state.policyFailures,
         droppedGazeSamples: state.droppedGazeSamples,
+        faceQualityAvailable: state.faceQualityAvailable,
+        faceQualityUnavailableReason: state.faceQualityUnavailableReason,
       },
       gazeStreamQuality: getCurrentGazeStreamQuality(),
       gaze: state.gaze,
@@ -2177,6 +2269,10 @@ export function createAppController({
       calibrationProfile: state.calibrationProfile,
       selectedValidationPolicyId: state.selectedValidationPolicyId,
       validationPolicyId: state.validationPolicyId,
+      faceQualityAvailable: state.faceQualityAvailable,
+      faceQualityUnavailableReason: state.faceQualityUnavailableReason,
+      faceQualityBaseline: state.faceQualityBaseline,
+      faceQualityInvalidations: state.faceQualityInvalidations,
     });
   }
 
@@ -2391,6 +2487,9 @@ export function createAppController({
       syncVideoNotice();
       applyAppMode();
       animate();
+      window.__aoiGetRuntimeQualityMetadata = () => ({
+        faceQuality: getFaceQualityRuntimeMetadata(),
+      });
       window.__aoiAppReady = true;
     },
   };

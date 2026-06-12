@@ -26,6 +26,10 @@ test('creates fresh app state without shared mutable arrays', () => {
   assert.equal(second.activeValidationPolicyId, null);
   assert.equal(second.validationGazeStreamStats, null);
   assert.equal(second.validationGazeStreamQuality, null);
+  assert.equal(second.faceQualityAvailable, false);
+  assert.equal(second.faceQualityUnavailableReason, null);
+  assert.equal(second.faceQualityBaseline, null);
+  assert.deepEqual(second.faceQualityInvalidations, []);
 });
 
 test('creates initial video metadata for bundled equirectangular demo', () => {

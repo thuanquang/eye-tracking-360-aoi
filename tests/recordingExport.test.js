@@ -65,6 +65,10 @@ test('builds summary counts and duration from samples', () => {
     policyPassed: false,
     policyFailures: [POLICY_FAILURE],
     validationGazeStreamStats: VALIDATION_STREAM_STATS,
+    faceQualityAvailable: false,
+    faceQualityUnavailableReason: 'provider-no-face-quality',
+    faceQualityBaseline: null,
+    faceQualityInvalidations: [],
     gazeStreamStats: {
       events: [
         { atMs: 0, accepted: true },
@@ -86,6 +90,10 @@ test('builds summary counts and duration from samples', () => {
   assert.deepEqual(summary.policyFailures, [POLICY_FAILURE]);
   assert.equal(summary.validationGazeStreamQuality.effectiveHz, 40);
   assert.equal(summary.validationGazeStreamQuality.dataIntegrityPercent, 100);
+  assert.equal(summary.faceQualityAvailable, false);
+  assert.equal(summary.faceQualityUnavailableReason, 'provider-no-face-quality');
+  assert.equal(summary.faceQualityBaseline, null);
+  assert.deepEqual(summary.faceQualityInvalidations, []);
   assert.equal(summary.sources.mouse, 2);
   assert.equal(summary.aoiHitCounts.logo, 2);
   assert.equal(summary.likelyAoiHitCounts.logo, 1);
@@ -144,6 +152,9 @@ test('keeps selected policy separate from unused validation policy metadata', ()
       policyPassed: null,
       policyFailures: [],
       validationGazeStreamStats: pendingValidationStreamStats,
+      faceQualityAvailable: false,
+      faceQualityBaseline: null,
+      faceQualityInvalidations: [],
       gazeStreamStats: summary.gazeStreamStats,
       samples: [],
     },
@@ -210,6 +221,10 @@ test('builds export payload with state-derived accuracy and samples', () => {
       policyPassed: true,
       policyFailures: [],
       validationGazeStreamStats: VALIDATION_STREAM_STATS,
+      faceQualityAvailable: false,
+      faceQualityUnavailableReason: 'provider-no-face-quality',
+      faceQualityBaseline: null,
+      faceQualityInvalidations: [],
       accuracySummary: { meanPx: 10 },
       refinementAccuracySummary: { meanPx: 9 },
       gazeCorrection: { dx: 1, dy: -1 },
@@ -239,6 +254,10 @@ test('builds export payload with state-derived accuracy and samples', () => {
   assert.deepEqual(payload.policyFailures, []);
   assert.equal(payload.validationGazeStreamQuality.effectiveHz, 40);
   assert.equal(payload.validationGazeStreamQuality.dataIntegrityPercent, 100);
+  assert.equal(payload.faceQualityAvailable, false);
+  assert.equal(payload.faceQualityUnavailableReason, 'provider-no-face-quality');
+  assert.equal(payload.faceQualityBaseline, null);
+  assert.deepEqual(payload.faceQualityInvalidations, []);
   assert.equal(payload.gazeStreamQuality.effectiveHz, 20);
   assert.deepEqual(payload.samples, [{ t: 0 }]);
 });

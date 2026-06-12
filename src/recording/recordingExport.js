@@ -25,6 +25,12 @@ function clonePolicyFailures(policyFailures) {
     : [];
 }
 
+function cloneFaceQualityInvalidations(faceQualityInvalidations) {
+  return Array.isArray(faceQualityInvalidations)
+    ? faceQualityInvalidations.map((invalidation) => ({ ...invalidation }))
+    : [];
+}
+
 function summarizeOptionalGazeStreamQuality(stats) {
   return stats ? summarizeGazeStreamQuality(stats) : null;
 }
@@ -79,6 +85,7 @@ export function buildExportSummary(samples, stateLike, sampleIntervalMs = DEFAUL
   const calibrationProfile = buildCalibrationProfileMetadata(stateLike.calibrationProfileUsed)
     ?? buildCalibrationProfileMetadata(stateLike.calibrationProfile);
   const policyFailures = clonePolicyFailures(stateLike.policyFailures);
+  const faceQualityInvalidations = cloneFaceQualityInvalidations(stateLike.faceQualityInvalidations);
 
   return {
     totalSamples: samples.length,
@@ -109,6 +116,10 @@ export function buildExportSummary(samples, stateLike, sampleIntervalMs = DEFAUL
     validationGazeStreamQuality,
     droppedGazeSamples: stateLike.droppedGazeSamples,
     gazeStreamQuality,
+    faceQualityAvailable: stateLike.faceQualityAvailable ?? false,
+    faceQualityUnavailableReason: stateLike.faceQualityUnavailableReason ?? null,
+    faceQualityBaseline: stateLike.faceQualityBaseline ?? null,
+    faceQualityInvalidations,
   };
 }
 
@@ -151,6 +162,10 @@ export function buildProjectPackage({
   calibrationProfileUsed,
   selectedValidationPolicyId,
   validationPolicyId,
+  faceQualityAvailable = false,
+  faceQualityUnavailableReason = null,
+  faceQualityBaseline = null,
+  faceQualityInvalidations = [],
 }) {
   const selectedProfileMetadata = buildCalibrationProfileMetadata(selectedCalibrationProfile);
   const calibrationProfileMetadata = buildCalibrationProfileMetadata(calibrationProfileUsed)
@@ -175,6 +190,10 @@ export function buildProjectPackage({
     calibrationProfileUsed: calibrationProfileMetadata,
     selectedValidationPolicyId: selectedValidationPolicyId ?? 'prototype',
     validationPolicyId: validationPolicyId ?? null,
+    faceQualityAvailable,
+    faceQualityUnavailableReason,
+    faceQualityBaseline,
+    faceQualityInvalidations: cloneFaceQualityInvalidations(faceQualityInvalidations),
     includesVideoBinary: false,
   };
 }
@@ -215,6 +234,23 @@ export function buildExportPayload({
     ?? summarizeOptionalGazeStreamQuality(state.validationGazeStreamStats)
     ?? summary?.validationGazeStreamQuality
     ?? null;
+  const faceQualityAvailable = state.faceQualityAvailable
+    ?? summary?.faceQualityAvailable
+    ?? project?.faceQualityAvailable
+    ?? false;
+  const faceQualityUnavailableReason = state.faceQualityUnavailableReason
+    ?? summary?.faceQualityUnavailableReason
+    ?? project?.faceQualityUnavailableReason
+    ?? null;
+  const faceQualityBaseline = state.faceQualityBaseline
+    ?? summary?.faceQualityBaseline
+    ?? project?.faceQualityBaseline
+    ?? null;
+  const faceQualityInvalidations = cloneFaceQualityInvalidations(
+    state.faceQualityInvalidations
+      ?? summary?.faceQualityInvalidations
+      ?? project?.faceQualityInvalidations,
+  );
 
   return {
     sourceVideo,
@@ -242,6 +278,10 @@ export function buildExportPayload({
     accuracyValidated: state.accuracyValidated,
     accuracyInvalidationReason: state.accuracyInvalidationReason,
     liveGazeQuality: state.liveGazeQuality,
+    faceQualityAvailable,
+    faceQualityUnavailableReason,
+    faceQualityBaseline,
+    faceQualityInvalidations,
     gazeStreamQuality: state.gazeStreamQuality
       ?? summary?.gazeStreamQuality
       ?? summarizeGazeStreamQuality(state.gazeStreamStats),
