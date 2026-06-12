@@ -1,4 +1,5 @@
 import { summarizeGazeStreamQuality } from '../gaze/qualityMonitor.js';
+import { DEFAULT_RECORDING_SAMPLE_INTERVAL_MS } from './sampleScheduler.js';
 
 function countValues(samples, getValues) {
   return samples.reduce((counts, sample) => {
@@ -35,8 +36,11 @@ function sumDwellSeconds(samples, getValues, sampleIntervalMs) {
   }, {});
 }
 
-export function buildExportSummary(samples, stateLike, sampleIntervalMs = 150) {
-  const durationSec = getSampleDurations(samples, sampleIntervalMs)
+export function buildExportSummary(samples, stateLike, sampleIntervalMs = DEFAULT_RECORDING_SAMPLE_INTERVAL_MS) {
+  const recordingSampleIntervalMs = Number.isFinite(sampleIntervalMs) && sampleIntervalMs > 0
+    ? sampleIntervalMs
+    : DEFAULT_RECORDING_SAMPLE_INTERVAL_MS;
+  const durationSec = getSampleDurations(samples, recordingSampleIntervalMs)
     .reduce((sum, duration) => sum + duration, 0);
   const correctedAccuracySummary = stateLike.correctedAccuracySummary;
   const gazeStreamQuality = stateLike.gazeStreamQuality
@@ -44,14 +48,15 @@ export function buildExportSummary(samples, stateLike, sampleIntervalMs = 150) {
 
   return {
     totalSamples: samples.length,
+    recordingSampleIntervalMs,
     durationSec: Number(durationSec.toFixed(3)),
     sources: countValues(samples, (sample) => [sample.source]),
     aoiHitCounts: countValues(samples, (sample) => sample.hits || []),
     likelyAoiHitCounts: countValues(samples, (sample) => sample.likelyHits || []),
     possibleAoiHitCounts: countValues(samples, (sample) => sample.possibleHits || []),
-    aoiDwellSec: sumDwellSeconds(samples, (sample) => sample.hits || [], sampleIntervalMs),
-    likelyAoiDwellSec: sumDwellSeconds(samples, (sample) => sample.likelyHits || [], sampleIntervalMs),
-    possibleAoiDwellSec: sumDwellSeconds(samples, (sample) => sample.possibleHits || [], sampleIntervalMs),
+    aoiDwellSec: sumDwellSeconds(samples, (sample) => sample.hits || [], recordingSampleIntervalMs),
+    likelyAoiDwellSec: sumDwellSeconds(samples, (sample) => sample.likelyHits || [], recordingSampleIntervalMs),
+    possibleAoiDwellSec: sumDwellSeconds(samples, (sample) => sample.possibleHits || [], recordingSampleIntervalMs),
     ambiguousSampleCount: samples.filter((sample) => (sample.ambiguousHits || []).length > 0).length,
     trustedSampleCount: samples.filter((sample) => sample.quality?.trustedForAoiAnalysis).length,
     accuracyValidated: stateLike.accuracyValidated,

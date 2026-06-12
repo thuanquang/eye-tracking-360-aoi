@@ -1,4 +1,6 @@
-const DEFAULT_SAMPLE_INTERVAL_SEC = 0.15;
+import { DEFAULT_RECORDING_SAMPLE_INTERVAL_MS } from './sampleScheduler.js';
+
+const DEFAULT_SAMPLE_INTERVAL_SEC = DEFAULT_RECORDING_SAMPLE_INTERVAL_MS / 1000;
 const MIN_FIXATION_DURATION_SEC = 0.1;
 
 function roundNumber(value, digits = 3) {
@@ -134,11 +136,14 @@ function detectAoiFixations(samples, durations) {
   return fixations;
 }
 
-export function buildNamedAoiMetrics(samples = [], aois = []) {
+export function buildNamedAoiMetrics(samples = [], aois = [], { sampleIntervalMs = DEFAULT_RECORDING_SAMPLE_INTERVAL_MS } = {}) {
   const safeSamples = samples
     .filter((sample) => Number.isFinite(sample?.t))
     .sort((a, b) => a.t - b.t);
-  const durations = getSampleDurations(safeSamples);
+  const fallbackSec = Number.isFinite(sampleIntervalMs) && sampleIntervalMs > 0
+    ? sampleIntervalMs / 1000
+    : DEFAULT_SAMPLE_INTERVAL_SEC;
+  const durations = getSampleDurations(safeSamples, fallbackSec);
   const totalDurationSec = durations.reduce((sum, duration) => sum + duration, 0);
   const catalog = buildAoiCatalog(safeSamples, aois);
   const perAoi = {};

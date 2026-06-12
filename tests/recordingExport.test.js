@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
+import { RECORDING_SAMPLE_INTERVAL_MS } from '../src/app/constants.js';
 import { buildRecordingSample } from '../src/recording/sampleBuilder.js';
 import {
   buildExportPayload,
@@ -40,7 +41,7 @@ test('builds recording samples with raw, corrected, AOI, and quality fields', ()
 test('builds summary counts and duration from samples', () => {
   const summary = buildExportSummary([
     { t: 0, source: 'mouse', hits: ['logo'], likelyHits: ['logo'], possibleHits: [], ambiguousHits: [], quality: { trustedForAoiAnalysis: true } },
-    { t: 0.15, source: 'mouse', hits: ['logo'], likelyHits: [], possibleHits: ['logo'], ambiguousHits: ['logo'], quality: { trustedForAoiAnalysis: true } },
+    { t: RECORDING_SAMPLE_INTERVAL_MS / 1000, source: 'mouse', hits: ['logo'], likelyHits: [], possibleHits: ['logo'], ambiguousHits: ['logo'], quality: { trustedForAoiAnalysis: true } },
   ], {
     accuracyValidated: false,
     correctedAccuracySummary: null,
@@ -54,7 +55,8 @@ test('builds summary counts and duration from samples', () => {
   });
 
   assert.equal(summary.totalSamples, 2);
-  assert.equal(summary.durationSec, 0.3);
+  assert.equal(summary.durationSec, 0.067);
+  assert.equal(summary.recordingSampleIntervalMs, RECORDING_SAMPLE_INTERVAL_MS);
   assert.equal(summary.sources.mouse, 2);
   assert.equal(summary.aoiHitCounts.logo, 2);
   assert.equal(summary.likelyAoiHitCounts.logo, 1);

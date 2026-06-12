@@ -1,4 +1,6 @@
-export const RECORDING_SAMPLE_INTERVAL_MS = 150;
+import { DEFAULT_RECORDING_SAMPLE_INTERVAL_MS } from '../recording/sampleScheduler.js';
+
+export const RECORDING_SAMPLE_INTERVAL_MS = DEFAULT_RECORDING_SAMPLE_INTERVAL_MS;
 
 export const GAZE_SMOOTHING = {
   alpha: 0.16,

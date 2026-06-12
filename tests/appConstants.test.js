@@ -8,7 +8,7 @@ import {
 } from '../src/app/constants.js';
 
 test('exports stable timing constants used by the app shell', () => {
-  assert.equal(RECORDING_SAMPLE_INTERVAL_MS, 150);
+  assert.equal(RECORDING_SAMPLE_INTERVAL_MS, 1000 / 30);
   assert.equal(DEFAULT_VALIDATION_MAX_AGE_MS, 5 * 60 * 1000);
   assert.deepEqual(GAZE_TIMING, {
     freshGazeMaxAgeMs: 180,

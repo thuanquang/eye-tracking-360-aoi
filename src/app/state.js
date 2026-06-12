@@ -82,7 +82,6 @@ export function createInitialAppState() {
     reviewActive: false,
     reviewIndex: 0,
     isRecording: false,
-    lastSampleAt: 0,
     webcamStarted: false,
     webcamStatus: 'idle',
     rawPageGaze: null,

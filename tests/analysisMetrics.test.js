@@ -35,3 +35,11 @@ test('returns empty named metrics for recordings without samples', () => {
   assert.equal(metrics.perAoi.front.hitCount, 0);
   assert.equal(metrics.perAoi.front.timeToFirstFixationMs, null);
 });
+
+test('uses the recording cadence for single-sample metric duration fallback', () => {
+  const metrics = buildNamedAoiMetrics([
+    { t: 0, hits: ['front'], likelyHits: ['front'], possibleHits: [], ambiguousHits: [] },
+  ], [{ id: 'front', label: 'Front' }]);
+
+  assert.equal(metrics.session.totalDurationSec, Number(((1000 / 30) / 1000).toFixed(3)));
+});

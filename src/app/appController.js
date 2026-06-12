@@ -11,6 +11,10 @@ import {
 import { buildNamedAoiMetrics } from '../recording/analysisMetrics.js?v=ui-modes-1';
 import { buildRecordingSample } from '../recording/sampleBuilder.js?v=recording-export-1';
 import {
+  createSampleScheduler,
+  shouldRecordSample,
+} from '../recording/sampleScheduler.js?v=sample-scheduler-1';
+import {
   buildExportPayload,
   buildExportSummary as createExportSummary,
   buildProjectPackage as createProjectPackage,
@@ -96,7 +100,7 @@ export function createAppController({
   let sourceVideoInfo = createInitialVideoInfo();
   let webcamProvider = null;
 
-  const SAMPLE_INTERVAL_MS = RECORDING_SAMPLE_INTERVAL_MS;
+  let recordingSampleScheduler = createSampleScheduler({ intervalMs: RECORDING_SAMPLE_INTERVAL_MS });
   const GAZE_SMOOTHING_ALPHA = GAZE_SMOOTHING.alpha;
   const GAZE_FAST_SMOOTHING_ALPHA = GAZE_SMOOTHING.fastAlpha;
   const GAZE_FAST_SMOOTHING_DISTANCE_PX = GAZE_SMOOTHING.fastDistancePx;
@@ -764,6 +768,10 @@ export function createAppController({
     return summarizeGazeStreamQuality(state.gazeStreamStats);
   }
 
+  function resetRecordingSampleScheduler() {
+    recordingSampleScheduler = createSampleScheduler({ intervalMs: RECORDING_SAMPLE_INTERVAL_MS });
+  }
+
   function invalidateAccuracyForLiveGazeQuality(reason) {
     if (!state.accuracyValidated) {
       return;
@@ -778,6 +786,7 @@ export function createAppController({
 
     if (state.isRecording) {
       state.isRecording = false;
+      resetRecordingSampleScheduler();
       recordButton.textContent = 'Start Recording';
       recordButton.classList.add('primary');
     }
@@ -799,6 +808,7 @@ export function createAppController({
 
     if (state.isRecording) {
       state.isRecording = false;
+      resetRecordingSampleScheduler();
       recordButton.textContent = 'Start Recording';
       recordButton.classList.add('primary');
     }
@@ -1703,15 +1713,15 @@ export function createAppController({
       return;
     }
 
-    if (!state.isRecording || !state.latestPoint || now - state.lastSampleAt < SAMPLE_INTERVAL_MS) {
+    if (!state.isRecording || !state.latestPoint) {
       return;
     }
 
-    if (state.mode === 'webcam' && state.gaze.held) {
+    const sampleDecision = shouldRecordSample(recordingSampleScheduler, now, state.gaze);
+    if (!sampleDecision.record) {
       return;
     }
 
-    state.lastSampleAt = now;
     const trustedForAoiAnalysis = state.mode !== 'webcam' || state.accuracyValidated;
 
     state.samples.push(buildRecordingSample({
@@ -1851,6 +1861,7 @@ export function createAppController({
     }
 
     state.isRecording = !state.isRecording;
+    resetRecordingSampleScheduler();
     recordButton.textContent = state.isRecording ? 'Stop Recording' : 'Start Recording';
     recordButton.classList.toggle('primary', !state.isRecording);
     syncParticipantSessionControls();
@@ -1859,6 +1870,7 @@ export function createAppController({
   function clearSamples() {
     state.samples = [];
     state.gazeStreamStats = null;
+    resetRecordingSampleScheduler();
     sampleCount.textContent = '0';
     syncParticipantSessionControls();
   }
@@ -1872,7 +1884,7 @@ export function createAppController({
     state.reviewActive = true;
     state.mode = 'review';
     state.isRecording = false;
-    state.lastSampleAt = 0;
+    resetRecordingSampleScheduler();
     recordButton.textContent = 'Start Recording';
     recordButton.classList.add('primary');
     mouseModeButton.classList.remove('is-active');
@@ -1920,7 +1932,7 @@ export function createAppController({
   }
 
   function buildExportSummary() {
-    return createExportSummary(state.samples, state, SAMPLE_INTERVAL_MS);
+    return createExportSummary(state.samples, state, recordingSampleScheduler.intervalMs);
   }
 
   function downloadJson(payload, fileName) {
@@ -1960,7 +1972,9 @@ export function createAppController({
   }
 
   function exportSamples() {
-    const namedAoiMetrics = buildNamedAoiMetrics(state.samples, activeAois);
+    const namedAoiMetrics = buildNamedAoiMetrics(state.samples, activeAois, {
+      sampleIntervalMs: recordingSampleScheduler.intervalMs,
+    });
     const video = buildVideoPackageMetadata();
     const payload = buildExportPayload({
       sourceVideo: sourceVideo.currentSrc || sourceVideo.src,

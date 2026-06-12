@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { chromium } from 'playwright';
+import { RECORDING_SAMPLE_INTERVAL_MS } from '../src/app/constants.js';
 
 const TARGET_URL = process.env.AOI_PROTOTYPE_URL || 'http://127.0.0.1:5179';
 
@@ -324,6 +325,11 @@ try {
     typeof exportedJson.summary.durationSec,
     'number',
     'Export summary should include recording duration in seconds.',
+  );
+  assert.equal(
+    exportedJson.summary.recordingSampleIntervalMs,
+    RECORDING_SAMPLE_INTERVAL_MS,
+    'Export summary should include the active recording sample cadence.',
   );
   assert.equal(
     typeof exportedJson.summary.aoiHitCounts,
