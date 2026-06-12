@@ -61,7 +61,10 @@ import {
   summarizeGazeStreamQuality,
   updateGazeStreamStats,
 } from '../gaze/qualityMonitor.js';
-import { compareFacePoseToBaseline } from '../gaze/faceQuality.js?v=face-quality-1';
+import {
+  compareFacePoseToBaseline,
+  normalizeFaceQualitySummary,
+} from '../gaze/faceQuality.js?v=face-quality-2';
 import { getValidationPolicy } from '../gaze/validationPolicy.js';
 import {
   ACCURACY_REFINEMENT_POINTS,
@@ -801,7 +804,10 @@ export function createAppController({
       available: state.faceQualityAvailable,
       unavailableReason: state.faceQualityUnavailableReason,
       baseline: state.faceQualityBaseline,
-      invalidations: state.faceQualityInvalidations.map((invalidation) => ({ ...invalidation })),
+      invalidations: state.faceQualityInvalidations.map((invalidation) => ({
+        ...invalidation,
+        reasons: Array.isArray(invalidation.reasons) ? [...invalidation.reasons] : [],
+      })),
     };
   }
 
@@ -1076,9 +1082,14 @@ export function createAppController({
       return;
     }
 
+    const currentSummary = normalizeFaceQualitySummary(quality.summary)
+      ?? normalizeFaceQualitySummary(quality.box)
+      ?? normalizeFaceQualitySummary(quality.faceBox)
+      ?? normalizeFaceQualitySummary(quality);
+
     state.faceQualityAvailable = true;
     state.faceQualityUnavailableReason = null;
-    state.currentFaceQuality = quality.summary ?? null;
+    state.currentFaceQuality = currentSummary;
     registerFacePoseQuality(state.currentFaceQuality);
   }
 

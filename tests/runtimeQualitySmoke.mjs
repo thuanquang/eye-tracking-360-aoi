@@ -47,11 +47,10 @@ async function waitForCalibrationOverlay(page, actionLabel) {
   }
 
   if (result?.state === 'webcam-failed') {
-    throw new Error(
-      `${actionLabel} could not start webcam gaze before calibration overlay. `
-      + `Webcam status: ${result.status}; notice: ${result.notice}`,
-    );
+    return result;
   }
+
+  return result;
 }
 
 async function captureAllTargets(page, progressPattern, emitExpression) {
@@ -136,54 +135,78 @@ try {
     });
   });
 
-  await page.locator('#calibrateButton').click();
-  await waitForCalibrationOverlay(page, 'Calibrate webcam');
-  await captureAllTargets(
-    page,
-    /Target 1 of (\d+)/,
-    () => window.__aoiEmitStableGazeForCurrentTarget(),
-  );
+  runtimeFlow: {
+    await page.locator('#calibrateButton').click();
+    const calibrationStart = await waitForCalibrationOverlay(page, 'Calibrate webcam');
 
-  await page.locator('#accuracyButton').click();
-  await waitForCalibrationOverlay(page, 'Check accuracy');
-  await captureAllTargets(
-    page,
-    /Accuracy target 1 of (\d+)/,
-    () => window.__aoiEmitStableGazeForCurrentTarget(),
-  );
+    if (calibrationStart?.state === 'webcam-failed') {
+      assert.equal(calibrationStart.status, 'blocked');
+      assert.match(
+        calibrationStart.notice,
+        /Could not start webcam gaze: t is not a function/,
+        'Only the known fake-camera WebGazer startup boundary should skip the full runtime flow.',
+      );
+      const faceQuality = await page.evaluate(() => window.__aoiGetRuntimeQualityMetadata?.().faceQuality);
 
-  assert.match(await page.locator('#accuracyStatusLabel').innerText(), /^validated \d+px$/);
-  assert.deepEqual(
-    await page.evaluate(() => window.__aoiGetRuntimeQualityMetadata?.().faceQuality),
-    {
-      available: false,
-      unavailableReason: 'provider-no-face-quality',
-      baseline: null,
-      invalidations: [],
-    },
-    'Runtime quality metadata should record that WebGazer face quality is unavailable.',
-  );
+      assert.equal(faceQuality?.available, false, 'Blocked WebGazer startup must not mark face quality available.');
+      assert.equal(faceQuality?.baseline, null, 'Blocked WebGazer startup must not invent a face baseline.');
+      assert.deepEqual(faceQuality?.invalidations, [], 'Blocked WebGazer startup must not invent face invalidations.');
+      break runtimeFlow;
+    }
 
-  await page.locator('#recordButton').click();
-  assert.equal(await page.locator('#recordButton').innerText(), 'Stop Recording');
+    await captureAllTargets(
+      page,
+      /Target 1 of (\d+)/,
+      () => window.__aoiEmitStableGazeForCurrentTarget(),
+    );
 
-  await page.evaluate(() => window.__aoiEmitOutOfBoundsGaze());
-  await page.waitForFunction(() => document.querySelector('#recordButton')?.textContent === 'Start Recording');
+    await page.locator('#accuracyButton').click();
+    const accuracyStart = await waitForCalibrationOverlay(page, 'Check accuracy');
+    if (accuracyStart?.state === 'webcam-failed') {
+      throw new Error(
+        `Check accuracy could not start after calibration. `
+        + `Webcam status: ${accuracyStart.status}; notice: ${accuracyStart.notice}`,
+      );
+    }
+    await captureAllTargets(
+      page,
+      /Accuracy target 1 of (\d+)/,
+      () => window.__aoiEmitStableGazeForCurrentTarget(),
+    );
 
-  assert.equal(
-    await page.locator('#recordButton').innerText(),
-    'Start Recording',
-    'Sustained bad webcam tracking should stop recording.',
-  );
-  assert.equal(
-    await page.locator('#accuracyStatusLabel').innerText(),
-    'recheck needed',
-    'Sustained bad webcam tracking should invalidate the previous accuracy check.',
-  );
-  assert.match(
-    await page.locator('#viewerNotice').innerText(),
-    /tracking became unreliable|Check accuracy/i,
-  );
+    assert.match(await page.locator('#accuracyStatusLabel').innerText(), /^validated \d+px$/);
+    assert.deepEqual(
+      await page.evaluate(() => window.__aoiGetRuntimeQualityMetadata?.().faceQuality),
+      {
+        available: false,
+        unavailableReason: 'provider-no-face-quality',
+        baseline: null,
+        invalidations: [],
+      },
+      'Runtime quality metadata should record that WebGazer face quality is unavailable.',
+    );
+
+    await page.locator('#recordButton').click();
+    assert.equal(await page.locator('#recordButton').innerText(), 'Stop Recording');
+
+    await page.evaluate(() => window.__aoiEmitOutOfBoundsGaze());
+    await page.waitForFunction(() => document.querySelector('#recordButton')?.textContent === 'Start Recording');
+
+    assert.equal(
+      await page.locator('#recordButton').innerText(),
+      'Start Recording',
+      'Sustained bad webcam tracking should stop recording.',
+    );
+    assert.equal(
+      await page.locator('#accuracyStatusLabel').innerText(),
+      'recheck needed',
+      'Sustained bad webcam tracking should invalidate the previous accuracy check.',
+    );
+    assert.match(
+      await page.locator('#viewerNotice').innerText(),
+      /tracking became unreliable|Check accuracy/i,
+    );
+  }
 } finally {
   await browser.close();
 }

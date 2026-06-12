@@ -261,3 +261,94 @@ test('builds export payload with state-derived accuracy and samples', () => {
   assert.equal(payload.gazeStreamQuality.effectiveHz, 20);
   assert.deepEqual(payload.samples, [{ t: 0 }]);
 });
+
+test('clones face quality metadata in export summary', () => {
+  const faceQualityBaseline = { centerX: 200, centerY: 130, width: 200, height: 160, area: 32000 };
+  const faceQualityInvalidations = [{
+    atMs: 1234,
+    reason: 'face-pose-drift',
+    reasons: ['center-shift'],
+    centerShift: 0.42,
+    scaleChange: 0.2,
+  }];
+  const summary = buildExportSummary([], {
+    accuracyValidated: true,
+    correctedAccuracySummary: null,
+    faceQualityAvailable: true,
+    faceQualityBaseline,
+    faceQualityInvalidations,
+    gazeStreamStats: { events: [] },
+  });
+
+  summary.faceQualityBaseline.centerX = 999;
+  summary.faceQualityInvalidations[0].reasons.push('scale-change');
+
+  assert.equal(faceQualityBaseline.centerX, 200);
+  assert.deepEqual(faceQualityInvalidations[0].reasons, ['center-shift']);
+});
+
+test('clones face quality metadata in project package', () => {
+  const faceQualityBaseline = { centerX: 200, centerY: 130, width: 200, height: 160, area: 32000 };
+  const faceQualityInvalidations = [{
+    atMs: 1234,
+    reason: 'face-pose-drift',
+    reasons: ['center-shift'],
+  }];
+  const project = buildProjectPackage({
+    sourceVideoInfo: { name: 'demo.mp4', kind: 'local-file', projection: 'flat', stereoLayout: 'mono' },
+    sourceVideo: { duration: 12.345, videoWidth: 1280, videoHeight: 720, currentSrc: 'blob:demo' },
+    aoiSource: 'manual',
+    aois: [],
+    faceQualityAvailable: true,
+    faceQualityBaseline,
+    faceQualityInvalidations,
+  });
+
+  project.faceQualityBaseline.centerY = 777;
+  project.faceQualityInvalidations[0].reasons.push('scale-change');
+
+  assert.equal(faceQualityBaseline.centerY, 130);
+  assert.deepEqual(faceQualityInvalidations[0].reasons, ['center-shift']);
+});
+
+test('clones face quality metadata in export payload', () => {
+  const stateBaseline = { centerX: 200, centerY: 130, width: 200, height: 160, area: 32000 };
+  const stateInvalidations = [{
+    atMs: 1234,
+    reason: 'face-pose-drift',
+    reasons: ['center-shift'],
+  }];
+  const summaryBaseline = { centerX: 201, centerY: 131, width: 201, height: 161, area: 32361 };
+  const projectBaseline = { centerX: 202, centerY: 132, width: 202, height: 162, area: 32724 };
+  const payload = buildExportPayload({
+    sourceVideo: 'blob:demo',
+    exportedAt: '2026-06-11T00:00:00.000Z',
+    participant: null,
+    project: {
+      faceQualityBaseline: projectBaseline,
+      faceQualityInvalidations: [{ reason: 'face-pose-drift', reasons: ['project'] }],
+    },
+    video: { name: 'demo.mp4' },
+    summary: {
+      faceQualityBaseline: summaryBaseline,
+      faceQualityInvalidations: [{ reason: 'face-pose-drift', reasons: ['summary'] }],
+    },
+    namedAoiMetrics: {},
+    aoiSource: 'manual',
+    aois: [],
+    state: {
+      faceQualityAvailable: true,
+      faceQualityBaseline: stateBaseline,
+      faceQualityInvalidations: stateInvalidations,
+      samples: [],
+    },
+  });
+
+  payload.faceQualityBaseline.width = 999;
+  payload.faceQualityInvalidations[0].reasons.push('scale-change');
+
+  assert.equal(stateBaseline.width, 200);
+  assert.deepEqual(stateInvalidations[0].reasons, ['center-shift']);
+  assert.equal(summaryBaseline.width, 201);
+  assert.equal(projectBaseline.width, 202);
+});

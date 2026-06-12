@@ -19,20 +19,50 @@ export function summarizeFaceBox(box) {
   };
 }
 
+function isValidFaceSummary(summary) {
+  return (
+    Number.isFinite(summary?.centerX) &&
+    Number.isFinite(summary?.centerY) &&
+    Number.isFinite(summary?.width) &&
+    Number.isFinite(summary?.height) &&
+    Number.isFinite(summary?.area) &&
+    summary.width > 0 &&
+    summary.height > 0 &&
+    summary.area > 0
+  );
+}
+
+export function normalizeFaceQualitySummary(value) {
+  if (isValidFaceSummary(value)) {
+    return {
+      centerX: value.centerX,
+      centerY: value.centerY,
+      width: value.width,
+      height: value.height,
+      area: value.area,
+    };
+  }
+
+  return summarizeFaceBox(value);
+}
+
 export function compareFacePoseToBaseline(current, baseline, {
   maxCenterShiftRatio = 0.2,
   maxScaleChangeRatio = 0.18,
 } = {}) {
-  if (!current || !baseline) {
+  const currentSummary = normalizeFaceQualitySummary(current);
+  const baselineSummary = normalizeFaceQualitySummary(baseline);
+
+  if (!currentSummary || !baselineSummary) {
     return { accepted: false, reasons: ['missing-face'] };
   }
 
-  const baselineSize = Math.max(baseline.width, baseline.height);
+  const baselineSize = Math.max(baselineSummary.width, baselineSummary.height);
   const centerShift = Math.hypot(
-    current.centerX - baseline.centerX,
-    current.centerY - baseline.centerY,
+    currentSummary.centerX - baselineSummary.centerX,
+    currentSummary.centerY - baselineSummary.centerY,
   ) / baselineSize;
-  const scaleChange = Math.abs(Math.sqrt(current.area / baseline.area) - 1);
+  const scaleChange = Math.abs(Math.sqrt(currentSummary.area / baselineSummary.area) - 1);
   const reasons = [];
 
   if (centerShift > maxCenterShiftRatio) {

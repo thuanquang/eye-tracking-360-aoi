@@ -25,9 +25,20 @@ function clonePolicyFailures(policyFailures) {
     : [];
 }
 
+function cloneFaceQualityBaseline(faceQualityBaseline) {
+  return faceQualityBaseline && typeof faceQualityBaseline === 'object'
+    ? { ...faceQualityBaseline }
+    : null;
+}
+
 function cloneFaceQualityInvalidations(faceQualityInvalidations) {
   return Array.isArray(faceQualityInvalidations)
-    ? faceQualityInvalidations.map((invalidation) => ({ ...invalidation }))
+    ? faceQualityInvalidations.map((invalidation) => ({
+      ...invalidation,
+      reasons: Array.isArray(invalidation?.reasons)
+        ? [...invalidation.reasons]
+        : [],
+    }))
     : [];
 }
 
@@ -85,6 +96,7 @@ export function buildExportSummary(samples, stateLike, sampleIntervalMs = DEFAUL
   const calibrationProfile = buildCalibrationProfileMetadata(stateLike.calibrationProfileUsed)
     ?? buildCalibrationProfileMetadata(stateLike.calibrationProfile);
   const policyFailures = clonePolicyFailures(stateLike.policyFailures);
+  const faceQualityBaseline = cloneFaceQualityBaseline(stateLike.faceQualityBaseline);
   const faceQualityInvalidations = cloneFaceQualityInvalidations(stateLike.faceQualityInvalidations);
 
   return {
@@ -118,7 +130,7 @@ export function buildExportSummary(samples, stateLike, sampleIntervalMs = DEFAUL
     gazeStreamQuality,
     faceQualityAvailable: stateLike.faceQualityAvailable ?? false,
     faceQualityUnavailableReason: stateLike.faceQualityUnavailableReason ?? null,
-    faceQualityBaseline: stateLike.faceQualityBaseline ?? null,
+    faceQualityBaseline,
     faceQualityInvalidations,
   };
 }
@@ -192,7 +204,7 @@ export function buildProjectPackage({
     validationPolicyId: validationPolicyId ?? null,
     faceQualityAvailable,
     faceQualityUnavailableReason,
-    faceQualityBaseline,
+    faceQualityBaseline: cloneFaceQualityBaseline(faceQualityBaseline),
     faceQualityInvalidations: cloneFaceQualityInvalidations(faceQualityInvalidations),
     includesVideoBinary: false,
   };
@@ -280,7 +292,7 @@ export function buildExportPayload({
     liveGazeQuality: state.liveGazeQuality,
     faceQualityAvailable,
     faceQualityUnavailableReason,
-    faceQualityBaseline,
+    faceQualityBaseline: cloneFaceQualityBaseline(faceQualityBaseline),
     faceQualityInvalidations,
     gazeStreamQuality: state.gazeStreamQuality
       ?? summary?.gazeStreamQuality
