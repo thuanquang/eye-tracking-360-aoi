@@ -25,3 +25,31 @@ test('checks accuracy and sample-rate gates together', () => {
     policy: getValidationPolicy('research'),
   }), false);
 });
+
+test('fails when one present dispersion metric exceeds policy', () => {
+  assert.equal(passesValidationPolicy({
+    summary: { count: 8, meanPx: 90, p90Px: 120, maxPx: 150, p90DispersionPx: 999, maxDispersionPx: null },
+    streamQuality: { effectiveHz: 30, dataIntegrityPercent: 95 },
+    policy: getValidationPolicy('research'),
+  }), false);
+
+  assert.equal(passesValidationPolicy({
+    summary: { count: 8, meanPx: 90, p90Px: 120, maxPx: 150, p90DispersionPx: undefined, maxDispersionPx: 999 },
+    streamQuality: { effectiveHz: 30, dataIntegrityPercent: 95 },
+    policy: getValidationPolicy('research'),
+  }), false);
+});
+
+test('does not fail when optional dispersion metrics are absent', () => {
+  assert.equal(passesValidationPolicy({
+    summary: { count: 8, meanPx: 90, p90Px: 120, maxPx: 150 },
+    streamQuality: { effectiveHz: 30, dataIntegrityPercent: 95 },
+    policy: getValidationPolicy('research'),
+  }), true);
+
+  assert.equal(passesValidationPolicy({
+    summary: { count: 8, meanPx: 90, p90Px: 120, maxPx: 150, p90DispersionPx: null, maxDispersionPx: null },
+    streamQuality: { effectiveHz: 30, dataIntegrityPercent: 95 },
+    policy: getValidationPolicy('research'),
+  }), true);
+});

@@ -14,6 +14,13 @@ const STANDARD_PROFILE = { id: 'standard', label: 'Standard', pointCount: 14 };
 const RESEARCH_39_PROFILE = { id: 'research-39', label: 'Research 39', pointCount: 39 };
 const RESEARCH_78_PROFILE = { id: 'research-78', label: 'Research 78', pointCount: 78 };
 const POLICY_FAILURE = { metric: 'effectiveHz', actual: 12, limit: 20, comparator: '>=' };
+const VALIDATION_STREAM_STATS = {
+  events: [
+    { atMs: 1000, accepted: true },
+    { atMs: 1025, accepted: true },
+    { atMs: 1050, accepted: true },
+  ],
+};
 
 test('builds recording samples with raw, corrected, AOI, and quality fields', () => {
   const sample = buildRecordingSample({
@@ -57,7 +64,7 @@ test('builds summary counts and duration from samples', () => {
     validationPolicyId: 'research',
     policyPassed: false,
     policyFailures: [POLICY_FAILURE],
-    validationGazeStreamQuality: { effectiveHz: 12, dataIntegrityPercent: 92 },
+    validationGazeStreamStats: VALIDATION_STREAM_STATS,
     gazeStreamStats: {
       events: [
         { atMs: 0, accepted: true },
@@ -77,7 +84,8 @@ test('builds summary counts and duration from samples', () => {
   assert.equal(summary.validationPolicyId, 'research');
   assert.equal(summary.policyPassed, false);
   assert.deepEqual(summary.policyFailures, [POLICY_FAILURE]);
-  assert.deepEqual(summary.validationGazeStreamQuality, { effectiveHz: 12, dataIntegrityPercent: 92 });
+  assert.equal(summary.validationGazeStreamQuality.effectiveHz, 40);
+  assert.equal(summary.validationGazeStreamQuality.dataIntegrityPercent, 100);
   assert.equal(summary.sources.mouse, 2);
   assert.equal(summary.aoiHitCounts.logo, 2);
   assert.equal(summary.likelyAoiHitCounts.logo, 1);
@@ -85,7 +93,68 @@ test('builds summary counts and duration from samples', () => {
   assert.equal(summary.ambiguousSampleCount, 1);
   assert.equal(summary.trustedSampleCount, 2);
   assert.equal(summary.gazeStreamQuality.effectiveHz, 50);
+  assert.notEqual(
+    summary.validationGazeStreamQuality.effectiveHz,
+    summary.gazeStreamQuality.effectiveHz,
+    'Validation quality should summarize validation stats, not recording stats.',
+  );
   assert.equal(summary.gazeStreamQuality.droppedReasons.stale, 1);
+});
+
+test('keeps selected policy separate from unused validation policy metadata', () => {
+  const pendingValidationStreamStats = {
+    events: [
+      { atMs: 0, accepted: true },
+      { atMs: 25, accepted: true },
+    ],
+  };
+  const summary = buildExportSummary([], {
+    accuracyValidated: false,
+    correctedAccuracySummary: null,
+    selectedValidationPolicyId: 'research',
+    activeValidationPolicyId: 'research',
+    validationPolicyId: null,
+    policyPassed: null,
+    policyFailures: [],
+    gazeStreamStats: {
+      events: [
+        { atMs: 0, accepted: true },
+        { atMs: 50, accepted: true },
+      ],
+    },
+    validationGazeStreamStats: pendingValidationStreamStats,
+  });
+  const payload = buildExportPayload({
+    sourceVideo: 'blob:demo',
+    exportedAt: '2026-06-11T00:00:00.000Z',
+    participant: null,
+    project: {
+      selectedValidationPolicyId: 'research',
+      validationPolicyId: null,
+    },
+    video: { name: 'demo.mp4' },
+    summary,
+    namedAoiMetrics: {},
+    aoiSource: 'manual',
+    aois: [],
+    state: {
+      selectedValidationPolicyId: 'research',
+      activeValidationPolicyId: 'research',
+      validationPolicyId: null,
+      policyPassed: null,
+      policyFailures: [],
+      validationGazeStreamStats: pendingValidationStreamStats,
+      gazeStreamStats: summary.gazeStreamStats,
+      samples: [],
+    },
+  });
+
+  assert.equal(summary.selectedValidationPolicyId, 'research');
+  assert.equal(summary.validationPolicyId, null);
+  assert.equal(summary.policyPassed, null);
+  assert.equal(payload.selectedValidationPolicyId, 'research');
+  assert.equal(payload.validationPolicyId, null);
+  assert.equal(payload.policyPassed, null);
 });
 
 test('builds video package metadata from source info and video element', () => {
@@ -140,7 +209,7 @@ test('builds export payload with state-derived accuracy and samples', () => {
       validationPolicyId: 'research',
       policyPassed: true,
       policyFailures: [],
-      validationGazeStreamQuality: { effectiveHz: 30, dataIntegrityPercent: 96 },
+      validationGazeStreamStats: VALIDATION_STREAM_STATS,
       accuracySummary: { meanPx: 10 },
       refinementAccuracySummary: { meanPx: 9 },
       gazeCorrection: { dx: 1, dy: -1 },
@@ -168,7 +237,8 @@ test('builds export payload with state-derived accuracy and samples', () => {
   assert.equal(payload.validationPolicyId, 'research');
   assert.equal(payload.policyPassed, true);
   assert.deepEqual(payload.policyFailures, []);
-  assert.deepEqual(payload.validationGazeStreamQuality, { effectiveHz: 30, dataIntegrityPercent: 96 });
+  assert.equal(payload.validationGazeStreamQuality.effectiveHz, 40);
+  assert.equal(payload.validationGazeStreamQuality.dataIntegrityPercent, 100);
   assert.equal(payload.gazeStreamQuality.effectiveHz, 20);
   assert.deepEqual(payload.samples, [{ t: 0 }]);
 });

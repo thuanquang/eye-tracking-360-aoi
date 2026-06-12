@@ -218,6 +218,23 @@ try {
     };
   });
 
+  assert.deepEqual(
+    await page.locator('#validationPolicySelect option').evaluateAll((options) => options.map((option) => ({
+      value: option.value,
+      label: option.textContent.trim(),
+    }))),
+    [
+      { value: 'prototype', label: 'Prototype' },
+      { value: 'research', label: 'Research' },
+    ],
+    'Validation policy selector should expose prototype and research modes.',
+  );
+  assert.equal(
+    await page.locator('#validationPolicySelect').inputValue(),
+    'prototype',
+    'Prototype validation policy should remain the default for webcam validation.',
+  );
+
   await page.locator('#playVideoButton').click();
   await page.waitForFunction(() => document.querySelector('#sourceVideo')?.paused === false);
 
@@ -378,6 +395,27 @@ try {
     payload.samples.every((sample) => sample.quality?.webcamAccuracyValidated === true),
     true,
     'Recorded webcam samples should carry validation status.',
+  );
+  assert.equal(payload.selectedValidationPolicyId, 'prototype', 'Webcam export should include selected validation policy metadata.');
+  assert.equal(payload.validationPolicyId, 'prototype', 'Webcam export should include the completed validation policy.');
+  assert.equal(payload.policyPassed, true, 'Completed webcam validation should report the policy result.');
+  assert.deepEqual(payload.policyFailures, [], 'Completed webcam validation should export policy failure details.');
+  assert.equal(payload.summary.validationPolicyId, 'prototype', 'Export summary should include the completed validation policy.');
+  assert.equal(payload.project.validationPolicyId, 'prototype', 'Project package should include the completed validation policy.');
+  assert.equal(
+    Number.isFinite(payload.validationGazeStreamQuality?.effectiveHz),
+    true,
+    'Webcam export should include validation stream quality from the accuracy check.',
+  );
+  assert.equal(
+    Number.isFinite(payload.summary.validationGazeStreamQuality?.effectiveHz),
+    true,
+    'Export summary should include validation stream quality from the accuracy check.',
+  );
+  assert.equal(
+    payload.samples.every((sample) => sample.quality?.validationPolicyId === 'prototype' && sample.quality?.policyPassed === true),
+    true,
+    'Recorded webcam samples should carry validation policy status.',
   );
   assert.equal(
     payload.samples.some((sample) => sample.likelyHits?.includes('front-center')),

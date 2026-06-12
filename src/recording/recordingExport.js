@@ -25,6 +25,10 @@ function clonePolicyFailures(policyFailures) {
     : [];
 }
 
+function summarizeOptionalGazeStreamQuality(stats) {
+  return stats ? summarizeGazeStreamQuality(stats) : null;
+}
+
 function countValues(samples, getValues) {
   return samples.reduce((counts, sample) => {
     const values = getValues(sample);
@@ -69,6 +73,8 @@ export function buildExportSummary(samples, stateLike, sampleIntervalMs = DEFAUL
   const correctedAccuracySummary = stateLike.correctedAccuracySummary;
   const gazeStreamQuality = stateLike.gazeStreamQuality
     ?? summarizeGazeStreamQuality(stateLike.gazeStreamStats);
+  const validationGazeStreamQuality = stateLike.validationGazeStreamQuality
+    ?? summarizeOptionalGazeStreamQuality(stateLike.validationGazeStreamStats);
   const selectedCalibrationProfile = buildCalibrationProfileMetadata(stateLike.selectedCalibrationProfile);
   const calibrationProfile = buildCalibrationProfileMetadata(stateLike.calibrationProfileUsed)
     ?? buildCalibrationProfileMetadata(stateLike.calibrationProfile);
@@ -100,7 +106,7 @@ export function buildExportSummary(samples, stateLike, sampleIntervalMs = DEFAUL
     validationPolicyId: stateLike.validationPolicyId ?? null,
     policyPassed: stateLike.policyPassed ?? null,
     policyFailures,
-    validationGazeStreamQuality: stateLike.validationGazeStreamQuality ?? null,
+    validationGazeStreamQuality,
     droppedGazeSamples: stateLike.droppedGazeSamples,
     gazeStreamQuality,
   };
@@ -205,6 +211,10 @@ export function buildExportPayload({
   const policyFailures = clonePolicyFailures(
     state.policyFailures ?? summary?.policyFailures,
   );
+  const validationGazeStreamQuality = state.validationGazeStreamQuality
+    ?? summarizeOptionalGazeStreamQuality(state.validationGazeStreamStats)
+    ?? summary?.validationGazeStreamQuality
+    ?? null;
 
   return {
     sourceVideo,
@@ -223,9 +233,7 @@ export function buildExportPayload({
     validationPolicyId,
     policyPassed: state.policyPassed ?? summary?.policyPassed ?? null,
     policyFailures,
-    validationGazeStreamQuality: state.validationGazeStreamQuality
-      ?? summary?.validationGazeStreamQuality
-      ?? null,
+    validationGazeStreamQuality,
     accuracy: state.correctedAccuracySummary,
     rawValidationAccuracy: state.accuracySummary,
     correctionFitAccuracy: state.refinementAccuracySummary,

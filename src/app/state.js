@@ -117,6 +117,8 @@ export function createInitialAppState() {
     validationPolicyId: null,
     policyPassed: null,
     policyFailures: [],
+    activeValidationPolicyId: null,
+    validationGazeStreamStats: null,
     validationGazeStreamQuality: null,
     calibrationIndex: 0,
     targetMode: 'calibration',

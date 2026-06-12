@@ -23,6 +23,8 @@ test('creates fresh app state without shared mutable arrays', () => {
   assert.equal(second.validationPolicyId, null);
   assert.equal(second.policyPassed, null);
   assert.deepEqual(second.policyFailures, []);
+  assert.equal(second.activeValidationPolicyId, null);
+  assert.equal(second.validationGazeStreamStats, null);
   assert.equal(second.validationGazeStreamQuality, null);
 });
 

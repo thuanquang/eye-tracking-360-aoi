@@ -257,6 +257,18 @@ try {
     'Calibration profile selector should expose standard and research modes.',
   );
   await page.locator('#calibrationProfileSelect').selectOption('research-39');
+  assert.deepEqual(
+    await page.locator('#validationPolicySelect option').evaluateAll((options) => options.map((option) => ({
+      value: option.value,
+      label: option.textContent.trim(),
+    }))),
+    [
+      { value: 'prototype', label: 'Prototype' },
+      { value: 'research', label: 'Research' },
+    ],
+    'Validation policy selector should expose prototype and research modes.',
+  );
+  await page.locator('#validationPolicySelect').selectOption('research');
 
   const noticeHidden = await page.locator('#viewerNotice').evaluate((element) => {
     return element.classList.contains('is-hidden') || getComputedStyle(element).display === 'none';
@@ -351,18 +363,27 @@ try {
   );
   assert.equal(exportedJson.calibrationProfile, null, 'Mouse exports without calibration should not report a used calibration profile.');
   assert.equal(exportedJson.calibrationProfileUsed, null, 'Mouse exports without calibration should not report calibration-profile-used metadata.');
+  assert.equal(exportedJson.selectedValidationPolicyId, 'research', 'Export should include the selected validation policy.');
+  assert.equal(exportedJson.validationPolicyId, null, 'Export should not report a used validation policy without completed validation.');
+  assert.equal(exportedJson.policyPassed, null, 'Export should not report a policy result without completed validation.');
+  assert.deepEqual(exportedJson.policyFailures, [], 'Export should not invent policy failures without completed validation.');
+  assert.equal(exportedJson.validationGazeStreamQuality, null, 'Export should not invent validation stream quality without completed validation.');
   assert.deepEqual(
     exportedJson.summary.selectedCalibrationProfile,
     exportedJson.selectedCalibrationProfile,
     'Export summary should include selected calibration setup metadata.',
   );
   assert.equal(exportedJson.summary.calibrationProfile, null, 'Export summary should not report a used profile without calibration.');
+  assert.equal(exportedJson.summary.selectedValidationPolicyId, 'research', 'Export summary should include selected validation policy.');
+  assert.equal(exportedJson.summary.validationPolicyId, null, 'Export summary should not report unused validation policy metadata.');
   assert.deepEqual(
     exportedJson.project.selectedCalibrationProfile,
     exportedJson.selectedCalibrationProfile,
     'Project package should include selected calibration setup metadata.',
   );
   assert.equal(exportedJson.project.calibrationProfile, null, 'Project package should not report a used profile without calibration.');
+  assert.equal(exportedJson.project.selectedValidationPolicyId, 'research', 'Project package should include selected validation policy.');
+  assert.equal(exportedJson.project.validationPolicyId, null, 'Project package should not report unused validation policy metadata.');
   assert.equal(
     typeof exportedJson.summary.aoiHitCounts,
     'object',

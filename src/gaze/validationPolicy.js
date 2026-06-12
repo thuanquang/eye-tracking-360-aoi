@@ -42,6 +42,16 @@ function addMaxFailure(failures, summary, metric, limit) {
   }
 }
 
+function addOptionalMaxFailure(failures, summary, metric, limit) {
+  const actual = summary?.[metric];
+
+  if (actual === null || actual === undefined) {
+    return;
+  }
+
+  addMaxFailure(failures, summary, metric, limit);
+}
+
 function addMinFailure(failures, source, metric, limit) {
   if (!(Number.isFinite(limit) && limit > 0)) {
     return;
@@ -75,15 +85,8 @@ export function getValidationPolicyFailures({
   addMaxFailure(failures, summary, 'p90Px', resolvedPolicy.maxP90Px);
   addMaxFailure(failures, summary, 'maxPx', resolvedPolicy.maxSinglePointPx);
 
-  const hasDispersion = (
-    summary?.p90DispersionPx !== null &&
-    summary?.maxDispersionPx !== null
-  );
-
-  if (hasDispersion) {
-    addMaxFailure(failures, summary, 'p90DispersionPx', resolvedPolicy.maxP90DispersionPx);
-    addMaxFailure(failures, summary, 'maxDispersionPx', resolvedPolicy.maxSingleTargetDispersionPx);
-  }
+  addOptionalMaxFailure(failures, summary, 'p90DispersionPx', resolvedPolicy.maxP90DispersionPx);
+  addOptionalMaxFailure(failures, summary, 'maxDispersionPx', resolvedPolicy.maxSingleTargetDispersionPx);
 
   addMinFailure(failures, streamQuality, 'effectiveHz', resolvedPolicy.minEffectiveHz);
   addMinFailure(failures, streamQuality, 'dataIntegrityPercent', resolvedPolicy.minDataIntegrityPercent);

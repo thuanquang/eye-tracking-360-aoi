@@ -283,7 +283,7 @@ export function createAppController({
 
   function freezeSelectedValidationPolicyForAccuracy() {
     const policy = syncSelectedValidationPolicyState();
-    state.validationPolicyId = policy.id;
+    state.activeValidationPolicyId = policy.id;
     return policy;
   }
 
@@ -754,6 +754,8 @@ export function createAppController({
     state.validationPolicyId = null;
     state.policyPassed = null;
     state.policyFailures = [];
+    state.activeValidationPolicyId = null;
+    state.validationGazeStreamStats = null;
     state.validationGazeStreamQuality = null;
     state.liveGazeQuality = null;
     setAccuracySummary(null);
@@ -785,23 +787,44 @@ export function createAppController({
     state.liveGazeQuality = null;
   }
 
-  function registerGazeStreamEvent(event) {
-    const isAccuracyRun = state.targetMode === 'accuracy' && !calibrationOverlay.hidden;
+  function hasActiveAccuracyValidation() {
+    return state.targetMode === 'accuracy' && !calibrationOverlay.hidden;
+  }
 
-    if ((!state.isRecording && !isAccuracyRun) || state.reviewActive) {
-      return;
-    }
-
-    state.gazeStreamStats = updateGazeStreamStats(state.gazeStreamStats, {
+  function buildGazeStreamEvent(event) {
+    return {
       atMs: event.atMs ?? performance.now(),
       accepted: event.accepted,
       reason: event.reason,
       onScreen: event.onScreen ?? null,
-    });
+    };
+  }
+
+  function registerGazeStreamEvent(event) {
+    const isAccuracyRun = hasActiveAccuracyValidation();
+    const isRecordingRun = state.isRecording && !state.reviewActive;
+
+    if (!isRecordingRun && !isAccuracyRun) {
+      return;
+    }
+
+    const streamEvent = buildGazeStreamEvent(event);
+
+    if (isRecordingRun) {
+      state.gazeStreamStats = updateGazeStreamStats(state.gazeStreamStats, streamEvent);
+    }
+
+    if (isAccuracyRun) {
+      state.validationGazeStreamStats = updateGazeStreamStats(state.validationGazeStreamStats, streamEvent);
+    }
   }
 
   function registerBoundedGazeStreamDrop({ atMs, reason, onScreen = null }) {
-    if (!shouldRecordGazeStreamDrop(state.gazeStreamStats, { atMs, reason }, LIVE_GAZE_STALE_MS)) {
+    const stats = hasActiveAccuracyValidation()
+      ? state.validationGazeStreamStats
+      : state.gazeStreamStats;
+
+    if (!shouldRecordGazeStreamDrop(stats, { atMs, reason }, LIVE_GAZE_STALE_MS)) {
       return;
     }
 
@@ -815,6 +838,10 @@ export function createAppController({
 
   function getCurrentGazeStreamQuality() {
     return summarizeGazeStreamQuality(state.gazeStreamStats);
+  }
+
+  function getCurrentValidationGazeStreamQuality() {
+    return summarizeGazeStreamQuality(state.validationGazeStreamStats);
   }
 
   function applyAccuracyPolicyState(evaluation) {
@@ -1158,6 +1185,10 @@ export function createAppController({
       if (state.targetMode === 'calibration') {
         activeCalibrationProfile = null;
         state.calibrationProfile = null;
+      } else if (state.targetMode === 'accuracy') {
+        state.activeValidationPolicyId = null;
+        state.validationGazeStreamStats = null;
+        state.validationGazeStreamQuality = null;
       }
 
       calibrationOverlay.hidden = true;
@@ -1239,6 +1270,10 @@ export function createAppController({
     if (state.targetMode === 'calibration') {
       activeCalibrationProfile = null;
       state.calibrationProfile = null;
+    } else if (state.targetMode === 'accuracy') {
+      state.activeValidationPolicyId = null;
+      state.validationGazeStreamStats = null;
+      state.validationGazeStreamQuality = null;
     }
 
     calibrationOverlay.hidden = true;
@@ -1308,22 +1343,23 @@ export function createAppController({
     state.accuracyValidated = false;
     state.accuracyValidatedAt = null;
     state.accuracyInvalidationReason = null;
+    state.validationPolicyId = null;
     state.policyPassed = null;
     state.policyFailures = [];
+    state.validationGazeStreamStats = null;
     state.validationGazeStreamQuality = null;
     resetLiveGazeQuality();
     state.refinementAccuracySummary = null;
     state.accuracySummary = null;
     state.correctedAccuracySummary = null;
     state.localAccuracyErrorModel = null;
-    state.gazeStreamStats = null;
     pauseVideoForTargetMode();
     setCalibrationProfileSelectLocked(true);
     setValidationPolicySelectLocked(true);
     calibrationOverlay.hidden = false;
     setWebcamStatus('validating');
     setAccuracySummary(null);
-    state.validationPolicyId = validationPolicy.id;
+    state.activeValidationPolicyId = validationPolicy.id;
     positionTargetOverlay();
   }
 
@@ -1399,17 +1435,18 @@ export function createAppController({
     state.accuracyIndex += 1;
 
     if (state.accuracyIndex >= VALIDATION_POINTS.length) {
-      const validationGazeStreamQuality = getCurrentGazeStreamQuality();
+      const validationGazeStreamQuality = getCurrentValidationGazeStreamQuality();
       const evaluation = evaluateAccuracyCheck({
         refinementSamples: state.accuracySamples,
         validationSamples: state.validationSamples,
         minAcceptedRefinementTargets: MIN_ACCEPTED_REFINEMENT_TARGETS,
         minAcceptedValidationTargets: MIN_ACCEPTED_VALIDATION_TARGETS,
-        policy: getValidationPolicy(state.validationPolicyId),
+        policy: getValidationPolicy(state.activeValidationPolicyId),
         streamQuality: validationGazeStreamQuality,
       });
       state.validationGazeStreamQuality = validationGazeStreamQuality;
       applyAccuracyPolicyState(evaluation);
+      state.activeValidationPolicyId = null;
 
       if (evaluation.reason === 'too-few-targets') {
         state.gazeCorrection = null;
