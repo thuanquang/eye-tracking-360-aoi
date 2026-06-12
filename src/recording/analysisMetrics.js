@@ -204,6 +204,35 @@ function fixationDurationMs(fixation) {
   return fixation.durationSec * 1000;
 }
 
+function fixationCoverageEndSec(fixation) {
+  return Math.max(
+    fixation.endSec,
+    fixation.startSec + (fixationDurationMs(fixation) / 1000),
+  );
+}
+
+function fixationTimeOverlaps(first, second) {
+  const latestStartSec = Math.max(first.startSec, second.startSec);
+  const earliestEndSec = Math.min(fixationCoverageEndSec(first), fixationCoverageEndSec(second));
+
+  return earliestEndSec - latestStartSec > FIXATION_DURATION_EPSILON_SEC;
+}
+
+function mergeFixations(screenFixations, legacyFixations) {
+  if (!screenFixations?.length) {
+    return legacyFixations;
+  }
+
+  const uncoveredLegacyFixations = legacyFixations
+    .filter((legacyFixation) => !screenFixations
+      .some((screenFixation) => fixationTimeOverlaps(legacyFixation, screenFixation)));
+
+  return [...screenFixations, ...uncoveredLegacyFixations]
+    .sort((a, b) => a.startSec - b.startSec
+      || fixationCoverageEndSec(a) - fixationCoverageEndSec(b)
+      || a.aoiId.localeCompare(b.aoiId));
+}
+
 export function buildNamedAoiMetrics(samples = [], aois = [], { sampleIntervalMs = DEFAULT_RECORDING_SAMPLE_INTERVAL_MS } = {}) {
   const safeSamples = samples
     .filter((sample) => Number.isFinite(sample?.t))
@@ -261,9 +290,8 @@ export function buildNamedAoiMetrics(samples = [], aois = [], { sampleIntervalMs
   });
 
   const screenFixations = detectScreenAoiFixations(safeSamples, durations);
-  const fixations = screenFixations?.length
-    ? screenFixations
-    : detectAoiFixations(safeSamples, durations);
+  const legacyFixations = detectAoiFixations(safeSamples, durations);
+  const fixations = mergeFixations(screenFixations, legacyFixations);
 
   fixations.forEach((fixation) => {
     if (!perAoi[fixation.aoiId]) {

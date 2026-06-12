@@ -91,6 +91,29 @@ test('falls back to AOI streak fixations when sparse screen data is unmapped', (
   assert.equal(metrics.session.totalFixations, 1);
 });
 
+test('preserves AOI-only fixation streaks after screen-derived fixations', () => {
+  const aois = [
+    { id: 'panel', label: 'Panel' },
+    { id: 'cta', label: 'CTA' },
+  ];
+  const samples = [
+    { t: 0.00, screen: { x: 100, y: 100 }, hits: ['panel'], likelyHits: ['panel'], possibleHits: [], ambiguousHits: [], activeAois: aois },
+    { t: 0.05, screen: { x: 102, y: 99 }, hits: ['panel'], likelyHits: ['panel'], possibleHits: [], ambiguousHits: [], activeAois: aois },
+    { t: 0.10, hits: [], likelyHits: [], possibleHits: [], ambiguousHits: [], activeAois: aois },
+    { t: 0.20, hits: ['cta'], likelyHits: ['cta'], possibleHits: [], ambiguousHits: [], activeAois: aois },
+    { t: 0.25, hits: ['cta'], likelyHits: ['cta'], possibleHits: [], ambiguousHits: [], activeAois: aois },
+    { t: 0.30, hits: [], likelyHits: [], possibleHits: [], ambiguousHits: [], activeAois: aois },
+  ];
+  const metrics = buildNamedAoiMetrics(samples, aois);
+
+  assert.equal(metrics.perAoi.panel.fixationCount, 1);
+  assert.equal(metrics.perAoi.panel.totalFixationDurationMs, 100);
+  assert.equal(metrics.perAoi.cta.fixationCount, 1);
+  assert.equal(metrics.perAoi.cta.totalFixationDurationMs, 100);
+  assert.equal(metrics.session.totalFixations, 2);
+  assert.equal(metrics.session.averageFixationDurationMs, 100);
+});
+
 test('returns empty named metrics for recordings without samples', () => {
   const metrics = buildNamedAoiMetrics([], [{ id: 'front', label: 'Front' }]);
 
