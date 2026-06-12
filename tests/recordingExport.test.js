@@ -6,6 +6,7 @@ import { buildRecordingSample } from '../src/recording/sampleBuilder.js';
 import {
   buildExportPayload,
   buildExportSummary,
+  buildProjectPackage,
   buildVideoPackageMetadata,
 } from '../src/recording/recordingExport.js';
 
@@ -45,6 +46,7 @@ test('builds summary counts and duration from samples', () => {
   ], {
     accuracyValidated: false,
     correctedAccuracySummary: null,
+    calibrationProfile: { id: 'research-39', label: 'Research 39', pointCount: 39 },
     gazeStreamStats: {
       events: [
         { atMs: 0, accepted: true },
@@ -57,6 +59,7 @@ test('builds summary counts and duration from samples', () => {
   assert.equal(summary.totalSamples, 2);
   assert.equal(summary.durationSec, 0.067);
   assert.equal(summary.recordingSampleIntervalMs, RECORDING_SAMPLE_INTERVAL_MS);
+  assert.deepEqual(summary.calibrationProfile, { id: 'research-39', label: 'Research 39', pointCount: 39 });
   assert.equal(summary.sources.mouse, 2);
   assert.equal(summary.aoiHitCounts.logo, 2);
   assert.equal(summary.likelyAoiHitCounts.logo, 1);
@@ -81,6 +84,18 @@ test('builds video package metadata from source info and video element', () => {
   assert.equal(metadata.height, 720);
 });
 
+test('builds project package with selected calibration profile metadata', () => {
+  const project = buildProjectPackage({
+    sourceVideoInfo: { name: 'demo.mp4', kind: 'local-file', projection: 'flat', stereoLayout: 'mono' },
+    sourceVideo: { duration: 12.345, videoWidth: 1280, videoHeight: 720, currentSrc: 'blob:demo' },
+    aoiSource: 'manual',
+    aois: [{ id: 'front' }],
+    calibrationProfile: { id: 'research-78', label: 'Research 78', pointCount: 78 },
+  });
+
+  assert.deepEqual(project.calibrationProfile, { id: 'research-78', label: 'Research 78', pointCount: 78 });
+});
+
 test('builds export payload with state-derived accuracy and samples', () => {
   const payload = buildExportPayload({
     sourceVideo: 'blob:demo',
@@ -94,6 +109,7 @@ test('builds export payload with state-derived accuracy and samples', () => {
     aois: [{ id: 'front' }],
     state: {
       correctedAccuracySummary: { meanPx: 8 },
+      calibrationProfile: { id: 'research-39', label: 'Research 39', pointCount: 39 },
       accuracySummary: { meanPx: 10 },
       refinementAccuracySummary: { meanPx: 9 },
       gazeCorrection: { dx: 1, dy: -1 },
@@ -114,6 +130,7 @@ test('builds export payload with state-derived accuracy and samples', () => {
 
   assert.equal(payload.sourceVideo, 'blob:demo');
   assert.equal(payload.accuracy.meanPx, 8);
+  assert.deepEqual(payload.calibrationProfile, { id: 'research-39', label: 'Research 39', pointCount: 39 });
   assert.equal(payload.gazeStreamQuality.effectiveHz, 20);
   assert.deepEqual(payload.samples, [{ t: 0 }]);
 });

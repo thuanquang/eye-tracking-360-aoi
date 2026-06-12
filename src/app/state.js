@@ -1,3 +1,5 @@
+import { getCalibrationProfileMetadata } from '../gaze/calibrationTargets.js';
+
 const DEFAULT_GAZE = { x: 0, y: 0, visible: false, source: 'webcam' };
 
 const DEFAULT_AOIS = [
@@ -109,6 +111,7 @@ export function createInitialAppState() {
       consent: false,
       startedAt: null,
     },
+    calibrationProfile: getCalibrationProfileMetadata(),
     calibrationIndex: 0,
     targetMode: 'calibration',
     targetCaptureInProgress: false,

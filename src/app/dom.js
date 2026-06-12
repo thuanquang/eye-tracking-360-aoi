@@ -24,6 +24,7 @@ export function queryAppDom(documentRef = document) {
     webcamModeButton: getRequiredElement(documentRef, '#webcamModeButton'),
     calibrateButton: getRequiredElement(documentRef, '#calibrateButton'),
     accuracyButton: getRequiredElement(documentRef, '#accuracyButton'),
+    calibrationProfileSelect: getRequiredElement(documentRef, '#calibrationProfileSelect'),
     videoFileInput: getRequiredElement(documentRef, '#videoFileInput'),
     aoiFileInput: getRequiredElement(documentRef, '#aoiFileInput'),
     projectionSelect: getRequiredElement(documentRef, '#projectionSelect'),

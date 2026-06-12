@@ -244,6 +244,19 @@ try {
     page.locator('#accuracyButton').waitFor({ state: 'visible', timeout: 1000 }),
     'Webcam accuracy control should be visible.',
   );
+  assert.deepEqual(
+    await page.locator('#calibrationProfileSelect option').evaluateAll((options) => options.map((option) => ({
+      value: option.value,
+      label: option.textContent.trim(),
+    }))),
+    [
+      { value: 'standard', label: 'Standard' },
+      { value: 'research-39', label: 'Research 39' },
+      { value: 'research-78', label: 'Research 78' },
+    ],
+    'Calibration profile selector should expose standard and research modes.',
+  );
+  await page.locator('#calibrationProfileSelect').selectOption('research-39');
 
   const noticeHidden = await page.locator('#viewerNotice').evaluate((element) => {
     return element.classList.contains('is-hidden') || getComputedStyle(element).display === 'none';
@@ -330,6 +343,21 @@ try {
     exportedJson.summary.recordingSampleIntervalMs,
     RECORDING_SAMPLE_INTERVAL_MS,
     'Export summary should include the active recording sample cadence.',
+  );
+  assert.deepEqual(
+    exportedJson.calibrationProfile,
+    { id: 'research-39', label: 'Research 39', pointCount: 39 },
+    'Export should include selected calibration profile metadata.',
+  );
+  assert.deepEqual(
+    exportedJson.summary.calibrationProfile,
+    exportedJson.calibrationProfile,
+    'Export summary should include selected calibration profile metadata.',
+  );
+  assert.deepEqual(
+    exportedJson.project.calibrationProfile,
+    exportedJson.calibrationProfile,
+    'Project package should include selected calibration profile metadata.',
   );
   assert.equal(
     typeof exportedJson.summary.aoiHitCounts,

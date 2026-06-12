@@ -1,6 +1,24 @@
 import { summarizeGazeStreamQuality } from '../gaze/qualityMonitor.js';
 import { DEFAULT_RECORDING_SAMPLE_INTERVAL_MS } from './sampleScheduler.js';
 
+function buildCalibrationProfileMetadata(profile) {
+  if (!profile || typeof profile !== 'object' || !profile.id) {
+    return null;
+  }
+
+  const pointCount = Number.isFinite(profile.pointCount)
+    ? profile.pointCount
+    : Array.isArray(profile.calibrationPoints)
+      ? profile.calibrationPoints.length
+      : null;
+
+  return {
+    id: profile.id,
+    label: profile.label ?? profile.id,
+    pointCount,
+  };
+}
+
 function countValues(samples, getValues) {
   return samples.reduce((counts, sample) => {
     const values = getValues(sample);
@@ -65,6 +83,7 @@ export function buildExportSummary(samples, stateLike, sampleIntervalMs = DEFAUL
     accuracyMaxPx: correctedAccuracySummary?.maxPx ?? null,
     accuracyP90DispersionPx: correctedAccuracySummary?.p90DispersionPx ?? null,
     accuracyMaxDispersionPx: correctedAccuracySummary?.maxDispersionPx ?? null,
+    calibrationProfile: buildCalibrationProfileMetadata(stateLike.calibrationProfile),
     droppedGazeSamples: stateLike.droppedGazeSamples,
     gazeStreamQuality,
   };
@@ -104,6 +123,7 @@ export function buildProjectPackage({
   stereoLayout,
   aoiSource,
   aois,
+  calibrationProfile,
 }) {
   return {
     version: 1,
@@ -119,6 +139,7 @@ export function buildProjectPackage({
       count: aois.length,
       packaged: true,
     },
+    calibrationProfile: buildCalibrationProfileMetadata(calibrationProfile),
     includesVideoBinary: false,
   };
 }
@@ -135,6 +156,10 @@ export function buildExportPayload({
   aois,
   state,
 }) {
+  const calibrationProfile = buildCalibrationProfileMetadata(state.calibrationProfile)
+    ?? buildCalibrationProfileMetadata(summary?.calibrationProfile)
+    ?? buildCalibrationProfileMetadata(project?.calibrationProfile);
+
   return {
     sourceVideo,
     exportedAt,
@@ -145,6 +170,7 @@ export function buildExportPayload({
     namedAoiMetrics,
     aoiSource,
     aois,
+    calibrationProfile,
     accuracy: state.correctedAccuracySummary,
     rawValidationAccuracy: state.accuracySummary,
     correctionFitAccuracy: state.refinementAccuracySummary,

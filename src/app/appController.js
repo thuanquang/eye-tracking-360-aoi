@@ -63,9 +63,9 @@ import {
 } from '../gaze/qualityMonitor.js';
 import {
   ACCURACY_REFINEMENT_POINTS,
-  CALIBRATION_POINTS,
   VALIDATION_POINTS,
-  getTargetPointsForMode,
+  getCalibrationProfile,
+  getCalibrationProfileMetadata,
 } from '../gaze/calibrationTargets.js';
 import { evaluateAccuracyCheck } from '../gaze/accuracyValidation.js';
 import {
@@ -138,6 +138,7 @@ export function createAppController({
     webcamModeButton,
     calibrateButton,
     accuracyButton,
+    calibrationProfileSelect,
     videoFileInput,
     aoiFileInput,
     projectionSelect,
@@ -255,6 +256,15 @@ export function createAppController({
       projection: getCurrentProjection(),
       stereoLayout: getCurrentStereoLayout(),
     };
+  }
+
+  function syncCalibrationProfileState() {
+    state.calibrationProfile = getCalibrationProfileMetadata(calibrationProfileSelect.value);
+    return state.calibrationProfile;
+  }
+
+  function getActiveCalibrationProfile() {
+    return getCalibrationProfile(state.calibrationProfile?.id ?? calibrationProfileSelect.value);
   }
 
   function hasSelectOption(select, value) {
@@ -1046,7 +1056,9 @@ export function createAppController({
   }
 
   function targetPointsForMode() {
-    return getTargetPointsForMode(state.targetMode);
+    return state.targetMode === 'accuracy'
+      ? VALIDATION_POINTS
+      : getActiveCalibrationProfile().calibrationPoints;
   }
 
   function positionTargetOverlay() {
@@ -1109,6 +1121,7 @@ export function createAppController({
     }
 
     await resetWebcamCalibrationData();
+    syncCalibrationProfileState();
     state.targetMode = 'calibration';
     state.calibrationIndex = 0;
     pauseVideoForTargetMode();
@@ -1140,12 +1153,13 @@ export function createAppController({
     const rect = calibrationTarget.getBoundingClientRect();
     const x = rect.left + rect.width / 2;
     const y = rect.top + rect.height / 2;
+    const calibrationTargetCount = getActiveCalibrationProfile().calibrationPoints.length;
 
-    calibrationProgress.textContent = `Target ${state.calibrationIndex + 1} of ${CALIBRATION_POINTS.length} - hold steady`;
+    calibrationProgress.textContent = `Target ${state.calibrationIndex + 1} of ${calibrationTargetCount} - hold steady`;
     await delay(TARGET_SETTLE_DELAY_MS);
 
     for (let sample = 0; sample < CALIBRATION_SAMPLES_PER_POINT; sample += 1) {
-      calibrationProgress.textContent = `Target ${state.calibrationIndex + 1} of ${CALIBRATION_POINTS.length} - training ${sample + 1}`;
+      calibrationProgress.textContent = `Target ${state.calibrationIndex + 1} of ${calibrationTargetCount} - training ${sample + 1}`;
       webcamProvider.recordCalibrationPoint({ x, y });
       await delay(TARGET_SAMPLE_DELAY_MS);
     }
@@ -1153,7 +1167,7 @@ export function createAppController({
     setTargetCapturing(false);
     state.calibrationIndex += 1;
 
-    if (state.calibrationIndex >= CALIBRATION_POINTS.length) {
+    if (state.calibrationIndex >= calibrationTargetCount) {
       calibrationOverlay.hidden = true;
       setWebcamStatus('calibrated');
       setNotice('Webcam calibration complete. Run Check accuracy before recording.', false);
@@ -1968,10 +1982,12 @@ export function createAppController({
       stereoLayout: getCurrentStereoLayout(),
       aoiSource,
       aois: activeAois,
+      calibrationProfile: state.calibrationProfile,
     });
   }
 
   function exportSamples() {
+    syncCalibrationProfileState();
     const namedAoiMetrics = buildNamedAoiMetrics(state.samples, activeAois, {
       sampleIntervalMs: recordingSampleScheduler.intervalMs,
     });
@@ -2147,6 +2163,7 @@ export function createAppController({
       exportButton.addEventListener('click', exportSamples);
       videoFileInput.addEventListener('change', loadLocalVideo);
       aoiFileInput.addEventListener('change', loadAoiFile);
+      calibrationProfileSelect.addEventListener('change', syncCalibrationProfileState);
       projectionSelect.addEventListener('change', syncSourceVideoMetadataFromControls);
       stereoLayoutSelect.addEventListener('change', syncSourceVideoMetadataFromControls);
       addManualAoiButton.addEventListener('click', addManualAoi);
@@ -2168,6 +2185,7 @@ export function createAppController({
 
       renderAoiList();
       applyVideoMetadataControls(sourceVideoInfo);
+      syncCalibrationProfileState();
       void loadAois();
       resize();
       updateCamera();

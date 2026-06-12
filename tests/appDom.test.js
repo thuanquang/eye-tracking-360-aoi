@@ -47,6 +47,7 @@ test('queryAppDom resolves core app selectors', () => {
     '#webcamModeButton',
     '#calibrateButton',
     '#accuracyButton',
+    '#calibrationProfileSelect',
     '#videoFileInput',
     '#aoiFileInput',
     '#projectionSelect',
@@ -102,4 +103,5 @@ test('queryAppDom resolves core app selectors', () => {
 
   assert.equal(dom.viewer.selector, '#viewer');
   assert.equal(dom.sourceVideo.selector, '#sourceVideo');
+  assert.equal(dom.calibrationProfileSelect.selector, '#calibrationProfileSelect');
 });
