@@ -896,6 +896,19 @@ export function createAppController({
     recordingSampleScheduler = createSampleScheduler({ intervalMs: RECORDING_SAMPLE_INTERVAL_MS });
   }
 
+  function stopActiveRecordingForTargetMode() {
+    if (!state.isRecording) {
+      return false;
+    }
+
+    state.isRecording = false;
+    resetRecordingSampleScheduler();
+    recordButton.textContent = 'Start Recording';
+    recordButton.classList.add('primary');
+    syncParticipantSessionControls();
+    return true;
+  }
+
   function invalidateAccuracyForLiveGazeQuality(reason) {
     if (!state.accuracyValidated) {
       return;
@@ -1249,6 +1262,7 @@ export function createAppController({
   }
 
   async function startCalibration() {
+    stopActiveRecordingForTargetMode();
     await setWebcamMode();
 
     if (!state.webcamStarted) {
@@ -1328,6 +1342,7 @@ export function createAppController({
   }
 
   async function startAccuracyCheck() {
+    stopActiveRecordingForTargetMode();
     await setWebcamMode();
 
     if (!state.webcamStarted) {
@@ -1896,7 +1911,7 @@ export function createAppController({
   }
 
   function maybeSample(now) {
-    if (state.reviewActive) {
+    if (state.reviewActive || !calibrationOverlay.hidden) {
       return;
     }
 

@@ -292,6 +292,33 @@ try {
   await page.mouse.move(viewerBox.x + viewerBox.width / 2, viewerBox.y + viewerBox.height / 2);
   await page.locator('#recordButton').click();
   await page.waitForFunction(() => document.querySelector('#sampleCount')?.textContent !== '0');
+  await page.locator('#calibrateButton').click();
+  await page.waitForTimeout(150);
+  assert.equal(
+    await page.locator('#recordButton').innerText(),
+    'Start Recording',
+    'Starting calibration should stop an active recording before target mode can run.',
+  );
+  assert.equal(
+    await page.locator('#recordButton').evaluate((button) => button.classList.contains('primary')),
+    true,
+    'Stopped recording controls should return to the primary start state.',
+  );
+  const samplesAfterCalibrationStart = await page.locator('#sampleCount').innerText();
+  await page.waitForTimeout(RECORDING_SAMPLE_INTERVAL_MS * 3);
+  assert.equal(
+    await page.locator('#sampleCount').innerText(),
+    samplesAfterCalibrationStart,
+    'Calibration startup should not keep appending recording samples.',
+  );
+  await page.locator('#clearButton').click();
+  assert.equal(await page.locator('#sampleCount').innerText(), '0');
+
+  await page.locator('#mouseModeButton').click();
+  assert.equal(await page.locator('#modeLabel').innerText(), 'mouse');
+  await page.mouse.move(viewerBox.x + viewerBox.width / 2, viewerBox.y + viewerBox.height / 2);
+  await page.locator('#recordButton').click();
+  await page.waitForFunction(() => document.querySelector('#sampleCount')?.textContent !== '0');
   await page.locator('#recordButton').click();
 
   const downloadPromise = page.waitForEvent('download');
