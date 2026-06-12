@@ -38,3 +38,40 @@ test('ignores samples without finite screen coordinates', () => {
   assert.equal(fixations[0].sampleCount, 3);
   assert.equal(fixations[0].durationMs, 150);
 });
+
+test('does not bridge long gaps between otherwise stable screen samples', () => {
+  const samples = [
+    { t: 0.00, screen: { x: 100, y: 100 } },
+    { t: 0.05, screen: { x: 102, y: 99 } },
+    { t: 5.50, screen: { x: 101, y: 101 } },
+    { t: 5.55, screen: { x: 103, y: 98 } },
+  ];
+
+  const fixations = detectFixationsByDispersion(samples, {
+    maxDispersionPx: 35,
+    minDurationMs: 100,
+    maxGapMs: 100,
+    sampleDurationsSec: [0.05, 0.05, 0.05, 0.05],
+  });
+
+  assert.equal(fixations.length, 2);
+  assert.equal(fixations[0].startSec, 0);
+  assert.equal(fixations[0].durationMs, 100);
+  assert.equal(fixations[1].startSec, 5.5);
+  assert.equal(fixations[1].durationMs, 100);
+});
+
+test('uses provided sample durations when applying minimum fixation duration', () => {
+  const fixations = detectFixationsByDispersion([
+    { t: 0.00, screen: { x: 40, y: 40 } },
+    { t: 0.05, screen: { x: 42, y: 39 } },
+  ], {
+    maxDispersionPx: 35,
+    minDurationMs: 100,
+    sampleDurationsSec: [0.05, 0.05],
+  });
+
+  assert.equal(fixations.length, 1);
+  assert.equal(fixations[0].endSec, 0.05);
+  assert.equal(fixations[0].durationMs, 100);
+});
