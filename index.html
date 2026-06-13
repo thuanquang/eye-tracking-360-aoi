@@ -224,6 +224,10 @@
             <button id="calibrateButton" class="wide-action" type="button">Calibrate webcam</button>
             <button id="accuracyButton" class="wide-action" type="button">Check accuracy</button>
           </div>
+          <div class="button-pair">
+            <button id="rawGazeDiagnosticButton" class="wide-action" type="button">Diagnose Raw Gaze</button>
+          </div>
+          <p id="rawGazeDiagnosticStatus" class="fine-print">Raw gaze diagnostic not run.</p>
         </section>
 
         <section id="manualAoiPanel" class="panel-section admin-panel-section" data-step="02">
@@ -375,6 +379,10 @@ product</textarea>
             <div>
               <dt>AOI Hit</dt>
               <dd id="hitReadout">none</dd>
+            </div>
+            <div>
+              <dt>Gaze Quality</dt>
+              <dd id="gazeQualityReadout">--</dd>
             </div>
           </dl>
         </section>

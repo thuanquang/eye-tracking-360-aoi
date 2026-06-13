@@ -47,6 +47,8 @@ test('queryAppDom resolves core app selectors', () => {
     '#webcamModeButton',
     '#calibrateButton',
     '#accuracyButton',
+    '#rawGazeDiagnosticButton',
+    '#rawGazeDiagnosticStatus',
     '#calibrationProfileSelect',
     '#validationPolicySelect',
     '#studyVideoSelect',
@@ -87,6 +89,7 @@ test('queryAppDom resolves core app selectors', () => {
     '#cameraReadout',
     '#panoramaReadout',
     '#hitReadout',
+    '#gazeQualityReadout',
     '#aoiList',
     '#controlPanel',
     '#participantPanel',
@@ -119,4 +122,7 @@ test('queryAppDom resolves core app selectors', () => {
   assert.equal(dom.studyVideoSelect.selector, '#studyVideoSelect');
   assert.equal(dom.calibrationProfileSelect.selector, '#calibrationProfileSelect');
   assert.equal(dom.validationPolicySelect.selector, '#validationPolicySelect');
+  assert.equal(dom.rawGazeDiagnosticButton.selector, '#rawGazeDiagnosticButton');
+  assert.equal(dom.rawGazeDiagnosticStatus.selector, '#rawGazeDiagnosticStatus');
+  assert.equal(dom.gazeQualityReadout.selector, '#gazeQualityReadout');
 });

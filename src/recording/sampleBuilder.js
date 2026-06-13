@@ -74,16 +74,23 @@ export function buildRecordingSample({
   camera,
   panorama,
   hits = [],
+  stableHits = [],
   activeAois = [],
   classification = null,
+  aoiStability = null,
   uncertainty = null,
   quality,
   gazeStreamQuality = null,
 }) {
+  const sampleQuality = buildSampleQuality(quality, gazeStreamQuality) || {};
+  if (aoiStability) {
+    sampleQuality.trustedForAoiAnalysis = Boolean(aoiStability.trustedForAoiAnalysis);
+  }
+
   return {
     t: roundNumber(timeSec),
     source,
-    quality: buildSampleQuality(quality, gazeStreamQuality),
+    quality: sampleQuality,
     screen: {
       x: Math.round(gaze.x),
       y: Math.round(gaze.y),
@@ -102,10 +109,17 @@ export function buildRecordingSample({
       pitch: roundNumber(panorama.pitch),
     },
     hits: getIds(hits),
+    stableHits: getIds(stableHits),
     activeAois: activeAois.map(buildActiveAoiSnapshot),
     likelyHits: getIds(classification?.likelyHits || []),
     possibleHits: getIds(classification?.possibleHits || []),
     ambiguousHits: getIds(classification?.ambiguousHits || []),
+    aoiStability: aoiStability ? {
+      candidateAois: Array.isArray(aoiStability.candidateAois)
+        ? aoiStability.candidateAois.map((candidate) => ({ ...candidate }))
+        : [],
+      trustedForAoiAnalysis: Boolean(aoiStability.trustedForAoiAnalysis),
+    } : null,
     gazeUncertainty: uncertainty || { px: 0, yawRadius: 0, pitchRadius: 0 },
   };
 }

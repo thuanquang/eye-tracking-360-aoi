@@ -27,6 +27,19 @@ export const TARGET_CAPTURE = {
   minAcceptedValidationTargets: 5,
 };
 
+export const RAW_GAZE_DIAGNOSTIC = {
+  samplesPerTarget: 45,
+  sampleDelayMs: 33,
+  settleDelayMs: 300,
+  targets: [
+    { id: 'center', label: 'Center', x: 50, y: 50 },
+    { id: 'top', label: 'Top', x: 50, y: 20 },
+    { id: 'bottom', label: 'Bottom', x: 50, y: 80 },
+    { id: 'left', label: 'Left', x: 20, y: 50 },
+    { id: 'right', label: 'Right', x: 80, y: 50 },
+  ],
+};
+
 export const LIVE_QUALITY = {
   maxEvents: 24,
   minEvents: 12,

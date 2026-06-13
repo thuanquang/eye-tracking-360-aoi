@@ -70,6 +70,14 @@ export function createInitialAppState() {
     latestAois: [],
     latestAoiClassification: null,
     latestUncertainty: null,
+    aoiStability: {
+      scores: {},
+      stableIds: [],
+      stableHits: [],
+      candidateAois: [],
+      trustedForAoiAnalysis: false,
+    },
+    lastAoiStabilityAt: 0,
     selectedAoiId: null,
     manualAnnotation: {
       mode: 'idle',
@@ -96,6 +104,12 @@ export function createInitialAppState() {
     correctedAccuracySummary: null,
     localAccuracyErrorModel: null,
     validationSamples: [],
+    rawGazeDiagnostic: {
+      active: false,
+      index: 0,
+      targets: [],
+      latestSummary: null,
+    },
     accuracyValidated: false,
     accuracyValidatedAt: null,
     accuracyInvalidationReason: null,

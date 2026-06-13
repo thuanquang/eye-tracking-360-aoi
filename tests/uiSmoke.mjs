@@ -6,8 +6,15 @@ import { join } from 'node:path';
 
 import { chromium } from 'playwright';
 import { RECORDING_SAMPLE_INTERVAL_MS } from '../src/app/constants.js';
+import {
+  findStudyVideoById,
+  getGeneratedAoiPathForStudyVideo,
+} from '../src/app/studyVideos.js';
 
 const TARGET_URL = process.env.AOI_PROTOTYPE_URL || 'http://127.0.0.1:5179';
+const SMOKE_FLAT_STUDY_VIDEO = findStudyVideoById('culture-2d');
+const SMOKE_PANORAMA_STUDY_VIDEO = findStudyVideoById('culture-3d');
+const SMOKE_FLAT_GENERATED_AOI_SOURCE = getGeneratedAoiPathForStudyVideo(SMOKE_FLAT_STUDY_VIDEO);
 
 function urlWithMode(mode) {
   const url = new URL(TARGET_URL);
@@ -82,7 +89,7 @@ page.on('pageerror', (error) => {
 });
 
 try {
-  await page.goto(TARGET_URL, { waitUntil: 'networkidle' });
+  await page.goto(TARGET_URL, { waitUntil: 'domcontentloaded' });
   await page.waitForSelector('#modeSelectScreen');
   assert.equal(await page.locator('#modeSelectScreen').isVisible(), true, 'Root URL should show a mode selection screen.');
   assert.equal(await page.locator('#viewerSection').isVisible(), false, 'Root URL should not enter the viewer before choosing a mode.');
@@ -96,8 +103,9 @@ try {
     'Mode selection should offer Participant mode.',
   );
 
-  await page.goto(urlWithMode('admin'), { waitUntil: 'networkidle' });
+  await page.goto(urlWithMode('admin'), { waitUntil: 'domcontentloaded' });
   await page.waitForSelector('#viewer canvas');
+  await page.waitForFunction(() => Boolean(window.__aoiAppReady));
   await page.waitForFunction(() => document.querySelector('#sourceVideo')?.readyState >= 1);
   assert.equal(
     await page.evaluate(() => Boolean(window.__aoiAppReady)),
@@ -135,7 +143,7 @@ try {
   const participantPage = await browser.newPage({
     viewport: { width: 1366, height: 900 },
   });
-  await participantPage.goto(urlWithMode('participant'), { waitUntil: 'networkidle' });
+  await participantPage.goto(urlWithMode('participant'), { waitUntil: 'domcontentloaded' });
   await participantPage.waitForSelector('#participantPanel');
   assert.equal(await participantPage.locator('#controlPanel').isVisible(), false, 'Research controls should be hidden in participant mode.');
   assert.equal(await participantPage.locator('#participantPanel').isVisible(), true, 'Participant panel should be visible in participant mode.');
@@ -154,28 +162,41 @@ try {
   await participantPage.locator('#participantStartButton').click();
   await participantPage.waitForFunction(() => document.querySelector('#participantStageLabel')?.textContent?.includes('Ready'));
   assert.equal(await participantPage.locator('#viewerSection').isVisible(), true, 'Participant session should advance to the viewer screen.');
+  await participantPage.locator('#participantSessionPanel').waitFor({ state: 'visible', timeout: 5000 });
   await assert.doesNotReject(
-    participantPage.locator('#participantCalibrateButton').waitFor({ state: 'visible', timeout: 1000 }),
+    participantPage.locator('#participantCalibrateButton').waitFor({ state: 'visible', timeout: 5000 }),
     'Participant session should expose calibration as a flow action.',
   );
   await assert.doesNotReject(
-    participantPage.locator('#participantAccuracyButton').waitFor({ state: 'visible', timeout: 1000 }),
+    participantPage.locator('#participantAccuracyButton').waitFor({ state: 'visible', timeout: 5000 }),
     'Participant session should expose accuracy check as a flow action.',
   );
   await assert.doesNotReject(
-    participantPage.locator('#participantRecordButton').waitFor({ state: 'visible', timeout: 1000 }),
+    participantPage.locator('#participantRecordButton').waitFor({ state: 'visible', timeout: 5000 }),
     'Participant session should expose recording as a flow action.',
   );
   assert.equal(await participantPage.locator('#modeLabel').innerText(), 'webcam');
   await participantPage.close();
 
-  await page.waitForFunction(() => document.querySelector('#aoiList')?.textContent?.includes('AOI JSON'));
+  await page.locator('#studyVideoSelect').selectOption(SMOKE_FLAT_STUDY_VIDEO.id);
+  await page.waitForFunction(
+    (expectedProjection) => document.querySelector('#projectionSelect')?.value === expectedProjection,
+    SMOKE_FLAT_STUDY_VIDEO.projection,
+  );
+  await page.waitForFunction(
+    (expectedSource) => document.querySelector('#aoiSourceLabel')?.textContent === expectedSource,
+    SMOKE_FLAT_GENERATED_AOI_SOURCE,
+  );
   assert.equal(
     await page.locator('#aoiSourceLabel').innerText(),
-    'assets/aois.json',
-    'UI should show whether AOIs came from the editable JSON file.',
+    SMOKE_FLAT_GENERATED_AOI_SOURCE,
+    'UI should show whether AOIs came from the generated study AOI file.',
   );
-  await page.locator('#projectionSelect').selectOption('flat');
+  assert.equal(
+    await page.locator('#projectionSelect').isDisabled(),
+    true,
+    'Fixed study videos should lock projection metadata controls.',
+  );
   await page.locator('#manualAoiLabelInput').fill('Drawn object');
   await page.locator('#drawPolygonAoiButton').click();
   const drawBox = await page.locator('#viewer').boundingBox();
@@ -230,33 +251,6 @@ try {
     'Manual drawn polygon AOIs should export matching keyframe points.',
   );
 
-  await page.locator('#projectionSelect').selectOption('flat');
-  await page.locator('#manualAoiLabelInput').fill('Locked projection polygon');
-  await page.locator('#drawPolygonAoiButton').click();
-  const lockedBox = await page.locator('#viewer').boundingBox();
-  await page.mouse.click(lockedBox.x + lockedBox.width * 0.24, lockedBox.y + lockedBox.height * 0.24);
-  await page.locator('#projectionSelect').selectOption('equirectangular');
-  await page.mouse.click(lockedBox.x + lockedBox.width * 0.42, lockedBox.y + lockedBox.height * 0.25);
-  await page.mouse.click(lockedBox.x + lockedBox.width * 0.40, lockedBox.y + lockedBox.height * 0.42);
-  await page.mouse.dblclick(lockedBox.x + lockedBox.width * 0.23, lockedBox.y + lockedBox.height * 0.40);
-  await page.waitForFunction(() => document.querySelector('#aoiList')?.textContent?.includes('Locked projection polygon'));
-  const lockedExportPromise = page.waitForEvent('download');
-  await page.locator('#exportButton').click();
-  const lockedExportDownload = await lockedExportPromise;
-  const lockedExportJson = JSON.parse(await readFile(await lockedExportDownload.path(), 'utf8'));
-  const lockedAoi = lockedExportJson.aois.find((aoi) => aoi.id === 'locked-projection-polygon');
-  assert.equal(
-    lockedAoi.space,
-    'video',
-    'Polygon drawing should keep the AOI coordinate space chosen when drawing started.',
-  );
-  assert.equal(
-    lockedAoi.points.every((point) => Number.isFinite(point.x) && Number.isFinite(point.y) && point.yaw === undefined && point.pitch === undefined),
-    true,
-    'Projection changes during drawing should not mix video and panorama point formats.',
-  );
-
-  await page.locator('#projectionSelect').selectOption('flat');
   await page.locator('#manualAoiLabelInput').fill('Degenerate manual polygon');
   await page.locator('#drawPolygonAoiButton').click();
   const degenerateManualBox = await page.locator('#viewer').boundingBox();
@@ -276,7 +270,6 @@ try {
   );
   await page.locator('#cancelPolygonAoiButton').click();
 
-  await page.locator('#projectionSelect').selectOption('flat');
   await page.locator('#manualAoiLabelInput').fill('Manual flat AOI');
   await page.locator('#manualAoiSizeInput').fill('24');
   await page.locator('#addManualAoiButton').click();
@@ -331,14 +324,19 @@ try {
     0.003,
     'Blank polygon simplification tolerance should export the builder default.',
   );
+  await page.locator('#studyVideoSelect').selectOption(SMOKE_PANORAMA_STUDY_VIDEO.id);
+  await page.waitForFunction(
+    (expectedProjection) => document.querySelector('#projectionSelect')?.value === expectedProjection,
+    SMOKE_PANORAMA_STUDY_VIDEO.projection,
+  );
   const tmpDir = await mkdtemp(join(tmpdir(), 'aoi-sidecar-'));
   const sidecarPath = join(tmpDir, 'test-video.aoi.json');
   await writeFile(sidecarPath, JSON.stringify({
     video: {
-      name: 'test-video.mp4',
+      name: SMOKE_PANORAMA_STUDY_VIDEO.name,
       durationSec: 16,
-      projection: 'equirectangular',
-      stereoLayout: 'top-bottom',
+      projection: SMOKE_PANORAMA_STUDY_VIDEO.projection,
+      stereoLayout: SMOKE_PANORAMA_STUDY_VIDEO.stereoLayout,
     },
     aois: [
       {
@@ -537,8 +535,8 @@ try {
   );
   assert.equal(
     boxExportedJson.project.video.stereoLayout,
-    'top-bottom',
-    'Export should preserve 3D stereo layout metadata from the AOI sidecar.',
+    SMOKE_PANORAMA_STUDY_VIDEO.stereoLayout,
+    'Export should preserve panorama stereo layout metadata from the AOI sidecar.',
   );
   assert.equal(
     boxSample.activeAois.some((aoi) => aoi.id === 'sidecar-center' && Number.isFinite(aoi.yawMin)),
@@ -548,13 +546,23 @@ try {
 
   await page.locator('#clearButton').click();
   assert.equal(await page.locator('#sampleCount').innerText(), '0', 'Clear should reset samples before polygon export coverage.');
+  await page.locator('#studyVideoSelect').selectOption(SMOKE_FLAT_STUDY_VIDEO.id);
+  await page.waitForFunction(
+    (expectedProjection) => document.querySelector('#projectionSelect')?.value === expectedProjection,
+    SMOKE_FLAT_STUDY_VIDEO.projection,
+  );
+  await page.waitForFunction(
+    (expectedSource) => document.querySelector('#aoiSourceLabel')?.textContent === expectedSource,
+    SMOKE_FLAT_GENERATED_AOI_SOURCE,
+  );
+  const polygonSourceBeforeReject = await page.locator('#aoiSourceLabel').innerText();
 
   const invalidPolygonSidecarPath = join(tmpDir, 'invalid-polygon-video.aoi.json');
   await writeFile(invalidPolygonSidecarPath, JSON.stringify({
     video: {
-      name: 'test-video.mp4',
-      projection: 'flat',
-      stereoLayout: 'mono',
+      name: SMOKE_FLAT_STUDY_VIDEO.name,
+      projection: SMOKE_FLAT_STUDY_VIDEO.projection,
+      stereoLayout: SMOKE_FLAT_STUDY_VIDEO.stereoLayout,
     },
     aois: [
       {
@@ -596,7 +604,7 @@ try {
   );
   assert.equal(
     await page.locator('#aoiSourceLabel').innerText(),
-    'test-video.aoi.json',
+    polygonSourceBeforeReject,
     'Rejected polygon sidecars should not replace the active AOI source.',
   );
   assert.equal(
@@ -608,9 +616,9 @@ try {
   const degeneratePolygonSidecarPath = join(tmpDir, 'degenerate-polygon-video.aoi.json');
   await writeFile(degeneratePolygonSidecarPath, JSON.stringify({
     video: {
-      name: 'test-video.mp4',
-      projection: 'flat',
-      stereoLayout: 'mono',
+      name: SMOKE_FLAT_STUDY_VIDEO.name,
+      projection: SMOKE_FLAT_STUDY_VIDEO.projection,
+      stereoLayout: SMOKE_FLAT_STUDY_VIDEO.stereoLayout,
     },
     aois: [
       {
@@ -640,7 +648,7 @@ try {
   );
   assert.equal(
     await page.locator('#aoiSourceLabel').innerText(),
-    'test-video.aoi.json',
+    polygonSourceBeforeReject,
     'Rejected degenerate polygon sidecars should not replace the active AOI source.',
   );
   assert.equal(
@@ -670,9 +678,9 @@ try {
   const polygonSidecarPath = join(tmpDir, 'polygon-video.aoi.json');
   await writeFile(polygonSidecarPath, JSON.stringify({
     video: {
-      name: 'test-video.mp4',
-      projection: 'flat',
-      stereoLayout: 'mono',
+      name: SMOKE_FLAT_STUDY_VIDEO.name,
+      projection: SMOKE_FLAT_STUDY_VIDEO.projection,
+      stereoLayout: SMOKE_FLAT_STUDY_VIDEO.stereoLayout,
     },
     aois: [
       {
@@ -771,17 +779,17 @@ try {
   );
   assert.equal(
     exportedJson.project.video.name,
-    'test-video.mp4',
+    SMOKE_FLAT_STUDY_VIDEO.name,
     'Export should package usable video identity metadata with the AOIs.',
   );
   assert.equal(
     exportedJson.project.video.projection,
-    'flat',
+    SMOKE_FLAT_STUDY_VIDEO.projection,
     'Export should preserve flat video projection metadata from the AOI sidecar.',
   );
   assert.equal(
     exportedJson.project.video.stereoLayout,
-    'mono',
+    SMOKE_FLAT_STUDY_VIDEO.stereoLayout,
     'Export should preserve mono video layout metadata from the AOI sidecar.',
   );
   assert.equal(
@@ -1005,9 +1013,9 @@ try {
   ];
   await writeFile(dynamicPolygonSidecarPath, JSON.stringify({
     video: {
-      name: 'test-video.mp4',
-      projection: 'flat',
-      stereoLayout: 'mono',
+      name: SMOKE_FLAT_STUDY_VIDEO.name,
+      projection: SMOKE_FLAT_STUDY_VIDEO.projection,
+      stereoLayout: SMOKE_FLAT_STUDY_VIDEO.stereoLayout,
     },
     aois: [
       {

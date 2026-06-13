@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import {
   DEFAULT_VALIDATION_MAX_AGE_MS,
   GAZE_TIMING,
+  RAW_GAZE_DIAGNOSTIC,
   RECORDING_SAMPLE_INTERVAL_MS,
 } from '../src/app/constants.js';
 
@@ -17,4 +18,16 @@ test('exports stable timing constants used by the app shell', () => {
     targetSettleDelayMs: 250,
     targetSampleDelayMs: 55,
   });
+});
+
+test('exports raw gaze diagnostic thresholds', () => {
+  assert.deepEqual(RAW_GAZE_DIAGNOSTIC.targets.map((target) => target.id), [
+    'center',
+    'top',
+    'bottom',
+    'left',
+    'right',
+  ]);
+  assert.equal(RAW_GAZE_DIAGNOSTIC.samplesPerTarget, 45);
+  assert.equal(RAW_GAZE_DIAGNOSTIC.sampleDelayMs, 33);
 });

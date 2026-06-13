@@ -874,6 +874,10 @@ h1 {
   line-height: 1.35;
 }
 
+#rawGazeDiagnosticStatus {
+  min-height: 2.4em;
+}
+
 .calibration-overlay {
   position: absolute;
   inset: 0;

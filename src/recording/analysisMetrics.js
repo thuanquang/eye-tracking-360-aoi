@@ -66,6 +66,7 @@ function buildAoiCatalog(samples, aois) {
   aois.forEach(addAoi);
   samples.forEach((sample) => {
     (sample.activeAois || []).forEach(addAoi);
+    uniqueValues(sample.stableHits || []).forEach((id) => addAoi({ id, label: id }));
   });
 
   return catalog;
@@ -77,10 +78,13 @@ function createAoiMetric(aoi) {
     label: aoi.label,
     hitCount: 0,
     likelyHitCount: 0,
+    stableHitCount: 0,
     possibleSampleCount: 0,
     ambiguousSampleCount: 0,
+    trustedSampleCount: 0,
     totalDwellSec: 0,
     likelyDwellSec: 0,
+    stableDwellSec: 0,
     possibleDwellSec: 0,
     firstHitSec: null,
     timeToFirstFixationMs: null,
@@ -252,9 +256,11 @@ export function buildNamedAoiMetrics(samples = [], aois = [], { sampleIntervalMs
   safeSamples.forEach((sample, index) => {
     const duration = durations[index] || 0;
     const hits = uniqueValues(sample.hits || []);
+    const stableHits = uniqueValues(sample.stableHits || []);
     const likelyHits = uniqueValues(sample.likelyHits || []);
     const possibleHits = uniqueValues(sample.possibleHits || []);
     const ambiguousHits = uniqueValues(sample.ambiguousHits || []);
+    const trusted = Boolean(sample.quality?.trustedForAoiAnalysis);
 
     hits.forEach((id) => {
       if (!perAoi[id]) {
@@ -271,6 +277,17 @@ export function buildNamedAoiMetrics(samples = [], aois = [], { sampleIntervalMs
       }
       perAoi[id].likelyHitCount += 1;
       perAoi[id].likelyDwellSec += duration;
+    });
+
+    stableHits.forEach((id) => {
+      if (!perAoi[id]) {
+        perAoi[id] = createAoiMetric({ id, label: id });
+      }
+      perAoi[id].stableHitCount += 1;
+      perAoi[id].stableDwellSec += duration;
+      if (trusted) {
+        perAoi[id].trustedSampleCount += 1;
+      }
     });
 
     possibleHits.forEach((id) => {
@@ -308,6 +325,7 @@ export function buildNamedAoiMetrics(samples = [], aois = [], { sampleIntervalMs
   Object.values(perAoi).forEach((metric) => {
     metric.totalDwellSec = roundNumber(metric.totalDwellSec);
     metric.likelyDwellSec = roundNumber(metric.likelyDwellSec);
+    metric.stableDwellSec = roundNumber(metric.stableDwellSec);
     metric.possibleDwellSec = roundNumber(metric.possibleDwellSec);
     metric.firstHitSec = roundNumber(metric.firstHitSec);
     metric.totalFixationDurationMs = Math.round(metric.totalFixationDurationMs);

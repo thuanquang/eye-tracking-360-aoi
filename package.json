@@ -11,6 +11,7 @@
     "test:calibration-quality": "node tests/calibrationQualitySmoke.mjs",
     "test:runtime-quality": "node tests/runtimeQualitySmoke.mjs",
     "test:runtime-stale": "node tests/runtimeStaleQualitySmoke.mjs",
+    "test:raw-diagnostic": "node tests/rawGazeDiagnosticSmoke.mjs",
     "test:ui": "node tests/uiSmoke.mjs",
     "test:validation-age": "node tests/validationAgeSmoke.mjs",
     "test:stale-gaze": "node tests/staleGazeSmoke.mjs",

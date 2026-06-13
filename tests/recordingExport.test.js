@@ -51,6 +51,25 @@ test('builds recording samples with raw, corrected, AOI, and quality fields', ()
   assert.equal(sample.quality.gazeStreamQuality.effectiveHz, 50);
 });
 
+test('builds recording samples with stable AOI evidence', () => {
+  const sample = buildRecordingSample({
+    timeSec: 1,
+    source: 'webcam',
+    gaze: { x: 10, y: 20 },
+    camera: { yaw: 0, pitch: 0, fov: 75 },
+    panorama: { yaw: 1, pitch: 2 },
+    stableHits: [{ id: 'sign', label: 'Sign' }],
+    aoiStability: {
+      candidateAois: [{ id: 'sign', score: 0.9 }],
+      trustedForAoiAnalysis: true,
+    },
+  });
+
+  assert.deepEqual(sample.stableHits, ['sign']);
+  assert.equal(sample.quality.trustedForAoiAnalysis, true);
+  assert.equal(sample.aoiStability.candidateAois[0].score, 0.9);
+});
+
 test('builds summary counts and duration from samples', () => {
   const summary = buildExportSummary([
     { t: 0, source: 'mouse', hits: ['logo'], likelyHits: ['logo'], possibleHits: [], ambiguousHits: [], quality: { trustedForAoiAnalysis: true } },
@@ -124,6 +143,20 @@ test('builds summary counts and duration from samples', () => {
     'Validation quality should summarize validation stats, not recording stats.',
   );
   assert.equal(summary.gazeStreamQuality.droppedReasons.stale, 1);
+});
+
+test('exports raw gaze diagnostic and stable AOI metadata', () => {
+  const summary = buildExportSummary([], {
+    rawGazeDiagnostic: {
+      latestSummary: { quality: 'coarse', p90JitterPx: 88 },
+    },
+    aoiStability: {
+      trustedForAoiAnalysis: true,
+    },
+  });
+
+  assert.equal(summary.rawGazeDiagnostic.quality, 'coarse');
+  assert.equal(summary.aoiStability.trustedForAoiAnalysis, true);
 });
 
 test('keeps selected policy separate from unused validation policy metadata', () => {

@@ -13,6 +13,8 @@ test('creates fresh app state without shared mutable arrays', () => {
 
   first.samples.push({ t: 1 });
   first.gaze.x = 123;
+  first.rawGazeDiagnostic.targets.push({ id: 'x' });
+  first.aoiStability.scores.sign = 1;
 
   assert.equal(second.samples.length, 0);
   assert.equal(second.gaze.x, 0);
@@ -35,6 +37,15 @@ test('creates fresh app state without shared mutable arrays', () => {
   assert.equal(second.faceQualityUnavailableReason, null);
   assert.equal(second.faceQualityBaseline, null);
   assert.deepEqual(second.faceQualityInvalidations, []);
+  assert.deepEqual(second.rawGazeDiagnostic.targets, []);
+  assert.equal(second.rawGazeDiagnostic.latestSummary, null);
+  assert.deepEqual(second.aoiStability, {
+    scores: {},
+    stableIds: [],
+    stableHits: [],
+    candidateAois: [],
+    trustedForAoiAnalysis: false,
+  });
 });
 
 test('creates initial video metadata for the default study video', () => {

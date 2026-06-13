@@ -166,6 +166,33 @@ test('builds ID-based metrics for polygon AOIs', () => {
   assert.equal(metrics.perAoi['screen-polygon'].fixationCount, 1);
 });
 
+test('uses stable AOI hits for trusted dwell metrics when present', () => {
+  const metrics = buildNamedAoiMetrics([
+    {
+      t: 0,
+      hits: ['noisy-frame-hit'],
+      stableHits: ['sign'],
+      likelyHits: [],
+      possibleHits: [],
+      quality: { trustedForAoiAnalysis: true },
+    },
+    {
+      t: 0.033,
+      hits: [],
+      stableHits: ['sign'],
+      likelyHits: [],
+      possibleHits: [],
+      quality: { trustedForAoiAnalysis: true },
+    },
+  ], [
+    { id: 'sign', label: 'Sign' },
+    { id: 'noisy-frame-hit', label: 'Noisy' },
+  ]);
+
+  assert.equal(metrics.perAoi.sign.stableDwellSec > 0, true);
+  assert.equal(metrics.perAoi.sign.stableHitCount, 2);
+});
+
 test('returns empty named metrics for recordings without samples', () => {
   const metrics = buildNamedAoiMetrics([], [{ id: 'front', label: 'Front' }]);
 

@@ -56,6 +56,19 @@ function cloneAccuracySummary(summary) {
     : null;
 }
 
+function cloneRawGazeDiagnostic(rawGazeDiagnostic) {
+  const summary = rawGazeDiagnostic?.latestSummary ?? rawGazeDiagnostic;
+  return summary && typeof summary === 'object'
+    ? structuredClone(summary)
+    : null;
+}
+
+function cloneAoiStability(aoiStability) {
+  return aoiStability && typeof aoiStability === 'object'
+    ? structuredClone(aoiStability)
+    : null;
+}
+
 function cloneGazeStreamQuality(quality) {
   if (!quality || typeof quality !== 'object') {
     return null;
@@ -99,6 +112,7 @@ function buildBenchmarkMetadata({
   faceQualityAvailable = false,
   faceQualityUnavailableReason = null,
   faceQualityInvalidations = [],
+  rawGazeDiagnosticQuality = null,
 } = {}) {
   return {
     participantId: getParticipantId(participant),
@@ -119,6 +133,7 @@ function buildBenchmarkMetadata({
     faceStabilityInvalidationCount: Array.isArray(faceQualityInvalidations)
       ? faceQualityInvalidations.length
       : 0,
+    rawGazeDiagnosticQuality: rawGazeDiagnosticQuality ?? null,
   };
 }
 
@@ -178,6 +193,8 @@ export function buildExportSummary(samples, stateLike, sampleIntervalMs = DEFAUL
   const policyFailures = clonePolicyFailures(stateLike.policyFailures);
   const faceQualityBaseline = cloneFaceQualityBaseline(stateLike.faceQualityBaseline);
   const faceQualityInvalidations = cloneFaceQualityInvalidations(stateLike.faceQualityInvalidations);
+  const rawGazeDiagnostic = cloneRawGazeDiagnostic(stateLike.rawGazeDiagnostic);
+  const aoiStability = cloneAoiStability(stateLike.aoiStability);
 
   const benchmark = buildBenchmarkMetadata({
     participant: stateLike.participant ?? null,
@@ -196,6 +213,7 @@ export function buildExportSummary(samples, stateLike, sampleIntervalMs = DEFAUL
     faceQualityAvailable: stateLike.faceQualityAvailable ?? false,
     faceQualityUnavailableReason: stateLike.faceQualityUnavailableReason ?? null,
     faceQualityInvalidations,
+    rawGazeDiagnosticQuality: rawGazeDiagnostic?.quality ?? null,
   });
 
   return {
@@ -231,6 +249,8 @@ export function buildExportSummary(samples, stateLike, sampleIntervalMs = DEFAUL
     faceQualityUnavailableReason: stateLike.faceQualityUnavailableReason ?? null,
     faceQualityBaseline,
     faceQualityInvalidations,
+    rawGazeDiagnostic,
+    aoiStability,
     benchmark,
   };
 }
@@ -366,6 +386,8 @@ export function buildExportPayload({
   const gazeStreamQuality = state.gazeStreamQuality
     ?? summary?.gazeStreamQuality
     ?? summarizeGazeStreamQuality(state.gazeStreamStats);
+  const rawGazeDiagnostic = cloneRawGazeDiagnostic(state.rawGazeDiagnostic ?? summary?.rawGazeDiagnostic);
+  const aoiStability = cloneAoiStability(state.aoiStability ?? summary?.aoiStability);
   const benchmark = buildBenchmarkMetadata({
     participant,
     device: state.device
@@ -392,6 +414,7 @@ export function buildExportPayload({
     faceQualityAvailable,
     faceQualityUnavailableReason,
     faceQualityInvalidations,
+    rawGazeDiagnosticQuality: rawGazeDiagnostic?.quality ?? summary?.benchmark?.rawGazeDiagnosticQuality ?? null,
   });
 
   return {
@@ -424,6 +447,8 @@ export function buildExportPayload({
     faceQualityUnavailableReason,
     faceQualityBaseline: cloneFaceQualityBaseline(faceQualityBaseline),
     faceQualityInvalidations,
+    rawGazeDiagnostic,
+    aoiStability,
     gazeStreamQuality,
     droppedGazeSamples: state.droppedGazeSamples,
     benchmark,

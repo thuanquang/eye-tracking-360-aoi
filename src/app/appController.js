@@ -8,6 +8,10 @@ import {
   screenPointToYawPitch,
   screenUncertaintyToYawPitch,
 } from '../aois/aoiMath.js?v=aoi-active-window-1';
+import {
+  createAoiStabilityState,
+  updateAoiStability,
+} from '../aois/aoiStability.js';
 import { buildNamedAoiMetrics } from '../recording/analysisMetrics.js?v=ui-modes-1';
 import { buildRecordingSample } from '../recording/sampleBuilder.js?v=recording-export-1';
 import {
@@ -79,11 +83,16 @@ import {
 } from '../gaze/calibrationTargets.js';
 import { evaluateAccuracyCheck } from '../gaze/accuracyValidation.js';
 import {
+  summarizeDiagnosticTarget,
+  summarizeRawGazeDiagnostic,
+} from '../gaze/rawGazeDiagnostics.js';
+import {
   DEFAULT_VALIDATION_MAX_AGE_MS,
   GAZE_SMOOTHING,
   GAZE_TIMING,
   LIVE_QUALITY,
   POLYGON_KEYFRAME_EDIT_EPSILON_SEC,
+  RAW_GAZE_DIAGNOSTIC,
   RECORDING_SAMPLE_INTERVAL_MS,
   REVIEW_GAZE_EDGE_PADDING_PX,
   REVIEW_LOOP_GRACE_SEC,
@@ -160,6 +169,8 @@ export function createAppController({
     webcamModeButton,
     calibrateButton,
     accuracyButton,
+    rawGazeDiagnosticButton,
+    rawGazeDiagnosticStatus,
     calibrationProfileSelect,
     validationPolicySelect,
     studyVideoSelect,
@@ -200,6 +211,7 @@ export function createAppController({
     cameraReadout,
     panoramaReadout,
     hitReadout,
+    gazeQualityReadout,
     aoiList,
     controlPanel,
     participantPanel,
@@ -227,6 +239,12 @@ export function createAppController({
 
   const state = createInitialAppState();
   let activeCalibrationProfile = null;
+
+  function resetAoiStability() {
+    state.aoiStability = createAoiStabilityState();
+    state.lastAoiStabilityAt = 0;
+  }
+
   const mouseProvider = createMouseProvider({
     viewer,
     onGaze: (gaze) => {
@@ -392,6 +410,7 @@ export function createAppController({
 
     if (clearAois) {
       activeAois = [];
+      resetAoiStability();
       aoiSource = 'none';
       registeredProjectMetadata = { video: { ...sourceVideoInfo } };
       state.selectedAoiId = null;
@@ -1024,6 +1043,7 @@ export function createAppController({
     });
 
     activeAois = withEffectiveAoisAnalysisPadding(loadedAois, getViewerAnalysisDimensions());
+    resetAoiStability();
     aoiSource = source;
     registeredProjectMetadata = projectMetadata;
     state.selectedAoiId = null;
@@ -1062,6 +1082,7 @@ export function createAppController({
       }
 
       activeAois = [];
+      resetAoiStability();
       aoiSource = 'none';
       registeredProjectMetadata = { video: { ...sourceVideoInfo } };
       state.selectedAoiId = null;
@@ -1869,6 +1890,112 @@ export function createAppController({
     }
   }
 
+  function getRawDiagnosticTargetPoint() {
+    return RAW_GAZE_DIAGNOSTIC.targets[state.rawGazeDiagnostic.index];
+  }
+
+  function setRawDiagnosticStatus(summary = null) {
+    if (!summary) {
+      rawGazeDiagnosticStatus.textContent = 'Raw gaze diagnostic not run.';
+      return;
+    }
+
+    rawGazeDiagnosticStatus.textContent = `${summary.quality}: p90 jitter ${Math.round(summary.p90JitterPx)}px, p90 bias ${Math.round(summary.p90BiasPx)}px, Hz ${Math.round(summary.effectiveHz)}.`;
+  }
+
+  function positionRawDiagnosticTarget() {
+    const point = getRawDiagnosticTargetPoint();
+    const cardVerticalPosition = point.y < 50 ? 'bottom' : 'top';
+    const cardHorizontalPosition = point.x < 50 ? 'right' : 'left';
+
+    calibrationTarget.style.setProperty('--target-x', `${point.x}%`);
+    calibrationTarget.style.setProperty('--target-y', `${point.y}%`);
+    calibrationOverlay.dataset.cardPosition = `${cardVerticalPosition}-${cardHorizontalPosition}`;
+    calibrationProgress.textContent = `Raw gaze ${state.rawGazeDiagnostic.index + 1} of ${RAW_GAZE_DIAGNOSTIC.targets.length}`;
+    calibrationDescription.textContent = 'Look at the target, then click it. This measures raw WebGazer noise without training.';
+  }
+
+  async function startRawGazeDiagnostic() {
+    stopActiveRecordingForTargetMode();
+    await setWebcamMode();
+
+    if (!state.webcamStarted) {
+      return;
+    }
+
+    state.targetMode = 'raw-diagnostic';
+    state.rawGazeDiagnostic = {
+      active: true,
+      index: 0,
+      targets: [],
+      latestSummary: null,
+    };
+    pauseVideoForTargetMode();
+    setCalibrationProfileSelectLocked(true);
+    setValidationPolicySelectLocked(true);
+    calibrationOverlay.hidden = false;
+    setWebcamStatus('diagnosing');
+    setRawDiagnosticStatus(null);
+    positionRawDiagnosticTarget();
+  }
+
+  async function captureRawDiagnosticPoint() {
+    if (state.targetCaptureInProgress) {
+      return;
+    }
+
+    setTargetCapturing(true, 'Measuring raw gaze noise. Keep looking at the target.');
+    const rect = calibrationTarget.getBoundingClientRect();
+    const viewerRect = viewer.getBoundingClientRect();
+    const target = {
+      x: rect.left + rect.width / 2 - viewerRect.left,
+      y: rect.top + rect.height / 2 - viewerRect.top,
+    };
+    const samples = [];
+    const startedAt = performance.now();
+
+    await delay(RAW_GAZE_DIAGNOSTIC.settleDelayMs);
+
+    for (let index = 0; index < RAW_GAZE_DIAGNOSTIC.samplesPerTarget; index += 1) {
+      if (Number.isFinite(state.rawViewerGaze?.x) && Number.isFinite(state.rawViewerGaze?.y)) {
+        samples.push({
+          x: state.rawViewerGaze.x,
+          y: state.rawViewerGaze.y,
+          atMs: performance.now() - startedAt,
+        });
+      }
+      await delay(RAW_GAZE_DIAGNOSTIC.sampleDelayMs);
+    }
+
+    const durationMs = performance.now() - startedAt;
+    state.rawGazeDiagnostic.targets.push(summarizeDiagnosticTarget({
+      target,
+      samples,
+      durationMs,
+      expectedSampleCount: RAW_GAZE_DIAGNOSTIC.samplesPerTarget,
+    }));
+    state.rawGazeDiagnostic.index += 1;
+    setTargetCapturing(false);
+
+    if (state.rawGazeDiagnostic.index >= RAW_GAZE_DIAGNOSTIC.targets.length) {
+      const summary = summarizeRawGazeDiagnostic({
+        targets: state.rawGazeDiagnostic.targets,
+      });
+      state.rawGazeDiagnostic.latestSummary = summary;
+      state.rawGazeDiagnostic.active = false;
+      calibrationOverlay.hidden = true;
+      setCalibrationProfileSelectLocked(false);
+      setValidationPolicySelectLocked(false);
+      setWebcamStatus('calibrated');
+      setRawDiagnosticStatus(summary);
+      setNotice(summary.reason, summary.quality !== 'good');
+      await restoreVideoAfterTargetMode();
+      return;
+    }
+
+    positionRawDiagnosticTarget();
+  }
+
   async function startCalibration() {
     stopActiveRecordingForTargetMode();
     await setWebcamMode();
@@ -1897,6 +2024,8 @@ export function createAppController({
       state.validationGazeStreamStats = null;
       state.validationGazeStreamQuality = null;
       resetFaceQualityValidationState();
+    } else if (state.targetMode === 'raw-diagnostic') {
+      state.rawGazeDiagnostic.active = false;
     }
 
     calibrationOverlay.hidden = true;
@@ -2151,6 +2280,11 @@ export function createAppController({
   }
 
   async function handleTargetClick() {
+    if (state.targetMode === 'raw-diagnostic') {
+      await captureRawDiagnosticPoint();
+      return;
+    }
+
     if (state.targetMode === 'accuracy') {
       await captureAccuracyPoint();
       return;
@@ -2415,10 +2549,35 @@ export function createAppController({
     return 'none';
   }
 
+  function getCurrentRawDiagnosticQuality() {
+    return state.rawGazeDiagnostic.latestSummary?.quality || 'good';
+  }
+
+  function updateCurrentAoiStability(classification, now = performance.now()) {
+    const dtMs = state.lastAoiStabilityAt > 0 ? now - state.lastAoiStabilityAt : RECORDING_SAMPLE_INTERVAL_MS;
+    state.lastAoiStabilityAt = now;
+    state.aoiStability = updateAoiStability(state.aoiStability || createAoiStabilityState(), {
+      classification,
+      dtMs,
+      uncertaintyPx: state.latestUncertainty?.px || 0,
+      rawQuality: getCurrentRawDiagnosticQuality(),
+    });
+  }
+
+  function updateGazeQualityReadout() {
+    const rawDiagnostic = state.rawGazeDiagnostic.latestSummary;
+    const held = state.gaze.held ? 'held' : 'live';
+    const drop = state.gazeDropReason || 'ok';
+    gazeQualityReadout.textContent = rawDiagnostic
+      ? `${rawDiagnostic.quality}, ${held}, ${drop}, p90 jitter ${Math.round(rawDiagnostic.p90JitterPx)}px`
+      : `${held}, ${drop}`;
+  }
+
   function updateReadout() {
     const current = getCurrentPanoramaPoint();
 
     cameraReadout.textContent = `yaw ${formatDegrees(state.cameraYaw)}, pitch ${formatDegrees(state.cameraPitch)}`;
+    updateGazeQualityReadout();
 
     if (!current) {
       screenReadout.textContent = state.mode === 'webcam' && state.gazeDropReason === 'out-of-bounds'
@@ -2468,6 +2627,7 @@ export function createAppController({
       px: uncertaintyPx,
       ...angularUncertainty,
     };
+    updateCurrentAoiStability(classification);
 
     gazeDot.style.transform = `translate(${current.gaze.x}px, ${current.gaze.y}px)`;
     screenReadout.textContent = `x ${Math.round(current.gaze.x)}, y ${Math.round(current.gaze.y)}`;
@@ -2697,8 +2857,10 @@ export function createAppController({
       },
       panorama: state.latestPoint,
       hits: state.latestHits,
+      stableHits: state.aoiStability.stableHits,
       activeAois: state.latestAois,
       classification: state.latestAoiClassification,
+      aoiStability: state.aoiStability,
       uncertainty: state.latestUncertainty,
     }));
     sampleCount.textContent = String(state.samples.length);
@@ -2803,6 +2965,12 @@ export function createAppController({
   }
 
   function toggleRecording() {
+    const rawDiagnostic = state.rawGazeDiagnostic.latestSummary;
+    if (!state.isRecording && state.mode === 'webcam' && rawDiagnostic?.shouldBlockRecording) {
+      setNotice(`${rawDiagnostic.reason} Recording blocked.`, true);
+      return;
+    }
+
     if (!state.isRecording && !canRecordCurrentMode()) {
       setNotice('Run Check accuracy before recording webcam AOI samples. Recalibrate if the result is poor.', true);
       return;
@@ -2824,6 +2992,7 @@ export function createAppController({
   function clearSamples() {
     state.samples = [];
     state.gazeStreamStats = null;
+    resetAoiStability();
     resetRecordingSampleScheduler();
     sampleCount.textContent = '0';
     syncParticipantSessionControls();
@@ -3058,6 +3227,7 @@ export function createAppController({
     };
 
     activeAois = [...activeAois, aoi];
+    resetAoiStability();
     aoiSource = 'manual';
     cancelPolygonAnnotation();
     renderAoiList();
@@ -3122,6 +3292,7 @@ export function createAppController({
         }, dimensions, { forceFromPx: true })
         : aoi
     ));
+    resetAoiStability();
 
     renderAoiList({ focusAoiId: selectedAoi.id });
     drawAoiOverlay();
@@ -3142,6 +3313,7 @@ export function createAppController({
     }
 
     activeAois = activeAois.filter((aoi) => aoi.id !== selectedAoi.id);
+    resetAoiStability();
     state.selectedAoiId = null;
     setManualAnnotationIdle('Click Draw Polygon, then click around the object edge.');
     renderAoiList();
@@ -3253,6 +3425,7 @@ export function createAppController({
         }
         : aoi
     ));
+    resetAoiStability();
   }
 
   function startVertexHandleDrag(event) {
@@ -3377,6 +3550,7 @@ export function createAppController({
 
     aoi.keyframes = [{ t: timeSec, ...aoi }];
     activeAois = [...activeAois, aoi];
+    resetAoiStability();
     aoiSource = 'manual';
     renderAoiList();
     drawAoiOverlay();
@@ -3479,6 +3653,7 @@ export function createAppController({
       webcamModeButton.addEventListener('click', setWebcamMode);
       calibrateButton.addEventListener('click', startCalibration);
       accuracyButton.addEventListener('click', startAccuracyCheck);
+      rawGazeDiagnosticButton.addEventListener('click', startRawGazeDiagnostic);
       calibrationTarget.addEventListener('click', handleTargetClick);
       cancelCalibrationButton.addEventListener('click', cancelCalibration);
       recordButton.addEventListener('click', toggleRecording);
@@ -3534,6 +3709,7 @@ export function createAppController({
       animate();
       window.__aoiGetRuntimeQualityMetadata = () => ({
         faceQuality: getFaceQualityRuntimeMetadata(),
+        rawGazeDiagnostic: state.rawGazeDiagnostic,
       });
       window.__aoiAppReady = true;
     },
