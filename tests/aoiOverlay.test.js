@@ -64,3 +64,31 @@ test('builds render models for video AOIs', () => {
   assert.equal(models[0].id, 'logo');
   assert.equal(models[0].points.length, 4);
 });
+
+test('projects video AOIs into a contained media rect when provided', () => {
+  const models = buildAoiOverlayModels({
+    aois: [{
+      id: 'logo',
+      label: 'Logo',
+      color: '#ffd166',
+      space: 'video',
+      xMin: 0,
+      xMax: 1,
+      yMin: 0,
+      yMax: 1,
+    }],
+    rect: { width: 1000, height: 500 },
+    videoRect: { x: 166.666667, y: 0, width: 666.666667, height: 500 },
+    camera: { yaw: 0, pitch: 0, fov: 75 },
+  });
+
+  assert.deepEqual(models[0].points.map((point) => ({
+    x: Number(point.x.toFixed(6)),
+    y: Number(point.y.toFixed(6)),
+  })), [
+    { x: 166.666667, y: 0 },
+    { x: 833.333334, y: 0 },
+    { x: 833.333334, y: 500 },
+    { x: 166.666667, y: 500 },
+  ]);
+});

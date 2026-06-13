@@ -129,6 +129,59 @@ test('webgazer provider reports unavailable face quality without blocking gaze',
   }]);
 });
 
+test('webgazer provider expands ridge click training buffers after start and reset', async () => {
+  function DataWindow(windowSize, existingData = []) {
+    this.windowSize = windowSize;
+    this.data = existingData.slice(-windowSize);
+    this.length = this.data.length;
+  }
+
+  function createSmallRegression() {
+    return {
+      screenXClicksArray: new DataWindow(50, [[1], [2]]),
+      screenYClicksArray: new DataWindow(50, [[3], [4]]),
+      eyeFeaturesClicks: new DataWindow(50, ['left', 'right']),
+      dataClicks: new DataWindow(50, [{ type: 'click' }]),
+    };
+  }
+
+  let regression = createSmallRegression();
+  const webgazer = {
+    util: { DataWindow },
+    saveDataAcrossSessions() { return this; },
+    setRegression() { return this; },
+    setTracker() { return this; },
+    applyKalmanFilter() { return this; },
+    showFaceOverlay() { return this; },
+    showFaceFeedbackBox() { return this; },
+    showVideoPreview() { return this; },
+    showPredictionPoints() { return this; },
+    removeMouseEventListeners() { return this; },
+    setGazeListener() { return this; },
+    getRegression() { return [regression]; },
+    async begin() {},
+    async clearData() {
+      regression = createSmallRegression();
+    },
+  };
+  const provider = createWebGazerProvider({ webgazer, onGaze: () => {} });
+
+  await provider.start();
+
+  assert.equal(regression.screenXClicksArray.windowSize >= 312, true);
+  assert.equal(regression.screenYClicksArray.windowSize >= 312, true);
+  assert.equal(regression.eyeFeaturesClicks.windowSize >= 312, true);
+  assert.equal(regression.dataClicks.windowSize >= 312, true);
+  assert.deepEqual(regression.screenXClicksArray.data, [[1], [2]]);
+
+  await provider.resetCalibration();
+
+  assert.equal(regression.screenXClicksArray.windowSize >= 312, true);
+  assert.equal(regression.screenYClicksArray.windowSize >= 312, true);
+  assert.equal(regression.eyeFeaturesClicks.windowSize >= 312, true);
+  assert.equal(regression.dataClicks.windowSize >= 312, true);
+});
+
 test('webgazer provider prefers clearGazeListener during cleanup', () => {
   const calls = [];
   const webgazer = {

@@ -17,7 +17,7 @@ Use `http://localhost:5179/?mode=admin` for the researcher/admin view. This is t
 
 Use `http://localhost:5179/?mode=participant` for the participant view. This hides the researcher controls, collects participant metadata, then guides the participant toward calibration, accuracy check, recording, and fullscreen viewing. Browsers require a user click before entering fullscreen, so the participant presses `Start Participant Session` first.
 
-The bundled test video is `assets/test-video.mp4`. You can also load any local MP4 from the file picker.
+The app is locked to the six study clips under `assets/clips` and `assets/clips-2d`. Select the study clip in the admin setup panel, then load the matching AOI JSON generated for that exact video.
 
 AOI definitions live in `assets/aois.json`. Edit that file to match the test video instead of changing app code. If the file is missing or invalid, the prototype falls back to built-in demo AOIs.
 

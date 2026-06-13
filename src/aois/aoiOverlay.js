@@ -128,6 +128,13 @@ export function projectAoiRange(aoi, yawMin, yawMax, rect, camera) {
   return clipped;
 }
 
+function offsetPoint(point, rect) {
+  return {
+    x: point.x + (rect.x || 0),
+    y: point.y + (rect.y || 0),
+  };
+}
+
 export function projectVideoAoiRange(aoi, rect) {
   const xMin = Math.min(aoi.xMin, aoi.xMax) * rect.width;
   const xMax = Math.max(aoi.xMin, aoi.xMax) * rect.width;
@@ -139,13 +146,13 @@ export function projectVideoAoiRange(aoi, rect) {
     { x: xMax, y: yMin },
     { x: xMax, y: yMax },
     { x: xMin, y: yMax },
-  ];
+  ].map((point) => offsetPoint(point, rect));
 }
 
 export function projectVideoPolygon(aoi, rect) {
   return (aoi.points || []).map((point) => ({
-    x: point.x * rect.width,
-    y: point.y * rect.height,
+    x: point.x * rect.width + (rect.x || 0),
+    y: point.y * rect.height + (rect.y || 0),
   }));
 }
 
@@ -185,8 +192,8 @@ export function getAoiOverlayColor(aoi, supportsColor = null) {
 
 function getVideoAoiLabelPoint(aoi, rect) {
   return {
-    x: Math.round(Math.min(aoi.xMax, 0.96) * rect.width + 8),
-    y: Math.round(Math.max(aoi.yMin, 0.04) * rect.height - 8),
+    x: Math.round((rect.x || 0) + Math.min(aoi.xMax, 0.96) * rect.width + 8),
+    y: Math.round((rect.y || 0) + Math.max(aoi.yMin, 0.04) * rect.height - 8),
   };
 }
 
@@ -216,15 +223,18 @@ function getPanoramaAoiLabelPoint(aoi, range, rect, camera) {
 export function buildAoiOverlayModels({
   aois,
   rect,
+  videoRect = null,
   camera,
   supportsColor = null,
 }) {
+  const videoProjectionRect = videoRect || rect;
+
   return (aois ?? []).flatMap((aoi) => {
     const color = getAoiOverlayColor(aoi, supportsColor);
 
     if (aoi.shape === 'polygon') {
       const points = aoi.space === 'video'
-        ? projectVideoPolygon(aoi, rect)
+        ? projectVideoPolygon(aoi, videoProjectionRect)
         : projectPanoramaPolygon(aoi, rect, camera);
 
       return points && points.length >= 3 ? [{
@@ -237,13 +247,13 @@ export function buildAoiOverlayModels({
     }
 
     if (aoi.space === 'video') {
-      const points = projectVideoAoiRange(aoi, rect);
+      const points = projectVideoAoiRange(aoi, videoProjectionRect);
       return [{
         id: aoi.id,
         label: aoi.label,
         color,
         points,
-        labelPoint: getVideoAoiLabelPoint(aoi, rect),
+        labelPoint: getVideoAoiLabelPoint(aoi, videoProjectionRect),
       }];
     }
 

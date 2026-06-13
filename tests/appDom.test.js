@@ -49,7 +49,7 @@ test('queryAppDom resolves core app selectors', () => {
     '#accuracyButton',
     '#calibrationProfileSelect',
     '#validationPolicySelect',
-    '#videoFileInput',
+    '#studyVideoSelect',
     '#aoiFileInput',
     '#projectionSelect',
     '#stereoLayoutSelect',
@@ -116,6 +116,7 @@ test('queryAppDom resolves core app selectors', () => {
 
   assert.equal(dom.viewer.selector, '#viewer');
   assert.equal(dom.sourceVideo.selector, '#sourceVideo');
+  assert.equal(dom.studyVideoSelect.selector, '#studyVideoSelect');
   assert.equal(dom.calibrationProfileSelect.selector, '#calibrationProfileSelect');
   assert.equal(dom.validationPolicySelect.selector, '#validationPolicySelect');
 });

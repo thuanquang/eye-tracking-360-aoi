@@ -21,7 +21,10 @@
         true,
       );
     </script>
-    <link rel="stylesheet" href="./styles.css?v=ui-modes-1" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="./styles.css?v=realeye-system-1" />
     <script src="https://webgazer.cs.brown.edu/webgazer.js" defer></script>
     <script type="importmap">
       {
@@ -70,7 +73,7 @@
           <svg id="aoiOverlay" class="aoi-overlay" aria-hidden="true"></svg>
           <div id="gazeDot" class="gaze-dot" aria-hidden="true"></div>
           <div id="viewerNotice" class="viewer-notice">
-            Put a 360 MP4 at assets/test-video.mp4 or load a local video.
+            Select one of the study videos.
           </div>
           <div id="calibrationOverlay" class="calibration-overlay" hidden>
             <div class="calibration-card">
@@ -86,7 +89,7 @@
         <video
           id="sourceVideo"
           class="source-video"
-          src="./assets/test-video.mp4"
+          src="./assets/clips/culture_thap_ba_01m19s-01m49s.mp4"
           crossorigin="anonymous"
           playsinline
           loop
@@ -163,9 +166,16 @@
             <p class="section-label">Setup</p>
             <h2>Video source</h2>
           </div>
-          <label class="file-loader primary-loader">
-            <span>Load local video</span>
-            <input id="videoFileInput" type="file" accept="video/*" />
+          <label class="field-label">
+            <span>Study video</span>
+            <select id="studyVideoSelect">
+              <option value="culture-3d">Culture - Thap Ba (3D/360)</option>
+              <option value="culture-2d">Culture - Thap Ba (2D)</option>
+              <option value="modern-3d">Modern (3D flat)</option>
+              <option value="modern-2d">Modern (2D)</option>
+              <option value="nature-3d">Nature - Tam Coc (3D/360)</option>
+              <option value="nature-2d">Nature - Tam Coc (2D)</option>
+            </select>
           </label>
           <div class="metadata-grid">
             <label class="field-label compact-field">
@@ -238,7 +248,7 @@
             </label>
             <label class="field-label compact-field">
               <span>Color</span>
-              <input id="manualAoiColorInput" type="color" value="#ffd166" />
+              <input id="manualAoiColorInput" type="color" value="#fc7753" />
             </label>
           </div>
           <button id="addManualAoiButton" class="wide-action" type="button">Add Center AOI</button>
@@ -379,6 +389,6 @@ product</textarea>
       </aside>
     </main>
 
-    <script type="module" src="./src/app.js?v=ui-modes-1"></script>
+    <script type="module" src="./src/app.js?v=viewer-yaw-1"></script>
   </body>
 </html>

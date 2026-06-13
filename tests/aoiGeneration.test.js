@@ -106,8 +106,8 @@ test('converts equirectangular boxes to yaw and pitch keyframes', () => {
 
   assert.deepEqual(keyframe, {
     t: 0,
-    yawMin: -180,
-    yawMax: 0,
+    yawMin: 90,
+    yawMax: -90,
     pitchMin: 0,
     pitchMax: 90,
   });
@@ -125,12 +125,12 @@ test('resolves stereo eye frame rectangles', () => {
   );
   assert.deepEqual(
     getStereoFrameRect({
-      videoWidth: 3840,
-      videoHeight: 1920,
+      videoWidth: 7680,
+      videoHeight: 4320,
       stereoLayout: 'top-bottom',
-      eye: 'left',
+      eye: 'top-left',
     }),
-    { x: 0, y: 0, width: 3840, height: 960 },
+    { x: 0, y: 0, width: 3840, height: 2160 },
   );
 });
 
@@ -331,10 +331,10 @@ test('converts equirectangular normalized polygon points to yaw and pitch', () =
 
   assert.equal(aois[0].space, 'panorama');
   assert.deepEqual(aois[0].points, [
-    { yaw: -180, pitch: 90 },
-    { yaw: 0, pitch: 90 },
-    { yaw: 0, pitch: 0 },
-    { yaw: -180, pitch: 0 },
+    { yaw: 90, pitch: 90 },
+    { yaw: -90, pitch: 90 },
+    { yaw: -90, pitch: 0 },
+    { yaw: 90, pitch: 0 },
   ]);
 });
 

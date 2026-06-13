@@ -1,4 +1,5 @@
 import { getCalibrationProfileMetadata } from '../gaze/calibrationTargets.js';
+import { getDefaultStudyVideo, videoInfoFromStudyVideo } from './studyVideos.js';
 
 const DEFAULT_GAZE = { x: 0, y: 0, visible: false, source: 'webcam' };
 
@@ -55,16 +56,7 @@ export function createDefaultGaze(overrides = {}) {
 }
 
 export function createInitialVideoInfo() {
-  return {
-    kind: 'bundled',
-    name: 'test-video.mp4',
-    path: 'assets/test-video.mp4',
-    type: 'video/mp4',
-    size: null,
-    lastModified: null,
-    projection: 'equirectangular',
-    stereoLayout: 'mono',
-  };
+  return videoInfoFromStudyVideo(getDefaultStudyVideo());
 }
 
 export function createInitialAppState() {

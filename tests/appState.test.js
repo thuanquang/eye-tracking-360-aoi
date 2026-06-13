@@ -37,11 +37,12 @@ test('creates fresh app state without shared mutable arrays', () => {
   assert.deepEqual(second.faceQualityInvalidations, []);
 });
 
-test('creates initial video metadata for bundled equirectangular demo', () => {
+test('creates initial video metadata for the default study video', () => {
   assert.deepEqual(createInitialVideoInfo(), {
-    kind: 'bundled',
-    name: 'test-video.mp4',
-    path: 'assets/test-video.mp4',
+    kind: 'study-video',
+    id: 'culture-3d',
+    name: 'culture_thap_ba_01m19s-01m49s.mp4',
+    path: 'assets/clips/culture_thap_ba_01m19s-01m49s.mp4',
     type: 'video/mp4',
     size: null,
     lastModified: null,

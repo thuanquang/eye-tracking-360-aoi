@@ -7,7 +7,7 @@ import {
   screenPointToVideoPoint,
   screenPointToYawPitch,
   screenUncertaintyToYawPitch,
-} from '../aois/aoiMath.js?v=aoi-anchor-4';
+} from '../aois/aoiMath.js?v=aoi-active-window-1';
 import { buildNamedAoiMetrics } from '../recording/analysisMetrics.js?v=ui-modes-1';
 import { buildRecordingSample } from '../recording/sampleBuilder.js?v=recording-export-1';
 import {
@@ -28,7 +28,7 @@ import {
 import {
   buildColabAoiJob,
   normalizeAoiId,
-} from '../aois/aoiGeneration.js?v=colab-aoi-1';
+} from '../aois/aoiGeneration.js?v=viewer-yaw-1';
 import {
   extractAoisFromJson,
   extractProjectMetadataFromJson,
@@ -42,11 +42,13 @@ import {
   shouldAllowCameraDrag,
 } from '../viewer/cameraControls.js';
 import {
+  getContainedMediaRect,
   getCurrentProjection as resolveCurrentProjection,
   getCurrentStereoLayout as resolveCurrentStereoLayout,
+  getProjectionTextureTransform,
   normalizeStereoLayout,
   normalizeVideoProjection,
-} from '../viewer/projection.js';
+} from '../viewer/projection.js?v=modern-stereo-1';
 import {
   applyViewportCalibration,
   distanceBetweenPoints,
@@ -94,6 +96,14 @@ import {
   createInitialAppState,
   createInitialVideoInfo,
 } from './state.js';
+import {
+  STUDY_VIDEOS,
+  findStudyVideoById,
+  getGeneratedAoiPathForStudyVideo,
+  getDefaultStudyVideo,
+  validateAoiVideoCompatibility,
+  videoInfoFromStudyVideo,
+} from './studyVideos.js?v=generated-aoi-1';
 import { queryAppDom } from './dom.js';
 import { createMouseProvider } from '../gaze/providers/mouseProvider.js?v=gaze-providers-1';
 import { createWebGazerProvider } from '../gaze/providers/webgazerProvider.js?v=gaze-providers-1';
@@ -105,8 +115,10 @@ export function createAppController({
 }) {
   let activeAois = createDefaultAois();
   let aoiSource = 'default';
+  let generatedAoiLoadId = 0;
   let registeredProjectMetadata = {};
   let sourceVideoInfo = createInitialVideoInfo();
+  let selectedStudyVideo = getDefaultStudyVideo();
   let webcamProvider = null;
 
   let recordingSampleScheduler = createSampleScheduler({ intervalMs: RECORDING_SAMPLE_INTERVAL_MS });
@@ -150,7 +162,7 @@ export function createAppController({
     accuracyButton,
     calibrationProfileSelect,
     validationPolicySelect,
-    videoFileInput,
+    studyVideoSelect,
     aoiFileInput,
     projectionSelect,
     stereoLayoutSelect,
@@ -241,9 +253,14 @@ export function createAppController({
   geometry.scale(-1, 1, 1);
   const videoTexture = new THREE.VideoTexture(sourceVideo);
   videoTexture.colorSpace = THREE.SRGBColorSpace;
+  videoTexture.needsUpdate = true;
   const material = new THREE.MeshBasicMaterial({ map: videoTexture });
   const sphere = new THREE.Mesh(geometry, material);
   scene.add(sphere);
+  const flatVideoPlane = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), material);
+  flatVideoPlane.position.z = -500;
+  flatVideoPlane.visible = false;
+  scene.add(flatVideoPlane);
 
   function formatDegrees(value) {
     return `${value.toFixed(1)} deg`;
@@ -351,6 +368,43 @@ export function createAppController({
     }
 
     syncSourceVideoMetadataFromControls();
+  }
+
+  function setStudyVideo(videoId, { clearAois = true } = {}) {
+    const video = findStudyVideoById(videoId) || getDefaultStudyVideo();
+    selectedStudyVideo = video;
+    sourceVideoInfo = videoInfoFromStudyVideo(video);
+    studyVideoSelect.value = video.id;
+    sourceVideo.src = sourceVideoInfo.path;
+    if (Number.isFinite(sourceVideoInfo.initialTimeSec) && sourceVideoInfo.initialTimeSec > 0) {
+      sourceVideo.addEventListener('loadedmetadata', () => {
+        const duration = Number.isFinite(sourceVideo.duration)
+          ? sourceVideo.duration
+          : sourceVideoInfo.initialTimeSec;
+        sourceVideo.currentTime = Math.min(sourceVideoInfo.initialTimeSec, Math.max(0, duration - 0.001));
+      }, { once: true });
+    }
+    sourceVideo.load();
+    applyVideoMetadataControls(sourceVideoInfo);
+    projectionSelect.disabled = true;
+    stereoLayoutSelect.disabled = true;
+    playVideoButton.textContent = 'Play';
+
+    if (clearAois) {
+      activeAois = [];
+      aoiSource = 'none';
+      registeredProjectMetadata = { video: { ...sourceVideoInfo } };
+      state.selectedAoiId = null;
+      setManualAnnotationIdle();
+      renderAoiList();
+      loadGeneratedAoisForStudyVideo(video);
+    }
+
+    setNotice(`Selected study video: ${video.label}`);
+  }
+
+  function handleStudyVideoChange() {
+    setStudyVideo(studyVideoSelect.value);
   }
 
   function getRequestedAppMode() {
@@ -554,6 +608,14 @@ export function createAppController({
 
   function getViewerAnalysisDimensions() {
     const rect = viewer.getBoundingClientRect();
+    if (getCurrentProjection() === 'flat') {
+      const videoRect = getCurrentVideoRect(rect);
+      return {
+        width: positiveLayoutNumber(videoRect.width) || 1,
+        height: positiveLayoutNumber(videoRect.height) || 1,
+      };
+    }
+
     const width = (
       positiveLayoutNumber(rect.width) ||
       positiveLayoutNumber(viewer.clientWidth) ||
@@ -568,6 +630,53 @@ export function createAppController({
     );
 
     return { width, height };
+  }
+
+  function getCurrentVideoRect(rect = viewer.getBoundingClientRect()) {
+    if (getCurrentProjection() !== 'flat') {
+      return {
+        x: 0,
+        y: 0,
+        width: rect.width,
+        height: rect.height,
+      };
+    }
+
+    return getContainedMediaRect({
+      containerWidth: rect.width,
+      containerHeight: rect.height,
+      mediaWidth: positiveLayoutNumber(sourceVideo.videoWidth) || rect.width,
+      mediaHeight: positiveLayoutNumber(sourceVideo.videoHeight) || rect.height,
+    });
+  }
+
+  function screenPointToContainedVideoPoint(screenPoint, videoRect, { clampToVideo = false } = {}) {
+    const localX = screenPoint.x - videoRect.x;
+    const localY = screenPoint.y - videoRect.y;
+    const outside = (
+      localX < 0 ||
+      localY < 0 ||
+      localX > videoRect.width ||
+      localY > videoRect.height
+    );
+
+    if (outside && !clampToVideo) {
+      return null;
+    }
+
+    return screenPointToVideoPoint({
+      x: clampNumber(localX, 0, videoRect.width),
+      y: clampNumber(localY, 0, videoRect.height),
+      width: videoRect.width,
+      height: videoRect.height,
+    });
+  }
+
+  function videoPointToScreenPoint(point, videoRect) {
+    return {
+      x: videoRect.x + point.x * videoRect.width,
+      y: videoRect.y + point.y * videoRect.height,
+    };
   }
 
   function withEffectiveAoiAnalysisPadding(
@@ -662,9 +771,15 @@ export function createAppController({
     const y = clampNumber(screenPoint.y, 0, rect.height);
 
     if (space === 'video') {
+      const point = screenPointToContainedVideoPoint(
+        { x, y },
+        getCurrentVideoRect(rect),
+        { clampToVideo: true },
+      );
+
       return {
-        x: Number((x / rect.width).toFixed(6)),
-        y: Number((y / rect.height).toFixed(6)),
+        x: Number((point.x).toFixed(6)),
+        y: Number((point.y).toFixed(6)),
       };
     }
 
@@ -695,7 +810,8 @@ export function createAppController({
     const points = state.manualAnnotation.points || [];
 
     if ((state.manualAnnotation.space || (getCurrentProjection() === 'flat' ? 'video' : 'panorama')) === 'video') {
-      return points.map((point) => ({ x: point.x * rect.width, y: point.y * rect.height }));
+      const videoRect = getCurrentVideoRect(rect);
+      return points.map((point) => videoPointToScreenPoint(point, videoRect));
     }
 
     return points
@@ -759,9 +875,9 @@ export function createAppController({
     const points = aoi.points || [];
 
     if (getAoiSpace(aoi) === 'video') {
+      const videoRect = getCurrentVideoRect(rect);
       return points.map((point, index) => ({
-        x: point.x * rect.width,
-        y: point.y * rect.height,
+        ...videoPointToScreenPoint(point, videoRect),
         vertexIndex: index,
       }));
     }
@@ -823,6 +939,7 @@ export function createAppController({
     const models = buildAoiOverlayModels({
       aois: getRenderableAois(),
       rect,
+      videoRect: getCurrentVideoRect(rect),
       camera: { yaw: state.cameraYaw, pitch: state.cameraPitch, fov: camera.fov },
       supportsColor: (color) => window.CSS?.supports('color', color),
     });
@@ -895,37 +1012,62 @@ export function createAppController({
 
   function registerAois(aois, source) {
     const loadedAois = extractAoisFromJson(aois);
+    const projectMetadata = extractProjectMetadataFromJson(aois);
 
     if (!loadedAois.length || !loadedAois.every(isValidAoi)) {
       throw new Error('AOI JSON must contain at least one valid AOI definition.');
     }
 
+    validateAoiVideoCompatibility({
+      selectedVideo: selectedStudyVideo,
+      metadataVideo: projectMetadata.video,
+    });
+
     activeAois = withEffectiveAoisAnalysisPadding(loadedAois, getViewerAnalysisDimensions());
     aoiSource = source;
-    registeredProjectMetadata = extractProjectMetadataFromJson(aois);
+    registeredProjectMetadata = projectMetadata;
     state.selectedAoiId = null;
     applyVideoMetadataControls(registeredProjectMetadata.video || {});
     setManualAnnotationIdle();
     renderAoiList();
   }
 
-  async function loadAois() {
+  async function loadGeneratedAoisForStudyVideo(video) {
+    const aoiPath = getGeneratedAoiPathForStudyVideo(video);
+    const loadId = ++generatedAoiLoadId;
+
+    if (!aoiPath) {
+      return;
+    }
+
+    aoiSource = `loading ${aoiPath}`;
+    renderAoiList();
+
     try {
-      const response = await fetch('./assets/aois.json', { cache: 'no-store' });
+      const response = await fetch(`./${aoiPath}`, { cache: 'no-store' });
 
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}`);
       }
 
-      registerAois(await response.json(), 'assets/aois.json');
+      if (loadId !== generatedAoiLoadId || selectedStudyVideo.id !== video.id) {
+        return;
+      }
+
+      registerAois(await response.json(), aoiPath);
+      setNotice(`Loaded generated AOIs for ${video.label}.`, false);
     } catch (error) {
-      activeAois = createDefaultAois();
-      aoiSource = 'default';
-      registeredProjectMetadata = {};
-      applyVideoMetadataControls(sourceVideoInfo);
+      if (loadId !== generatedAoiLoadId || selectedStudyVideo.id !== video.id) {
+        return;
+      }
+
+      activeAois = [];
+      aoiSource = 'none';
+      registeredProjectMetadata = { video: { ...sourceVideoInfo } };
       state.selectedAoiId = null;
       setManualAnnotationIdle();
       renderAoiList();
+      setNotice(`Could not load generated AOIs for ${video.label}: ${error.message}`);
     }
   }
 
@@ -937,6 +1079,7 @@ export function createAppController({
     }
 
     try {
+      generatedAoiLoadId += 1;
       registerAois(JSON.parse(await file.text()), file.name);
       setNotice(`Loaded AOI JSON: ${file.name}`, false);
     } catch (error) {
@@ -986,6 +1129,7 @@ export function createAppController({
     }
 
     try {
+      generatedAoiLoadId += 1;
       registerRecording(JSON.parse(await file.text()), file.name);
       setNotice(`Loaded recording JSON: ${file.name}. Click Review Recording to replay tracker samples.`, true);
     } catch (error) {
@@ -1000,12 +1144,55 @@ export function createAppController({
     renderer.setSize(rect.width, rect.height, false);
     camera.aspect = rect.width / rect.height;
     camera.updateProjectionMatrix();
+    syncProjectionMesh(rect);
   }
 
   function updateCamera() {
     camera.rotation.order = 'YXZ';
+    if (getCurrentProjection() === 'flat') {
+      camera.rotation.y = 0;
+      camera.rotation.x = 0;
+      return;
+    }
+
     camera.rotation.y = THREE.MathUtils.degToRad(state.cameraYaw);
     camera.rotation.x = THREE.MathUtils.degToRad(state.cameraPitch);
+  }
+
+  function syncProjectionMesh(rect = viewer.getBoundingClientRect()) {
+    const isFlat = getCurrentProjection() === 'flat';
+    const transform = getProjectionTextureTransform({
+      projection: getCurrentProjection(),
+      stereoLayout: getCurrentStereoLayout(),
+      eye: sourceVideoInfo.stereoEye || 'left',
+    });
+    videoTexture.offset.set(transform.offsetX, transform.offsetY);
+    videoTexture.repeat.set(transform.repeatX, transform.repeatY);
+    videoTexture.updateMatrix();
+    videoTexture.needsUpdate = true;
+    material.needsUpdate = true;
+    sphere.visible = !isFlat;
+    flatVideoPlane.visible = isFlat;
+
+    if (!isFlat || !rect.width || !rect.height) {
+      return;
+    }
+
+    const distance = 500;
+    const videoRect = getCurrentVideoRect(rect);
+    const viewHeight = 2 * distance * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2);
+    const viewWidth = viewHeight * camera.aspect;
+
+    flatVideoPlane.position.set(
+      viewWidth * ((videoRect.x + videoRect.width / 2) / rect.width - 0.5),
+      -viewHeight * ((videoRect.y + videoRect.height / 2) / rect.height - 0.5),
+      -distance,
+    );
+    flatVideoPlane.scale.set(
+      viewWidth * (videoRect.width / rect.width),
+      viewHeight * (videoRect.height / rect.height),
+      1,
+    );
   }
 
   function setWebcamStatus(status) {
@@ -2154,18 +2341,25 @@ export function createAppController({
     }
 
     const timeSec = sourceVideo.currentTime || 0;
+    const projection = getCurrentProjection();
+    const videoRect = getCurrentVideoRect(rect);
+    const videoPoint = projection === 'flat'
+      ? screenPointToContainedVideoPoint(gaze, videoRect)
+      : screenPointToVideoPoint({
+        x: gaze.x,
+        y: gaze.y,
+        width: rect.width,
+        height: rect.height,
+      });
+    const analysisDimensions = projection === 'flat'
+      ? { width: videoRect.width, height: videoRect.height }
+      : { width: rect.width, height: rect.height };
 
     return {
       gaze,
       timeSec,
-      aois: resolveAoisForAnalysis(activeAois, timeSec, {
-        width: rect.width,
-        height: rect.height,
-      }),
-      viewport: {
-        width: rect.width,
-        height: rect.height,
-      },
+      aois: resolveAoisForAnalysis(activeAois, timeSec, analysisDimensions),
+      viewport: analysisDimensions,
       point: screenPointToYawPitch({
         x: gaze.x,
         y: gaze.y,
@@ -2175,16 +2369,21 @@ export function createAppController({
         cameraPitch: state.cameraPitch,
         fov: camera.fov,
       }),
-      videoPoint: screenPointToVideoPoint({
-        x: gaze.x,
-        y: gaze.y,
-        width: rect.width,
-        height: rect.height,
-      }),
+      videoPoint,
     };
   }
 
   function classifyVideoAois(point, aois, viewport) {
+    if (!point) {
+      return {
+        exactHits: [],
+        likelyHits: [],
+        possibleHits: [],
+        ambiguousHits: [],
+        uncertainty: { yawRadius: 0, pitchRadius: 0 },
+      };
+    }
+
     const exactHits = hitTestAois(point, aois, viewport);
 
     return {
@@ -2273,7 +2472,9 @@ export function createAppController({
     gazeDot.style.transform = `translate(${current.gaze.x}px, ${current.gaze.y}px)`;
     screenReadout.textContent = `x ${Math.round(current.gaze.x)}, y ${Math.round(current.gaze.y)}`;
     panoramaReadout.textContent = isFlatVideo
-      ? `video x ${current.videoPoint.x.toFixed(3)}, y ${current.videoPoint.y.toFixed(3)}`
+      ? current.videoPoint
+        ? `video x ${current.videoPoint.x.toFixed(3)}, y ${current.videoPoint.y.toFixed(3)}`
+        : 'outside video frame'
       : `yaw ${formatDegrees(current.point.yaw)}, pitch ${formatDegrees(current.point.pitch)}`;
     hitReadout.textContent = formatAoiReadout(classification);
   }
@@ -2507,6 +2708,8 @@ export function createAppController({
   function animate(now = 0) {
     invalidateExpiredAccuracy(now);
     syncReviewPlaybackWindow();
+    syncProjectionMesh();
+    updateCamera();
     updateReadout();
     drawAoiOverlay();
     drawMiniMap();
@@ -3202,6 +3405,7 @@ export function createAppController({
     }
 
     try {
+      generatedAoiLoadId += 1;
       registerAois(JSON.parse(await file.text()), file.name);
       setNotice(`Imported Colab AOIs: ${file.name}`, false);
     } catch (error) {
@@ -3218,6 +3422,7 @@ export function createAppController({
     }
 
     sourceVideo.src = URL.createObjectURL(file);
+    generatedAoiLoadId += 1;
     sourceVideoInfo = {
       kind: 'local-file',
       name: file.name,
@@ -3247,7 +3452,7 @@ export function createAppController({
       sourceVideo.addEventListener('canplay', syncVideoNotice);
 
       sourceVideo.addEventListener('error', () => {
-        setNotice('Could not load assets/test-video.mp4. Download the test video or load a local MP4.');
+        setNotice('Could not load the selected study video. Check that the study clips exist under assets/clips and assets/clips-2d.');
       });
 
       aoiOverlay.addEventListener('click', addDraftPolygonPoint);
@@ -3280,7 +3485,7 @@ export function createAppController({
       reviewButton.addEventListener('click', toggleReviewMode);
       clearButton.addEventListener('click', clearSamples);
       exportButton.addEventListener('click', exportSamples);
-      videoFileInput.addEventListener('change', loadLocalVideo);
+      studyVideoSelect.addEventListener('change', handleStudyVideoChange);
       aoiFileInput.addEventListener('change', loadAoiFile);
       calibrationProfileSelect.addEventListener('change', syncSelectedCalibrationProfileState);
       validationPolicySelect.addEventListener('change', syncSelectedValidationPolicyState);
@@ -3310,10 +3515,16 @@ export function createAppController({
       document.addEventListener('visibilitychange', handleVisibilityChange);
 
       renderAoiList();
-      applyVideoMetadataControls(sourceVideoInfo);
+      STUDY_VIDEOS.forEach((video) => {
+        const existingOption = Array.from(studyVideoSelect.options)
+          .find((option) => option.value === video.id);
+        if (existingOption) {
+          existingOption.textContent = video.label;
+        }
+      });
+      setStudyVideo(selectedStudyVideo.id, { clearAois: true });
       syncSelectedCalibrationProfileState();
       syncSelectedValidationPolicyState();
-      void loadAois();
       resize();
       updateCamera();
       selectWebcamMode();

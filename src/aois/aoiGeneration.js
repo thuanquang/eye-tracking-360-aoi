@@ -21,6 +21,7 @@ const GENERATED_COLORS = [
   '#ff4f9a',
   '#9fb7ff',
 ];
+const EQUIRECTANGULAR_VIEWER_YAW_OFFSET = -270;
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
@@ -106,6 +107,7 @@ export function buildColabAoiJob({
       durationSec: Number.isFinite(video?.durationSec) ? video.durationSec : null,
       projection: video?.projection || 'equirectangular',
       stereoLayout: video?.stereoLayout || 'mono',
+      stereoEye: video?.stereoEye || null,
     },
     aoiPolicy: {
       prompts: promptList.length ? promptList : DEFAULT_AUTO_AOI_PROMPTS,
@@ -141,6 +143,17 @@ export function getStereoFrameRect({
   }
 
   if (stereoLayout === 'top-bottom') {
+    if (['top-left', 'top-right', 'bottom-left', 'bottom-right'].includes(eye)) {
+      const width = videoWidth / 2;
+      const height = videoHeight / 2;
+      return {
+        x: eye.endsWith('right') ? width : 0,
+        y: eye.startsWith('bottom') ? height : 0,
+        width,
+        height,
+      };
+    }
+
     const height = videoHeight / 2;
     return {
       x: 0,
@@ -185,8 +198,8 @@ export function pixelBoxToAoiKeyframe({
 
   return {
     t,
-    yawMin: normalizeYaw(round(normalized.xMin * 360 - 180)),
-    yawMax: normalizeYaw(round(normalized.xMax * 360 - 180)),
+    yawMin: normalizeYaw(round(normalized.xMin * 360 + EQUIRECTANGULAR_VIEWER_YAW_OFFSET)),
+    yawMax: normalizeYaw(round(normalized.xMax * 360 + EQUIRECTANGULAR_VIEWER_YAW_OFFSET)),
     pitchMin: round(90 - normalized.yMax * 180),
     pitchMax: round(90 - normalized.yMin * 180),
   };
@@ -226,7 +239,7 @@ function normalizePanoramaPoint(point) {
   }
 
   return {
-    yaw: normalizeYaw(round(videoPoint.x * 360 - 180)),
+    yaw: normalizeYaw(round(videoPoint.x * 360 + EQUIRECTANGULAR_VIEWER_YAW_OFFSET)),
     pitch: round(90 - videoPoint.y * 180),
   };
 }
@@ -277,6 +290,7 @@ export function detectionsToAois({
   const grouped = new Map();
   const projection = video?.projection || 'equirectangular';
   const stereoLayout = video?.stereoLayout || 'mono';
+  const stereoEye = video?.stereoEye || 'left';
   const videoWidth = video?.width || video?.videoWidth;
   const videoHeight = video?.height || video?.videoHeight;
 
@@ -304,7 +318,7 @@ export function detectionsToAois({
         videoHeight,
         projection,
         stereoLayout,
-        eye: detection.eye || 'left',
+        eye: detection.eye || stereoEye,
       });
 
     if (!keyframe) {

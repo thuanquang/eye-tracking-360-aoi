@@ -252,6 +252,59 @@ test('resolves keyframed normalized video AOIs at a video time', () => {
   });
 });
 
+test('hides generated AOI tracks outside their keyframe time window', () => {
+  const aois = [
+    {
+      id: 'manual-single',
+      label: 'Manual single keyframe',
+      color: '#ffd166',
+      yawMin: -10,
+      yawMax: 10,
+      pitchMin: -5,
+      pitchMax: 5,
+      keyframes: [
+        { t: 5, yawMin: -10, yawMax: 10, pitchMin: -5, pitchMax: 5 },
+      ],
+    },
+    {
+      id: 'future-generated',
+      label: 'Future generated',
+      color: '#fc7753',
+      yawMin: 20,
+      yawMax: 30,
+      pitchMin: -5,
+      pitchMax: 5,
+      metadata: { generatedBy: 'runpod-auto-aoi' },
+      keyframes: [
+        { t: 3.2, yawMin: 20, yawMax: 30, pitchMin: -5, pitchMax: 5 },
+        { t: 5, yawMin: 24, yawMax: 34, pitchMin: -5, pitchMax: 5 },
+      ],
+    },
+    {
+      id: 'active-generated',
+      label: 'Active generated',
+      color: '#5dd7c8',
+      yawMin: 40,
+      yawMax: 50,
+      pitchMin: -5,
+      pitchMax: 5,
+      metadata: { generatedBy: 'runpod-auto-aoi' },
+      keyframes: [
+        { t: 0, yawMin: 40, yawMax: 50, pitchMin: -5, pitchMax: 5 },
+        { t: 4, yawMin: 44, yawMax: 54, pitchMin: -5, pitchMax: 5 },
+      ],
+    },
+  ];
+
+  assert.deepEqual(resolveAoisAtTime(aois, 0).map((aoi) => aoi.id), [
+    'manual-single',
+    'active-generated',
+  ]);
+  assert.deepEqual(resolveAoisAtTime(aois, 6).map((aoi) => aoi.id), [
+    'manual-single',
+  ]);
+});
+
 test('hit tests resolved polygon AOIs', () => {
   const [resolved] = resolveAoisAtTime([
     {

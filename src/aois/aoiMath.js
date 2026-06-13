@@ -311,7 +311,34 @@ function findAoiKeyframePair(keyframes, timeSec) {
   return [last, last];
 }
 
+function isGeneratedTrackAoi(aoi) {
+  return typeof aoi?.metadata?.generatedBy === 'string' && aoi.metadata.generatedBy.trim().length > 0;
+}
+
+function isTimeInsideGeneratedTrack(aoi, timeSec) {
+  if (!isGeneratedTrackAoi(aoi) || !Array.isArray(aoi.keyframes) || !aoi.keyframes.length) {
+    return true;
+  }
+
+  const times = aoi.keyframes
+    .map((keyframe) => Number(keyframe?.t))
+    .filter(Number.isFinite)
+    .sort((a, b) => a - b);
+
+  if (!times.length) {
+    return true;
+  }
+
+  const start = times[0];
+  const end = times[times.length - 1];
+  return timeSec >= start && timeSec <= end;
+}
+
 function resolveDynamicAoiAtTime(aoi, timeSec) {
+  if (!isTimeInsideGeneratedTrack(aoi, timeSec)) {
+    return null;
+  }
+
   const pair = findAoiKeyframePair(aoi.keyframes, timeSec);
 
   if (!pair) {
@@ -353,11 +380,13 @@ function resolveDynamicAoiAtTime(aoi, timeSec) {
 export function resolveAoisAtTime(aois, timeSec = 0) {
   const safeTime = Number.isFinite(timeSec) ? timeSec : 0;
 
-  return aois.map((aoi) => (
-    Array.isArray(aoi.keyframes) && aoi.keyframes.length
-      ? resolveDynamicAoiAtTime(aoi, safeTime)
-      : { ...aoi }
-  ));
+  return aois
+    .map((aoi) => (
+      Array.isArray(aoi.keyframes) && aoi.keyframes.length
+        ? resolveDynamicAoiAtTime(aoi, safeTime)
+        : { ...aoi }
+    ))
+    .filter(Boolean);
 }
 
 function angularDistance(a, b) {

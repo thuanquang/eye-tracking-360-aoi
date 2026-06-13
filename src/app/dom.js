@@ -26,7 +26,7 @@ export function queryAppDom(documentRef = document) {
     accuracyButton: getRequiredElement(documentRef, '#accuracyButton'),
     calibrationProfileSelect: getRequiredElement(documentRef, '#calibrationProfileSelect'),
     validationPolicySelect: getRequiredElement(documentRef, '#validationPolicySelect'),
-    videoFileInput: getRequiredElement(documentRef, '#videoFileInput'),
+    studyVideoSelect: getRequiredElement(documentRef, '#studyVideoSelect'),
     aoiFileInput: getRequiredElement(documentRef, '#aoiFileInput'),
     projectionSelect: getRequiredElement(documentRef, '#projectionSelect'),
     stereoLayoutSelect: getRequiredElement(documentRef, '#stereoLayoutSelect'),
