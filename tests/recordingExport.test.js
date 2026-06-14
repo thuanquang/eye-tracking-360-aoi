@@ -72,8 +72,28 @@ test('builds recording samples with stable AOI evidence', () => {
 
 test('builds summary counts and duration from samples', () => {
   const summary = buildExportSummary([
-    { t: 0, source: 'mouse', hits: ['logo'], likelyHits: ['logo'], possibleHits: [], ambiguousHits: [], quality: { trustedForAoiAnalysis: true } },
-    { t: RECORDING_SAMPLE_INTERVAL_MS / 1000, source: 'mouse', hits: ['logo'], likelyHits: [], possibleHits: ['logo'], ambiguousHits: ['logo'], quality: { trustedForAoiAnalysis: true } },
+    {
+      t: 0,
+      source: 'mouse',
+      screen: { x: 20, y: 30 },
+      panorama: { yaw: -10, pitch: 5 },
+      hits: ['logo'],
+      likelyHits: ['logo'],
+      possibleHits: [],
+      ambiguousHits: [],
+      quality: { trustedForAoiAnalysis: true },
+    },
+    {
+      t: RECORDING_SAMPLE_INTERVAL_MS / 1000,
+      source: 'mouse',
+      screen: { x: 40, y: 60 },
+      panorama: { yaw: 15, pitch: -5 },
+      hits: ['logo'],
+      likelyHits: [],
+      possibleHits: ['logo'],
+      ambiguousHits: ['logo'],
+      quality: { trustedForAoiAnalysis: true },
+    },
   ], {
     accuracyValidated: false,
     correctedAccuracySummary: null,
@@ -100,6 +120,9 @@ test('builds summary counts and duration from samples', () => {
   assert.equal(summary.totalSamples, 2);
   assert.equal(summary.durationSec, 0.067);
   assert.equal(summary.recordingSampleIntervalMs, RECORDING_SAMPLE_INTERVAL_MS);
+  assert.equal(summary.heatmaps.screen.type, 'screen');
+  assert.equal(summary.heatmaps.panorama.type, 'panorama');
+  assert.equal(Array.isArray(summary.heatmaps.screen.bins), true);
   assert.deepEqual(summary.selectedCalibrationProfile, RESEARCH_39_PROFILE);
   assert.equal(summary.calibrationProfile, null);
   assert.equal(summary.calibrationProfileUsed, null);

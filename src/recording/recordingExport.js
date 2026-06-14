@@ -1,4 +1,5 @@
 import { summarizeGazeStreamQuality } from '../gaze/qualityMonitor.js';
+import { buildPanoramaHeatmap, buildScreenHeatmap } from './heatmapMetrics.js';
 import { DEFAULT_RECORDING_SAMPLE_INTERVAL_MS } from './sampleScheduler.js';
 
 function buildCalibrationProfileMetadata(profile) {
@@ -220,6 +221,10 @@ export function buildExportSummary(samples, stateLike, sampleIntervalMs = DEFAUL
     totalSamples: samples.length,
     recordingSampleIntervalMs,
     durationSec: Number(durationSec.toFixed(3)),
+    heatmaps: {
+      screen: buildScreenHeatmap(samples, { sampleIntervalMs: recordingSampleIntervalMs, trustedOnly: true }),
+      panorama: buildPanoramaHeatmap(samples, { sampleIntervalMs: recordingSampleIntervalMs, trustedOnly: true }),
+    },
     sources: countValues(samples, (sample) => [sample.source]),
     aoiHitCounts: countValues(samples, (sample) => sample.hits || []),
     likelyAoiHitCounts: countValues(samples, (sample) => sample.likelyHits || []),
