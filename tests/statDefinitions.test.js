@@ -82,6 +82,17 @@ test('exports uppercase reliability constants with stable string values', () => 
   });
 });
 
+test('describes overall processing efficiency as a transparent composite', () => {
+  const description = getStatDefinition('overallProcessingEfficiency').description;
+
+  assert.match(description, /AOI coverage/);
+  assert.match(description, /trusted AOI dwell/);
+  assert.match(description, /fixation efficiency/);
+  assert.match(description, /formula/);
+  assert.match(description, /components/);
+  assert.doesNotMatch(description, /share of viewing time/);
+});
+
 test('groups stats by scope', () => {
   assert.deepEqual(
     listStatsByScope('perAoi').map((definition) => definition.id),

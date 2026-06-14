@@ -327,6 +327,51 @@ test('reports transparent processing efficiency components', () => {
   assert.equal(typeof metrics.session.processingEfficiencyComponents, 'object');
   assert.equal(metrics.session.processingEfficiencyComponents.aoiCoveragePercent, 100);
   assert.equal(metrics.session.processingEfficiencyComponents.trustedAoiDwellPercent, 75);
-  assert.equal(metrics.session.overallProcessingEfficiency >= 0, true);
-  assert.equal(metrics.session.overallProcessingEfficiency <= 100, true);
+  assert.equal(metrics.session.processingEfficiencyComponents.fixationEfficiencyPercent, 20);
+  assert.equal(
+    metrics.session.processingEfficiencyFormula,
+    '0.4*aoiCoveragePercent + 0.4*trustedAoiDwellPercent + 0.2*fixationEfficiencyPercent',
+  );
+  assert.equal(metrics.session.overallProcessingEfficiency, 74);
+});
+
+test('uses likely dwell for processing efficiency when stable dwell is absent', () => {
+  const aois = [{ id: 'a', label: 'A' }];
+  const samples = [
+    { t: 0.0, hits: ['a'], stableHits: [], likelyHits: ['a'], possibleHits: [], ambiguousHits: [], activeAois: aois },
+    { t: 0.1, hits: ['a'], stableHits: [], likelyHits: ['a'], possibleHits: [], ambiguousHits: [], activeAois: aois },
+  ];
+
+  const metrics = buildNamedAoiMetrics(samples, aois, { sampleIntervalMs: 100 });
+
+  assert.equal(metrics.session.processingEfficiencyComponents.trustedAoiDwellPercent, 100);
+});
+
+test('uses stable dwell for processing efficiency when stable dwell exists', () => {
+  const aois = [{ id: 'a', label: 'A' }];
+  const samples = [
+    { t: 0.0, hits: ['a'], stableHits: ['a'], likelyHits: ['a'], possibleHits: [], ambiguousHits: [], activeAois: aois },
+    { t: 0.1, hits: ['a'], stableHits: [], likelyHits: ['a'], possibleHits: [], ambiguousHits: [], activeAois: aois },
+    { t: 0.2, hits: ['a'], stableHits: [], likelyHits: ['a'], possibleHits: [], ambiguousHits: [], activeAois: aois },
+    { t: 0.3, hits: ['a'], stableHits: [], likelyHits: ['a'], possibleHits: [], ambiguousHits: [], activeAois: aois },
+  ];
+
+  const metrics = buildNamedAoiMetrics(samples, aois, { sampleIntervalMs: 100 });
+
+  assert.equal(metrics.session.processingEfficiencyComponents.trustedAoiDwellPercent, 25);
+});
+
+test('reports bounded processing efficiency components without samples or fixations', () => {
+  const metrics = buildNamedAoiMetrics([], [{ id: 'a', label: 'A' }], { sampleIntervalMs: 100 });
+
+  assert.deepEqual(metrics.session.processingEfficiencyComponents, {
+    aoiCoveragePercent: 0,
+    trustedAoiDwellPercent: 0,
+    fixationEfficiencyPercent: 0,
+  });
+  assert.equal(
+    metrics.session.processingEfficiencyFormula,
+    '0.4*aoiCoveragePercent + 0.4*trustedAoiDwellPercent + 0.2*fixationEfficiencyPercent',
+  );
+  assert.equal(metrics.session.overallProcessingEfficiency, 0);
 });

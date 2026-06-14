@@ -107,7 +107,7 @@ export const AOI_STAT_DEFINITIONS = Object.freeze([
     scope: 'session',
     unit: 'percent',
     reliability: STAT_RELIABILITY.ESTIMATED,
-    description: 'Estimated share of viewing time represented by AOI dwell time.',
+    description: 'Transparent MVP composite of AOI coverage, trusted AOI dwell, and fixation efficiency; reports should include formula and components.',
   },
   {
     id: 'averageSaccadeDurationMs',
