@@ -13,6 +13,7 @@ import {
   updateAoiStability,
 } from '../aois/aoiStability.js';
 import { buildNamedAoiMetrics } from '../recording/analysisMetrics.js?v=ui-modes-1';
+import { buildAoiStatsCsv } from '../recording/csvExport.js?v=aoi-stats-csv-1';
 import { buildRecordingSample } from '../recording/sampleBuilder.js?v=recording-export-1';
 import {
   createSampleScheduler,
@@ -202,6 +203,7 @@ export function createAppController({
     reviewButton,
     clearButton,
     exportButton,
+    exportStatsCsvButton,
     sampleCount,
     modeLabel,
     webcamStatusLabel,
@@ -3078,14 +3080,18 @@ export function createAppController({
     });
   }
 
-  function downloadJson(payload, fileName) {
-    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+  function downloadText(text, fileName, type = 'text/plain') {
+    const blob = new Blob([text], { type });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
     link.download = fileName;
     link.click();
     URL.revokeObjectURL(url);
+  }
+
+  function downloadJson(payload, fileName) {
+    downloadText(JSON.stringify(payload, null, 2), fileName, 'application/json');
   }
 
   function buildVideoPackageMetadata() {
@@ -3122,13 +3128,19 @@ export function createAppController({
     });
   }
 
-  function exportSamples() {
-    syncSelectedCalibrationProfileState();
-    syncSelectedValidationPolicyState();
+  function buildCurrentNamedAoiMetrics() {
     const exportAois = withEffectiveAoisAnalysisPadding(activeAois, getViewerAnalysisDimensions());
     const namedAoiMetrics = buildNamedAoiMetrics(state.samples, exportAois, {
       sampleIntervalMs: recordingSampleScheduler.intervalMs,
     });
+
+    return { exportAois, namedAoiMetrics };
+  }
+
+  function exportSamples() {
+    syncSelectedCalibrationProfileState();
+    syncSelectedValidationPolicyState();
+    const { exportAois, namedAoiMetrics } = buildCurrentNamedAoiMetrics();
     const video = buildVideoPackageMetadata();
     const payload = buildExportPayload({
       sourceVideo: sourceVideo.currentSrc || sourceVideo.src,
@@ -3143,6 +3155,14 @@ export function createAppController({
       state,
     });
     downloadJson(payload, `aoi-samples-${Date.now()}.json`);
+  }
+
+  function exportStatsCsv() {
+    const { namedAoiMetrics } = buildCurrentNamedAoiMetrics();
+    const csv = buildAoiStatsCsv({ namedAoiMetrics });
+
+    downloadText(csv, `aoi-stats-${Date.now()}.csv`, 'text/csv;charset=utf-8');
+    setNotice('AOI stats CSV exported.', true);
   }
 
   function createUniqueAoiId(label) {
@@ -3680,6 +3700,7 @@ export function createAppController({
       reviewButton.addEventListener('click', toggleReviewMode);
       clearButton.addEventListener('click', clearSamples);
       exportButton.addEventListener('click', exportSamples);
+      exportStatsCsvButton.addEventListener('click', exportStatsCsv);
       studyVideoSelect.addEventListener('change', handleStudyVideoChange);
       aoiFileInput.addEventListener('change', loadAoiFile);
       calibrationProfileSelect.addEventListener('change', syncSelectedCalibrationProfileState);

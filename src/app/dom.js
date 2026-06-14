@@ -57,6 +57,7 @@ export function queryAppDom(documentRef = document) {
     reviewButton: getRequiredElement(documentRef, '#reviewButton'),
     clearButton: getRequiredElement(documentRef, '#clearButton'),
     exportButton: getRequiredElement(documentRef, '#exportButton'),
+    exportStatsCsvButton: documentRef.querySelector('#exportStatsCsvButton'),
     sampleCount: getRequiredElement(documentRef, '#sampleCount'),
     modeLabel: getRequiredElement(documentRef, '#modeLabel'),
     webcamStatusLabel: getRequiredElement(documentRef, '#webcamStatusLabel'),
