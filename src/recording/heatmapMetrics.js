@@ -54,8 +54,16 @@ function shouldIncludeSample(sample, trustedOnly) {
   return !trustedOnly || Boolean(sample?.quality?.trustedForAoiAnalysis);
 }
 
-function inferScreenDimension(timedSamples, getCoordinate) {
-  const max = timedSamples.reduce((largest, { sample }) => {
+function hasFiniteScreenPosition(sample) {
+  return Number.isFinite(sample?.screen?.x) && Number.isFinite(sample?.screen?.y);
+}
+
+function finitePositiveNumber(value) {
+  return Number.isFinite(value) && value > 0 ? value : null;
+}
+
+function inferScreenDimension(screenEntries, getCoordinate) {
+  const max = screenEntries.reduce((largest, { sample }) => {
     const coordinate = getCoordinate(sample);
     return Number.isFinite(coordinate) ? Math.max(largest, coordinate) : largest;
   }, -Infinity);
@@ -63,10 +71,27 @@ function inferScreenDimension(timedSamples, getCoordinate) {
   return Number.isFinite(max) ? Math.max(1, Math.ceil(max + 1)) : null;
 }
 
-function resolveScreenDimension(explicitDimension, timedSamples, getCoordinate) {
-  return Number.isFinite(explicitDimension) && explicitDimension > 0
-    ? explicitDimension
-    : inferScreenDimension(timedSamples, getCoordinate);
+function getScreenContributorEntries(timedSamples, durations, trustedOnly) {
+  return timedSamples
+    .map((entry, index) => ({ ...entry, durationSec: durations[index] }))
+    .filter(({ sample }) => hasFiniteScreenPosition(sample) && shouldIncludeSample(sample, trustedOnly));
+}
+
+function resolveScreenDimensions(requestedWidth, requestedHeight, screenEntries) {
+  const providedWidth = finitePositiveNumber(requestedWidth);
+  const providedHeight = finitePositiveNumber(requestedHeight);
+  const width = providedWidth ?? inferScreenDimension(screenEntries, (sample) => sample.screen.x);
+  const height = providedHeight ?? inferScreenDimension(screenEntries, (sample) => sample.screen.y);
+
+  if (!width || !height) {
+    return { width, height, dimensionSource: 'none' };
+  }
+
+  return {
+    width,
+    height,
+    dimensionSource: providedWidth && providedHeight ? 'provided' : 'inferred',
+  };
 }
 
 function clamp(value, min, max) {
@@ -127,21 +152,18 @@ export function buildScreenHeatmap(samples = [], options = {}) {
   const rows = gridSize(requestedRows, DEFAULT_SCREEN_ROWS);
   const timedSamples = orderedTimedSamples(samples);
   const durations = getSampleDurations(timedSamples, sampleIntervalMs);
-  const width = resolveScreenDimension(requestedWidth, timedSamples, (sample) => sample?.screen?.x);
-  const height = resolveScreenDimension(requestedHeight, timedSamples, (sample) => sample?.screen?.y);
+  const screenEntries = getScreenContributorEntries(timedSamples, durations, trustedOnly);
+  const { width, height, dimensionSource } = resolveScreenDimensions(
+    requestedWidth,
+    requestedHeight,
+    screenEntries,
+  );
   const bins = new Map();
   let totalWeightSec = 0;
 
-  if (width && height) {
-    timedSamples.forEach(({ sample }, index) => {
-      const x = sample?.screen?.x;
-      const y = sample?.screen?.y;
-
-      if (!Number.isFinite(x) || !Number.isFinite(y) || !shouldIncludeSample(sample, trustedOnly)) {
-        return;
-      }
-
-      const durationSec = durations[index];
+  if (dimensionSource !== 'none') {
+    screenEntries.forEach(({ sample, durationSec }) => {
+      const { x, y } = sample.screen;
       const column = coordinateToBin(x, width, columns);
       const row = coordinateToBin(y, height, rows);
 
@@ -156,6 +178,7 @@ export function buildScreenHeatmap(samples = [], options = {}) {
     rows,
     width,
     height,
+    dimensionSource,
     trustedOnly: Boolean(trustedOnly),
     totalWeightSec: roundNumber(totalWeightSec),
     bins: serializeBins(bins),

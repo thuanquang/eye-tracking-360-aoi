@@ -177,7 +177,12 @@ function sumDwellSeconds(samples, getValues, sampleIntervalMs) {
   }, {});
 }
 
-export function buildExportSummary(samples, stateLike, sampleIntervalMs = DEFAULT_RECORDING_SAMPLE_INTERVAL_MS) {
+export function buildExportSummary(
+  samples,
+  stateLike,
+  sampleIntervalMs = DEFAULT_RECORDING_SAMPLE_INTERVAL_MS,
+  { screenHeatmapDimensions = null } = {},
+) {
   const recordingSampleIntervalMs = Number.isFinite(sampleIntervalMs) && sampleIntervalMs > 0
     ? sampleIntervalMs
     : DEFAULT_RECORDING_SAMPLE_INTERVAL_MS;
@@ -222,7 +227,11 @@ export function buildExportSummary(samples, stateLike, sampleIntervalMs = DEFAUL
     recordingSampleIntervalMs,
     durationSec: Number(durationSec.toFixed(3)),
     heatmaps: {
-      screen: buildScreenHeatmap(samples, { sampleIntervalMs: recordingSampleIntervalMs, trustedOnly: true }),
+      screen: buildScreenHeatmap(samples, {
+        ...screenHeatmapDimensions,
+        sampleIntervalMs: recordingSampleIntervalMs,
+        trustedOnly: true,
+      }),
       panorama: buildPanoramaHeatmap(samples, { sampleIntervalMs: recordingSampleIntervalMs, trustedOnly: true }),
     },
     sources: countValues(samples, (sample) => [sample.source]),

@@ -23,7 +23,7 @@ import {
   buildExportSummary as createExportSummary,
   buildProjectPackage as createProjectPackage,
   buildVideoPackageMetadata as createVideoPackageMetadata,
-} from '../recording/recordingExport.js?v=recording-export-1';
+} from '../recording/recordingExport.js?v=recording-export-2';
 import {
   findReviewSampleIndex,
   getReviewTimeWindow,
@@ -649,6 +649,24 @@ export function createAppController({
     );
 
     return { width, height };
+  }
+
+  function getViewerScreenDimensions() {
+    const rect = viewer.getBoundingClientRect();
+    return {
+      width: (
+        positiveLayoutNumber(rect.width) ||
+        positiveLayoutNumber(viewer.clientWidth) ||
+        positiveLayoutNumber(sourceVideo.videoWidth) ||
+        1
+      ),
+      height: (
+        positiveLayoutNumber(rect.height) ||
+        positiveLayoutNumber(viewer.clientHeight) ||
+        positiveLayoutNumber(sourceVideo.videoHeight) ||
+        1
+      ),
+    };
   }
 
   function getCurrentVideoRect(rect = viewer.getBoundingClientRect()) {
@@ -3055,7 +3073,9 @@ export function createAppController({
   }
 
   function buildExportSummary() {
-    return createExportSummary(state.samples, state, recordingSampleScheduler.intervalMs);
+    return createExportSummary(state.samples, state, recordingSampleScheduler.intervalMs, {
+      screenHeatmapDimensions: getViewerScreenDimensions(),
+    });
   }
 
   function downloadJson(payload, fileName) {
