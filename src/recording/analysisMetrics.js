@@ -91,6 +91,8 @@ function createAoiMetric(aoi) {
     fixationCount: 0,
     averageFixationDurationMs: 0,
     totalFixationDurationMs: 0,
+    firstFixationDurationMs: null,
+    revisitCount: 0,
     percentageOfViewingTime: 0,
   };
 }
@@ -237,6 +239,25 @@ function mergeFixations(screenFixations, legacyFixations) {
       || a.aoiId.localeCompare(b.aoiId));
 }
 
+function sanitizeFixation(fixation) {
+  const sanitized = {
+    aoiId: fixation.aoiId,
+    startSec: roundNumber(fixation.startSec),
+    endSec: roundNumber(fixationCoverageEndSec(fixation)),
+    durationMs: Math.round(fixationDurationMs(fixation)),
+    sampleCount: fixation.sampleCount,
+  };
+
+  if (Number.isFinite(fixation?.centroid?.x) && Number.isFinite(fixation?.centroid?.y)) {
+    sanitized.centroid = {
+      x: roundNumber(fixation.centroid.x),
+      y: roundNumber(fixation.centroid.y),
+    };
+  }
+
+  return sanitized;
+}
+
 export function buildNamedAoiMetrics(samples = [], aois = [], { sampleIntervalMs = DEFAULT_RECORDING_SAMPLE_INTERVAL_MS } = {}) {
   const safeSamples = samples
     .filter((sample) => Number.isFinite(sample?.t))
@@ -316,8 +337,14 @@ export function buildNamedAoiMetrics(samples = [], aois = [], { sampleIntervalMs
     }
 
     const metric = perAoi[fixation.aoiId];
+    const durationMs = fixationDurationMs(fixation);
     metric.fixationCount += 1;
-    metric.totalFixationDurationMs += fixationDurationMs(fixation);
+    metric.totalFixationDurationMs += durationMs;
+    if (metric.firstFixationDurationMs === null) {
+      metric.firstFixationDurationMs = Math.round(durationMs);
+    } else {
+      metric.revisitCount += 1;
+    }
     metric.timeToFirstFixationMs = metric.timeToFirstFixationMs
       ?? Math.round(fixation.startSec * 1000);
   });
@@ -358,5 +385,6 @@ export function buildNamedAoiMetrics(samples = [], aois = [], { sampleIntervalMs
         : 0,
     },
     perAoi,
+    fixations: fixations.map(sanitizeFixation),
   };
 }

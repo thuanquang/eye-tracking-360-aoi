@@ -48,6 +48,30 @@ test('uses screen-coordinate dispersion fixations for AOI fixation metrics', () 
   assert.equal(metrics.session.averageFixationDurationMs, 200);
 });
 
+test('reports first fixation duration and revisit count per AOI', () => {
+  const aois = [
+    { id: 'logo', label: 'Logo' },
+    { id: 'product', label: 'Product' },
+  ];
+  const samples = [
+    { t: 0.00, screen: { x: 100, y: 100 }, hits: ['logo'], likelyHits: ['logo'], possibleHits: [], ambiguousHits: [], activeAois: aois },
+    { t: 0.05, screen: { x: 102, y: 101 }, hits: ['logo'], likelyHits: ['logo'], possibleHits: [], ambiguousHits: [], activeAois: aois },
+    { t: 0.10, screen: { x: 400, y: 300 }, hits: ['product'], likelyHits: ['product'], possibleHits: [], ambiguousHits: [], activeAois: aois },
+    { t: 0.15, screen: { x: 402, y: 302 }, hits: ['product'], likelyHits: ['product'], possibleHits: [], ambiguousHits: [], activeAois: aois },
+    { t: 0.20, screen: { x: 104, y: 100 }, hits: ['logo'], likelyHits: ['logo'], possibleHits: [], ambiguousHits: [], activeAois: aois },
+    { t: 0.25, screen: { x: 103, y: 99 }, hits: ['logo'], likelyHits: ['logo'], possibleHits: [], ambiguousHits: [], activeAois: aois },
+  ];
+
+  const metrics = buildNamedAoiMetrics(samples, aois);
+
+  assert.equal(metrics.perAoi.logo.fixationCount, 2);
+  assert.equal(metrics.perAoi.logo.firstFixationDurationMs, 100);
+  assert.equal(metrics.perAoi.logo.revisitCount, 1);
+  assert.equal(metrics.perAoi.product.firstFixationDurationMs, 100);
+  assert.equal(Array.isArray(metrics.fixations), true);
+  assert.equal(metrics.fixations.length, 3);
+});
+
 test('counts final screen sample duration toward fixation threshold', () => {
   const aois = [{ id: 'front', label: 'Front' }];
   const samples = [
