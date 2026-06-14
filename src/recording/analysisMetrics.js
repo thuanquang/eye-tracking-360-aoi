@@ -4,7 +4,6 @@ import { detectFixationsByDispersion } from './fixations.js';
 const DEFAULT_SAMPLE_INTERVAL_SEC = DEFAULT_RECORDING_SAMPLE_INTERVAL_MS / 1000;
 const MIN_FIXATION_DURATION_SEC = 0.1;
 const FIXATION_DURATION_EPSILON_SEC = 1e-9;
-const MAX_FIXATION_SAMPLE_GAP_SEC = (DEFAULT_RECORDING_SAMPLE_INTERVAL_MS * 3) / 1000;
 
 function roundNumber(value, digits = 3) {
   if (!Number.isFinite(value)) {
@@ -55,19 +54,6 @@ function getTypicalSampleIntervalSec(samples, fallbackSec = DEFAULT_SAMPLE_INTER
     .filter((duration) => Number.isFinite(duration) && duration > 0 && duration < 5);
 
   return intervals.length ? median(intervals) : fallbackSec;
-}
-
-function capFixationDetectionDurations(samples, durations, fallbackSec = DEFAULT_SAMPLE_INTERVAL_SEC) {
-  const typicalIntervalSec = getTypicalSampleIntervalSec(samples, fallbackSec);
-
-  return durations.map((duration, index) => {
-    const next = samples[index + 1];
-    const gapSec = next ? next.t - samples[index].t : null;
-
-    return Number.isFinite(gapSec) && gapSec > MAX_FIXATION_SAMPLE_GAP_SEC
-      ? typicalIntervalSec
-      : duration;
-  });
 }
 
 function buildAoiCatalog(samples, aois) {
@@ -280,7 +266,26 @@ function sanitizeFixation(fixation) {
   return sanitized;
 }
 
-function buildAoiTransitions(fixations) {
+function isScreenDerivedFixation(fixation) {
+  return Number.isFinite(fixation?.centroid?.x) && Number.isFinite(fixation?.centroid?.y);
+}
+
+function transitionCoverageEndSec(fixation, typicalIntervalSec) {
+  const coverageEndSec = fixationCoverageEndSec(fixation);
+
+  if (!isScreenDerivedFixation(fixation) || !Number.isFinite(typicalIntervalSec) || typicalIntervalSec <= 0) {
+    return coverageEndSec;
+  }
+
+  const sampleCount = Number.isFinite(fixation.sampleCount) && fixation.sampleCount > 0
+    ? fixation.sampleCount
+    : 1;
+  const sampledWindowEndSec = fixation.startSec + (sampleCount * typicalIntervalSec);
+
+  return Math.min(coverageEndSec, Math.max(fixation.endSec, sampledWindowEndSec));
+}
+
+function buildAoiTransitions(fixations, typicalIntervalSec = DEFAULT_SAMPLE_INTERVAL_SEC) {
   const transitions = [];
 
   for (let index = 1; index < fixations.length; index += 1) {
@@ -291,7 +296,7 @@ function buildAoiTransitions(fixations) {
       continue;
     }
 
-    const previousEndSec = fixationCoverageEndSec(previous);
+    const previousEndSec = transitionCoverageEndSec(previous, typicalIntervalSec);
 
     transitions.push({
       fromAoiId: previous.aoiId,
@@ -313,7 +318,6 @@ export function buildNamedAoiMetrics(samples = [], aois = [], { sampleIntervalMs
     ? sampleIntervalMs / 1000
     : DEFAULT_SAMPLE_INTERVAL_SEC;
   const durations = getSampleDurations(safeSamples, fallbackSec);
-  const fixationDetectionDurations = capFixationDetectionDurations(safeSamples, durations, fallbackSec);
   const totalDurationSec = durations.reduce((sum, duration) => sum + duration, 0);
   const catalog = buildAoiCatalog(safeSamples, aois);
   const perAoi = {};
@@ -375,7 +379,7 @@ export function buildNamedAoiMetrics(samples = [], aois = [], { sampleIntervalMs
     });
   });
 
-  const screenFixations = detectScreenAoiFixations(safeSamples, fixationDetectionDurations);
+  const screenFixations = detectScreenAoiFixations(safeSamples, durations);
   const legacyFixations = detectAoiFixations(safeSamples, durations);
   const fixations = mergeFixations(screenFixations, legacyFixations);
   let previousFixationAoiId = null;
@@ -416,7 +420,7 @@ export function buildNamedAoiMetrics(samples = [], aois = [], { sampleIntervalMs
 
   const fixationDurationsMs = fixations.map(fixationDurationMs);
   const fixatedAoiIds = uniqueValues(fixations.map((fixation) => fixation.aoiId));
-  const transitions = buildAoiTransitions(fixations);
+  const transitions = buildAoiTransitions(fixations, getTypicalSampleIntervalSec(safeSamples, fallbackSec));
   const aoiCount = Object.keys(perAoi).length;
   const totalDwellSec = Object.values(perAoi)
     .reduce((sum, metric) => sum + (metric.totalDwellSec || 0), 0);

@@ -97,7 +97,16 @@ test('reports experimental saccade durations between fixation windows', () => {
 
   assert.equal(metrics.session.saccadeCount, 1);
   assert.equal(metrics.session.averageSaccadeDurationMs, 100);
-  assert.deepEqual(metrics.transitions.map((transition) => [transition.fromAoiId, transition.toAoiId]), [['left', 'right']]);
+  assert.deepEqual(metrics.transitions, [{
+    fromAoiId: 'left',
+    toAoiId: 'right',
+    startSec: 0.1,
+    endSec: 0.2,
+    durationMs: 100,
+  }]);
+  assert.equal(metrics.perAoi.left.totalFixationDurationMs, 200);
+  assert.equal(metrics.fixations[0].endSec, 0.2);
+  assert.equal(metrics.fixations[0].durationMs, 200);
 });
 
 test('does not count a revisit when an AOI repeats after an unmapped gap', () => {
