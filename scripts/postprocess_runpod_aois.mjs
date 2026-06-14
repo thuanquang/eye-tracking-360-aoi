@@ -14,7 +14,7 @@ function parseArgs(argv) {
   const args = {
     inputDir: DEFAULT_INPUT_DIR,
     outputDir: DEFAULT_OUTPUT_DIR,
-    maxAois: 80,
+    maxAois: null,
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -51,7 +51,7 @@ function outputNameFor(inputName) {
 export async function postprocessRunpodAois(args = {}) {
   const inputDir = path.resolve(args.inputDir || DEFAULT_INPUT_DIR);
   const outputDir = path.resolve(args.outputDir || DEFAULT_OUTPUT_DIR);
-  const maxAois = Number.isFinite(args.maxAois) ? args.maxAois : 80;
+  const maxAois = Number.isFinite(args.maxAois) ? args.maxAois : null;
 
   await fs.mkdir(outputDir, { recursive: true });
 
@@ -101,7 +101,7 @@ if (process.argv[1] === scriptPath) {
   for (const file of manifest.files) {
     console.log(
       `${file.outputName}: ${file.inputAois} -> ${file.outputAois} AOIs `
-      + `(filtered ${file.filteredAois}, merged ${file.mergedAois})`,
+      + `(filtered ${file.filteredAois}, merged ${file.mergedAois}, small merged ${file.smallMergedAois})`,
     );
   }
 }

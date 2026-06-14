@@ -6,6 +6,7 @@ import {
   GAZE_TIMING,
   RAW_GAZE_DIAGNOSTIC,
   RECORDING_SAMPLE_INTERVAL_MS,
+  TARGET_CAPTURE,
 } from '../src/app/constants.js';
 
 test('exports stable timing constants used by the app shell', () => {
@@ -14,10 +15,11 @@ test('exports stable timing constants used by the app shell', () => {
   assert.deepEqual(GAZE_TIMING, {
     freshGazeMaxAgeMs: 180,
     liveGazeStaleMs: 450,
-    liveGazeHoldMs: 1350,
+    liveGazeHoldMs: 350,
     targetSettleDelayMs: 250,
     targetSampleDelayMs: 55,
   });
+  assert.equal(TARGET_CAPTURE.validationMaxAttemptsPerTarget, 2);
 });
 
 test('exports raw gaze diagnostic thresholds', () => {
@@ -30,4 +32,5 @@ test('exports raw gaze diagnostic thresholds', () => {
   ]);
   assert.equal(RAW_GAZE_DIAGNOSTIC.samplesPerTarget, 45);
   assert.equal(RAW_GAZE_DIAGNOSTIC.sampleDelayMs, 33);
+  assert.equal(RAW_GAZE_DIAGNOSTIC.cursorHoldMs, 1400);
 });

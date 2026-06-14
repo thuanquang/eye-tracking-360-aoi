@@ -306,6 +306,10 @@ h1 {
   stroke-linejoin: round;
 }
 
+.aoi-overlay.is-authoring .aoi-overlay-shape {
+  pointer-events: none;
+}
+
 .aoi-vertex-handle {
   fill: var(--ink);
   stroke: #0a0b09;
@@ -358,6 +362,10 @@ h1 {
   box-shadow: 0 0 0 4px rgba(252, 119, 83, 0.26);
   pointer-events: none;
   transform: translate(-100px, -100px);
+}
+
+.viewer.is-raw-diagnostic .gaze-dot {
+  z-index: 35;
 }
 
 .source-video {
@@ -531,6 +539,45 @@ h1 {
   line-height: 1.45;
 }
 
+.participant-gaze-setup {
+  display: grid;
+  gap: 10px;
+  margin: 16px 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  background: #f7f7f7;
+}
+
+.participant-gaze-setup[data-provider="webgazer"] .participant-seeso-key {
+  display: none;
+}
+
+.participant-gaze-status {
+  margin-top: 0;
+}
+
+.tracker-status-row {
+  display: grid;
+  gap: 4px;
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  background: #f7f7f7;
+}
+
+.tracker-status-row span {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.tracker-status-row strong {
+  color: var(--ink);
+  font-size: 0.92rem;
+  line-height: 1.25;
+}
+
 .field-stack {
   display: grid;
   gap: 7px;
@@ -551,6 +598,7 @@ h1 {
 }
 
 .field-stack input,
+.field-stack select,
 .field-label input,
 .field-label select,
 .field-label textarea {
@@ -562,6 +610,7 @@ h1 {
   padding: 0 12px;
 }
 
+.field-stack select,
 .field-label select {
   appearance: none;
   background:
@@ -642,6 +691,10 @@ h1 {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
+}
+
+.participant-actions button {
+  min-height: 44px;
 }
 
 .app-shell.is-participant-mode {

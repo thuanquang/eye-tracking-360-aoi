@@ -40,7 +40,7 @@ function sampleFromTargetPoint(point) {
 }
 
 test('exports calibration and accuracy target sets', () => {
-  assert.equal(CALIBRATION_POINTS.length >= 14, true);
+  assert.equal(CALIBRATION_POINTS.length, 9);
   assert.equal(ACCURACY_REFINEMENT_POINTS.length, 9);
   assert.equal(ACCURACY_VALIDATION_POINTS.length, 8);
   assert.equal(getTargetPointsForMode('accuracy').length, 17);

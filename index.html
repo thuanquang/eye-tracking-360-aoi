@@ -89,7 +89,7 @@
         <video
           id="sourceVideo"
           class="source-video"
-          src="./assets/clips/culture_thap_ba_01m19s-01m49s.mp4"
+          src="./assets/replacement-videos/nguyen-hue-360-0500-0530.mp4"
           crossorigin="anonymous"
           playsinline
           loop
@@ -131,6 +131,23 @@
             <input id="participantConsentInput" type="checkbox" />
             <span>I consent to webcam gaze recording for this research session.</span>
           </label>
+          <div id="participantGazeSetup" class="participant-gaze-setup" data-provider="webgazer">
+            <label class="field-stack">
+              <span>Eye tracker</span>
+              <select id="participantGazeProviderSelect">
+                <option value="webgazer">WebGazer</option>
+                <option value="seeso">Eyedid SeeSo</option>
+              </select>
+            </label>
+            <label class="field-stack participant-seeso-key">
+              <span>Eyedid key</span>
+              <input id="participantSeeSoLicenseKeyInput" type="password" autocomplete="off" placeholder="License key" />
+            </label>
+            <div class="participant-status participant-gaze-status">
+              <span>Tracker</span>
+              <strong id="participantGazeSetupStatus">WebGazer selected</strong>
+            </div>
+          </div>
           <button id="participantStartButton" class="primary wide-action" type="button" disabled>Start Participant Session</button>
           <div class="participant-status">
             <span>Stage</span>
@@ -140,7 +157,7 @@
         <section id="participantSessionPanel" class="panel-section participant-session-panel" hidden>
           <p class="section-label">Session Flow</p>
           <div class="participant-actions">
-            <button id="participantCalibrateButton" type="button">Calibrate</button>
+            <button id="participantCalibrateButton" type="button">Calibrate Webcam</button>
             <button id="participantAccuracyButton" type="button">Check Accuracy</button>
             <button id="participantRecordButton" class="primary" type="button">Start Recording</button>
             <button id="participantExportButton" type="button">Export JSON</button>
@@ -169,12 +186,14 @@
           <label class="field-label">
             <span>Study video</span>
             <select id="studyVideoSelect">
-              <option value="culture-3d">Culture - Thap Ba (3D/360)</option>
-              <option value="culture-2d">Culture - Thap Ba (2D)</option>
-              <option value="modern-3d">Modern (3D flat)</option>
-              <option value="modern-2d">Modern (2D)</option>
-              <option value="nature-3d">Nature - Tam Coc (3D/360)</option>
-              <option value="nature-2d">Nature - Tam Coc (2D)</option>
+              <option value="nguyen-hue-360-0500">Nguyen Hue 5:00-5:30 (360)</option>
+              <option value="nguyen-hue-360-0532">Nguyen Hue 5:32-6:02 (360)</option>
+              <option value="nguyen-hue-2d-0500">Nguyen Hue 5:00-5:30 (2D)</option>
+              <option value="nguyen-hue-2d-0532">Nguyen Hue 5:32-6:02 (2D)</option>
+              <option value="culture-thap-ba-360">Thap Ba 1:19-1:49 (360)</option>
+              <option value="culture-thap-ba-2d">Thap Ba 1:19-1:49 (2D)</option>
+              <option value="nature-tam-coc-360">Tam Coc 4:31-5:01 (360)</option>
+              <option value="nature-tam-coc-2d">Tam Coc 4:31-5:01 (2D)</option>
             </select>
           </label>
           <div class="metadata-grid">
@@ -204,6 +223,21 @@
           <div class="segmented">
             <button id="mouseModeButton" type="button">Mouse demo</button>
             <button id="webcamModeButton" class="is-active" type="button">Webcam gaze</button>
+          </div>
+          <label class="field-label compact-field">
+            <span>Gaze engine</span>
+            <select id="gazeProviderSelect">
+              <option value="webgazer">WebGazer</option>
+              <option value="seeso">Eyedid SeeSo</option>
+            </select>
+          </label>
+          <label class="field-label compact-field">
+            <span>Eyedid key</span>
+            <input id="seesoLicenseKeyInput" type="password" autocomplete="off" placeholder="License key" />
+          </label>
+          <div class="tracker-status-row">
+            <span>Tracker status</span>
+            <strong id="gazeEngineStatus">WebGazer selected</strong>
           </div>
           <label class="field-label compact-field">
             <span>Calibration</span>
@@ -397,6 +431,6 @@ product</textarea>
       </aside>
     </main>
 
-    <script type="module" src="./src/app.js?v=viewer-yaw-1"></script>
+    <script type="module" src="./src/app.js?v=nguyen-hue-1"></script>
   </body>
 </html>

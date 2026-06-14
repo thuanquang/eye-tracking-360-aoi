@@ -39,7 +39,12 @@ import {
   isValidAoi,
   isValidPolygonPoints,
 } from '../aois/aoiImport.js?v=aoi-schema-1';
-import { buildAoiOverlayModels } from '../aois/aoiOverlay.js?v=aoi-overlay-1';
+import { filterGeneratedSceneBackgroundAois } from '../aois/generatedAoiFilter.js?v=generated-filter-1';
+import {
+  buildAoiOverlayModels,
+  createAoiOverlayRedrawGate,
+  resolveOverlayAoisAtTime,
+} from '../aois/aoiOverlay.js?v=aoi-overlay-1';
 import { getEffectiveAnalysisPadding } from '../aoiShapes.js?v=polygon-padding-2';
 import {
   getNextCameraFromDrag,
@@ -52,7 +57,7 @@ import {
   getProjectionTextureTransform,
   normalizeStereoLayout,
   normalizeVideoProjection,
-} from '../viewer/projection.js?v=modern-stereo-1';
+} from '../viewer/projection.js?v=nguyen-hue-360-1';
 import {
   applyViewportCalibration,
   distanceBetweenPoints,
@@ -74,6 +79,7 @@ import {
   normalizeFaceQualitySummary,
 } from '../gaze/faceQuality.js?v=face-quality-2';
 import { getValidationPolicy } from '../gaze/validationPolicy.js';
+import { recordTargetCaptureRejection } from '../gaze/validationRetryPolicy.js';
 import {
   ACCURACY_REFINEMENT_POINTS,
   VALIDATION_POINTS,
@@ -112,9 +118,14 @@ import {
   getDefaultStudyVideo,
   validateAoiVideoCompatibility,
   videoInfoFromStudyVideo,
-} from './studyVideos.js?v=generated-aoi-1';
+} from './studyVideos.js?v=nguyen-hue-1';
 import { queryAppDom } from './dom.js';
 import { createMouseProvider } from '../gaze/providers/mouseProvider.js?v=gaze-providers-1';
+import {
+  buildSeeSoRedirectUrl,
+  createSeeSoProvider,
+  parseSeeSoCalibrationDataFromUrl,
+} from '../gaze/providers/seesoProvider.js?v=gaze-providers-1';
 import { createWebGazerProvider } from '../gaze/providers/webgazerProvider.js?v=gaze-providers-1';
 
 export function createAppController({
@@ -129,6 +140,12 @@ export function createAppController({
   let sourceVideoInfo = createInitialVideoInfo();
   let selectedStudyVideo = getDefaultStudyVideo();
   let webcamProvider = null;
+  let activeGazeProviderId = null;
+  let webcamStartPromise = null;
+  let webcamStartProviderId = null;
+  let selectedGazeProviderId = 'webgazer';
+  let seeSoLicenseKeyValue = '';
+  let aoiOverlayVersion = 0;
 
   let recordingSampleScheduler = createSampleScheduler({ intervalMs: RECORDING_SAMPLE_INTERVAL_MS });
   const GAZE_SMOOTHING_ALPHA = GAZE_SMOOTHING.alpha;
@@ -147,11 +164,19 @@ export function createAppController({
   const TARGET_SAMPLE_DELAY_MS = GAZE_TIMING.targetSampleDelayMs;
   const MIN_ACCEPTED_REFINEMENT_TARGETS = TARGET_CAPTURE.minAcceptedRefinementTargets;
   const MIN_ACCEPTED_VALIDATION_TARGETS = TARGET_CAPTURE.minAcceptedValidationTargets;
+  const VALIDATION_MAX_ATTEMPTS_PER_TARGET = TARGET_CAPTURE.validationMaxAttemptsPerTarget;
   const LIVE_QUALITY_MAX_EVENTS = LIVE_QUALITY.maxEvents;
   const LIVE_QUALITY_MIN_EVENTS = LIVE_QUALITY.minEvents;
   const LIVE_QUALITY_MAX_BAD_RATE = LIVE_QUALITY.maxBadRate;
   const LIVE_QUALITY_MAX_CONSECUTIVE_BAD = LIVE_QUALITY.maxConsecutiveBad;
   const FACE_QUALITY_MAX_CONSECUTIVE_FAILURES = 3;
+  const GAZE_PROVIDER_STORAGE_KEY = 'aoi.gazeProvider';
+  const SEESO_LICENSE_KEY_STORAGE_KEY = 'aoi.seesoLicenseKey';
+  const SEESO_CALIBRATION_DATA_STORAGE_KEY = 'aoi.seesoCalibrationData';
+  const SEESO_CALIBRATION_USER_ID_STORAGE_KEY = 'aoi.seesoCalibrationUserId';
+  const PARTICIPANT_DRAFT_STORAGE_KEY = 'aoi.participantDraft';
+  const PARTICIPANT_SESSION_STORAGE_KEY = 'aoi.participantSession';
+  const SEESO_CALIBRATION_POINT_COUNT = 5;
 
   const dom = queryAppDom(document);
   const {
@@ -167,6 +192,9 @@ export function createAppController({
     resetViewButton,
     mouseModeButton,
     webcamModeButton,
+    gazeProviderSelect,
+    seesoLicenseKeyInput,
+    gazeEngineStatus,
     calibrateButton,
     accuracyButton,
     rawGazeDiagnosticButton,
@@ -221,6 +249,10 @@ export function createAppController({
     participantNameInput,
     participantAgeInput,
     participantConsentInput,
+    participantGazeSetup,
+    participantGazeProviderSelect,
+    participantSeeSoLicenseKeyInput,
+    participantGazeSetupStatus,
     participantStartButton,
     participantStageLabel,
     participantSessionPanel,
@@ -245,6 +277,9 @@ export function createAppController({
     state.lastAoiStabilityAt = 0;
   }
 
+  const aoiOverlayRedrawGate = createAoiOverlayRedrawGate({ minIntervalMs: 50 });
+  const miniMapRedrawGate = createAoiOverlayRedrawGate({ minIntervalMs: 50 });
+  let textureTransformSignature = '';
   const mouseProvider = createMouseProvider({
     viewer,
     onGaze: (gaze) => {
@@ -364,12 +399,218 @@ export function createAppController({
   }
 
   function hasSelectOption(select, value) {
+    if (!select) {
+      return false;
+    }
+
     return Array.from(select.options).some((option) => option.value === value);
   }
 
   function setSelectValueIfOptionExists(select, value) {
     if (hasSelectOption(select, value)) {
       select.value = value;
+    }
+  }
+
+  function getLocalStorageValue(key) {
+    try {
+      return window.localStorage?.getItem(key) ?? '';
+    } catch {
+      return '';
+    }
+  }
+
+  function setLocalStorageValue(key, value) {
+    try {
+      if (value === null || value === undefined || value === '') {
+        window.localStorage?.removeItem(key);
+        return;
+      }
+
+      window.localStorage?.setItem(key, String(value));
+    } catch {
+      // Local storage is optional; private browsing and locked-down embeds can block it.
+    }
+  }
+
+  function getSessionStorageValue(key) {
+    try {
+      return window.sessionStorage?.getItem(key) ?? '';
+    } catch {
+      return '';
+    }
+  }
+
+  function setSessionStorageValue(key, value) {
+    try {
+      if (value === null || value === undefined || value === '') {
+        window.sessionStorage?.removeItem(key);
+        return;
+      }
+
+      window.sessionStorage?.setItem(key, String(value));
+    } catch {
+      // Participant flow still works without session storage; the user will re-enter details.
+    }
+  }
+
+  function parseStoredJson(value) {
+    if (!value) {
+      return null;
+    }
+
+    try {
+      const parsed = JSON.parse(value);
+      return parsed && typeof parsed === 'object' ? parsed : null;
+    } catch {
+      return null;
+    }
+  }
+
+  function getSelectedGazeProviderId() {
+    return selectedGazeProviderId;
+  }
+
+  function isSeeSoProviderSelected() {
+    return getSelectedGazeProviderId() === 'seeso';
+  }
+
+  function normalizeGazeProviderId(providerId) {
+    return providerId === 'seeso' ? 'seeso' : 'webgazer';
+  }
+
+  function setGazeProviderControlValue(providerId) {
+    selectedGazeProviderId = normalizeGazeProviderId(providerId);
+    setSelectValueIfOptionExists(gazeProviderSelect, selectedGazeProviderId);
+    setSelectValueIfOptionExists(participantGazeProviderSelect, selectedGazeProviderId);
+    syncAdminGazeSetupControls();
+    syncParticipantGazeSetupControls();
+  }
+
+  function persistSelectedGazeProvider(providerId = getSelectedGazeProviderId()) {
+    setGazeProviderControlValue(providerId);
+    setLocalStorageValue(GAZE_PROVIDER_STORAGE_KEY, getSelectedGazeProviderId());
+  }
+
+  function getSeeSoLicenseKey() {
+    return seeSoLicenseKeyValue.trim();
+  }
+
+  function setSeeSoLicenseKeyControlValue(value) {
+    seeSoLicenseKeyValue = String(value ?? '');
+    if (seesoLicenseKeyInput) {
+      seesoLicenseKeyInput.value = seeSoLicenseKeyValue;
+    }
+    if (participantSeeSoLicenseKeyInput) {
+      participantSeeSoLicenseKeyInput.value = seeSoLicenseKeyValue;
+    }
+    syncAdminGazeSetupControls();
+    syncParticipantGazeSetupControls();
+  }
+
+  function persistSeeSoLicenseKey(event = null) {
+    setSeeSoLicenseKeyControlValue(event?.target?.value ?? seeSoLicenseKeyValue);
+    setLocalStorageValue(SEESO_LICENSE_KEY_STORAGE_KEY, getSeeSoLicenseKey());
+    syncParticipantSessionControls();
+  }
+
+  function getSeeSoCalibrationDataFromUrl() {
+    return parseSeeSoCalibrationDataFromUrl(window.location.href);
+  }
+
+  function persistSeeSoCalibrationDataFromUrl() {
+    const calibrationData = getSeeSoCalibrationDataFromUrl();
+    if (!calibrationData) {
+      return null;
+    }
+
+    setLocalStorageValue(SEESO_CALIBRATION_DATA_STORAGE_KEY, calibrationData);
+
+    try {
+      const cleanedUrl = buildSeeSoRedirectUrl(window.location.href);
+      window.history?.replaceState?.(null, '', cleanedUrl.toString());
+    } catch {
+      // A clean address bar is nice-to-have; the stored calibration is the important part.
+    }
+
+    return calibrationData;
+  }
+
+  function getSeeSoCalibrationData() {
+    return getSeeSoCalibrationDataFromUrl()
+      ?? getLocalStorageValue(SEESO_CALIBRATION_DATA_STORAGE_KEY)
+      ?? '';
+  }
+
+  function clearStoredSeeSoCalibrationData() {
+    setLocalStorageValue(SEESO_CALIBRATION_DATA_STORAGE_KEY, '');
+    syncParticipantGazeSetupControls();
+  }
+
+  function getSeeSoCalibrationUserId() {
+    const existingUserId = getLocalStorageValue(SEESO_CALIBRATION_USER_ID_STORAGE_KEY);
+    if (existingUserId) {
+      return existingUserId;
+    }
+
+    const nextUserId = `aoi-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    setLocalStorageValue(SEESO_CALIBRATION_USER_ID_STORAGE_KEY, nextUserId);
+    return nextUserId;
+  }
+
+  function initializeGazeProviderControls() {
+    setSeeSoLicenseKeyControlValue(getLocalStorageValue(SEESO_LICENSE_KEY_STORAGE_KEY));
+
+    const params = new URLSearchParams(window.location.search);
+    const requestedProvider = params.get('gazeProvider') === 'seeso'
+      ? 'seeso'
+      : getLocalStorageValue(GAZE_PROVIDER_STORAGE_KEY);
+    setGazeProviderControlValue(requestedProvider);
+
+    const returnedCalibrationData = persistSeeSoCalibrationDataFromUrl();
+    if (returnedCalibrationData && isSeeSoProviderSelected()) {
+      state.webcamCalibrationTrained = true;
+      setAccuracySummary(null);
+      setWebcamStatus('calibrated');
+      setNotice('Eyedid SeeSo calibration data returned. Start webcam gaze, then run accuracy validation before recording.', false);
+    }
+  }
+
+  function stopWebcamProviderForSwitch() {
+    webcamStartPromise = null;
+    webcamStartProviderId = null;
+    webcamProvider?.stop?.();
+    webcamProvider = null;
+    activeGazeProviderId = null;
+    state.webcamStarted = false;
+    state.webcamCalibrationTrained = false;
+    state.gaze = createDefaultGaze();
+    state.rawPageGaze = null;
+    state.rawViewerGaze = null;
+    state.rawGazeAt = 0;
+    state.rawGazeDiagnostic = {
+      active: false,
+      index: 0,
+      targets: [],
+      latestSummary: null,
+    };
+    state.gazeDropReason = null;
+    state.droppedGazeSamples = 0;
+    state.gazeStreamStats = null;
+    setRawDiagnosticStatus(null);
+    clearAccuracyRefinement();
+    resetFaceQualityValidationState();
+  }
+
+  function handleGazeProviderChange(event = null) {
+    persistSelectedGazeProvider(event?.target?.value ?? getSelectedGazeProviderId());
+    stopWebcamProviderForSwitch();
+    setWebcamStatus('idle');
+    setNotice(`${getSelectedGazeProviderId() === 'seeso' ? 'Eyedid SeeSo' : 'WebGazer'} selected. Start webcam gaze before recording.`, false);
+    syncParticipantSessionControls();
+
+    if (state.mode === 'webcam' && state.appMode !== 'participant') {
+      void setWebcamMode();
     }
   }
 
@@ -411,6 +652,7 @@ export function createAppController({
     if (clearAois) {
       activeAois = [];
       resetAoiStability();
+      invalidateAoiOverlay();
       aoiSource = 'none';
       registeredProjectMetadata = { video: { ...sourceVideoInfo } };
       state.selectedAoiId = null;
@@ -429,7 +671,7 @@ export function createAppController({
   function getRequestedAppMode() {
     const params = new URLSearchParams(window.location.search);
     if (!params.has('mode')) {
-      return 'select';
+      return 'admin';
     }
 
     const mode = params.get('mode');
@@ -450,6 +692,26 @@ export function createAppController({
     };
   }
 
+  function applyParticipantMetadataToInputs(metadata = {}) {
+    participantIdInput.value = typeof metadata.id === 'string' ? metadata.id : '';
+    participantNameInput.value = typeof metadata.name === 'string' ? metadata.name : '';
+    participantAgeInput.value = Number.isFinite(Number(metadata.age)) ? String(metadata.age) : '';
+    participantConsentInput.checked = Boolean(metadata.consent);
+  }
+
+  function persistParticipantDraft() {
+    setSessionStorageValue(PARTICIPANT_DRAFT_STORAGE_KEY, JSON.stringify(collectParticipantMetadata()));
+  }
+
+  function persistParticipantSessionState() {
+    if (!state.participant.startedAt) {
+      setSessionStorageValue(PARTICIPANT_SESSION_STORAGE_KEY, '');
+      return;
+    }
+
+    setSessionStorageValue(PARTICIPANT_SESSION_STORAGE_KEY, JSON.stringify(state.participant));
+  }
+
   function isParticipantMetadataValid(metadata) {
     return (
       metadata.id.length > 0 &&
@@ -461,6 +723,33 @@ export function createAppController({
     );
   }
 
+  function restoreParticipantState() {
+    const draft = parseStoredJson(getSessionStorageValue(PARTICIPANT_DRAFT_STORAGE_KEY));
+    if (draft) {
+      applyParticipantMetadataToInputs(draft);
+    }
+
+    const session = parseStoredJson(getSessionStorageValue(PARTICIPANT_SESSION_STORAGE_KEY));
+    if (
+      session?.startedAt &&
+      isParticipantMetadataValid({
+        id: String(session.id ?? ''),
+        name: String(session.name ?? ''),
+        age: Number(session.age),
+        consent: Boolean(session.consent),
+      })
+    ) {
+      state.participant = {
+        id: String(session.id),
+        name: String(session.name),
+        age: Number(session.age),
+        consent: Boolean(session.consent),
+        startedAt: String(session.startedAt),
+      };
+      applyParticipantMetadataToInputs(state.participant);
+    }
+  }
+
   function updateParticipantStartState() {
     if (state.appMode !== 'participant') {
       return;
@@ -468,6 +757,80 @@ export function createAppController({
 
     const metadata = collectParticipantMetadata();
     participantStartButton.disabled = !isParticipantMetadataValid(metadata);
+  }
+
+  function handleParticipantMetadataChange() {
+    persistParticipantDraft();
+    updateParticipantStartState();
+  }
+
+  function syncAdminGazeSetupControls() {
+    const isSeeSo = isSeeSoProviderSelected();
+    const hasSeeSoKey = Boolean(getSeeSoLicenseKey());
+    const hasSeeSoCalibration = Boolean(getSeeSoCalibrationData());
+    const hasProviderCalibration = isSeeSo
+      ? hasSeeSoCalibration || state.webcamCalibrationTrained
+      : state.webcamCalibrationTrained;
+    const canRunAccuracy = hasProviderCalibration && (!isSeeSo || hasSeeSoKey);
+    const canOpenCalibration = !isSeeSo || hasSeeSoKey;
+
+    if (!isSeeSo) {
+      gazeEngineStatus.textContent = state.webcamCalibrationTrained
+        ? 'WebGazer calibrated'
+        : 'WebGazer selected';
+      calibrateButton.textContent = 'Calibrate webcam';
+      accuracyButton.textContent = 'Check accuracy';
+    } else {
+      calibrateButton.textContent = hasSeeSoCalibration
+        ? 'Recalibrate Eyedid'
+        : 'Open Eyedid Calibration';
+      accuracyButton.textContent = 'Start Gaze + Check Accuracy';
+
+      if (!hasSeeSoKey) {
+        gazeEngineStatus.textContent = 'Enter Eyedid key';
+      } else if (hasProviderCalibration) {
+        gazeEngineStatus.textContent = 'Eyedid calibration ready';
+      } else {
+        gazeEngineStatus.textContent = 'Eyedid ready to calibrate';
+      }
+    }
+
+    calibrateButton.disabled = !canOpenCalibration;
+    accuracyButton.disabled = !canRunAccuracy;
+    recordButton.disabled = false;
+
+    calibrateButton.classList.toggle('primary', !state.isRecording && canOpenCalibration && !hasProviderCalibration);
+    accuracyButton.classList.toggle('primary', !state.isRecording && canRunAccuracy && !state.accuracyValidated);
+    recordButton.classList.toggle('primary', !state.isRecording);
+  }
+
+  function syncParticipantGazeSetupControls() {
+    const providerId = getSelectedGazeProviderId();
+    const isSeeSo = providerId === 'seeso';
+    const hasSeeSoKey = Boolean(getSeeSoLicenseKey());
+    const hasSeeSoCalibration = Boolean(getSeeSoCalibrationData());
+
+    participantGazeSetup.dataset.provider = providerId;
+
+    if (!isSeeSo) {
+      participantGazeSetupStatus.textContent = 'WebGazer selected';
+      participantCalibrateButton.textContent = 'Calibrate Webcam';
+      participantAccuracyButton.textContent = 'Check Accuracy';
+      return;
+    }
+
+    participantCalibrateButton.textContent = hasSeeSoCalibration
+      ? 'Recalibrate Eyedid'
+      : 'Open Eyedid Calibration';
+    participantAccuracyButton.textContent = 'Start Gaze + Check Accuracy';
+
+    if (!hasSeeSoKey) {
+      participantGazeSetupStatus.textContent = 'Enter Eyedid key';
+    } else if (hasSeeSoCalibration || state.webcamCalibrationTrained) {
+      participantGazeSetupStatus.textContent = 'Eyedid calibration ready';
+    } else {
+      participantGazeSetupStatus.textContent = 'Eyedid ready to calibrate';
+    }
   }
 
   function setParticipantFlowStep(step) {
@@ -485,9 +848,17 @@ export function createAppController({
   function syncParticipantSessionControls() {
     const isParticipant = state.appMode === 'participant';
     const isStarted = Boolean(state.participant.startedAt);
+    const providerId = getSelectedGazeProviderId();
+    const isSeeSo = providerId === 'seeso';
+    const hasSeeSoKey = Boolean(getSeeSoLicenseKey());
+    const hasSeeSoCalibration = Boolean(getSeeSoCalibrationData());
+    const hasProviderCalibration = isSeeSo
+      ? hasSeeSoCalibration || state.webcamCalibrationTrained
+      : state.webcamCalibrationTrained;
 
     appShell.classList.toggle('is-participant-started', isParticipant && isStarted);
     participantSessionPanel.hidden = !isParticipant || !isStarted;
+    syncParticipantGazeSetupControls();
 
     if (!isParticipant) {
       return;
@@ -500,7 +871,19 @@ export function createAppController({
     }
 
     participantRecordButton.textContent = state.isRecording ? 'Stop Recording' : 'Start Recording';
-    participantRecordButton.classList.toggle('primary', !state.isRecording);
+    participantCalibrateButton.classList.toggle(
+      'primary',
+      !state.isRecording && !hasProviderCalibration && (!isSeeSo || hasSeeSoKey),
+    );
+    participantAccuracyButton.classList.toggle(
+      'primary',
+      !state.isRecording && !state.accuracyValidated && hasProviderCalibration && (!isSeeSo || hasSeeSoKey),
+    );
+    participantRecordButton.classList.toggle('primary', !state.isRecording && state.accuracyValidated);
+    participantCalibrateButton.disabled = state.isRecording || (isSeeSo && !hasSeeSoKey);
+    participantAccuracyButton.disabled = state.isRecording || !hasProviderCalibration || (isSeeSo && !hasSeeSoKey);
+    participantRecordButton.disabled = !state.isRecording && !canRecordCurrentMode();
+    participantExportButton.disabled = state.samples.length === 0;
 
     if (state.isRecording) {
       setParticipantFlowStep('recording');
@@ -511,7 +894,19 @@ export function createAppController({
     } else if (state.accuracyValidated) {
       setParticipantFlowStep('recording');
       setParticipantStage('Ready: start recording');
-    } else if (state.webcamStatus === 'calibrated' || state.webcamStatus === 'validating') {
+    } else if (isSeeSo && !hasSeeSoKey) {
+      setParticipantFlowStep('calibration');
+      setParticipantStage('Enter Eyedid key');
+    } else if (isSeeSo && !hasProviderCalibration) {
+      setParticipantFlowStep('calibration');
+      setParticipantStage('Ready: open Eyedid calibration');
+    } else if (!isSeeSo && !hasProviderCalibration) {
+      setParticipantFlowStep('calibration');
+      setParticipantStage('Ready: calibrate WebGazer');
+    } else if (state.webcamStatus === 'validating') {
+      setParticipantFlowStep('calibration');
+      setParticipantStage('Checking accuracy');
+    } else if (state.webcamStatus === 'calibrated' || hasProviderCalibration) {
       setParticipantFlowStep('calibration');
       setParticipantStage('Ready: check accuracy');
     } else {
@@ -534,9 +929,13 @@ export function createAppController({
     participantModeLink.classList.toggle('is-active', isParticipant);
 
     if (isParticipant) {
-      setParticipantStage('Enter details');
       updateParticipantStartState();
-      setNotice('Enter participant details, then start the session.', true);
+      if (state.participant.startedAt) {
+        setNotice('Participant session restored. Continue with calibration, accuracy, or recording.', true);
+      } else {
+        setParticipantStage('Enter details');
+        setNotice('Enter participant details, then start the session.', true);
+      }
       syncParticipantSessionControls();
     }
 
@@ -569,9 +968,14 @@ export function createAppController({
       ...metadata,
       startedAt: new Date().toISOString(),
     };
+    persistParticipantDraft();
+    persistParticipantSessionState();
     selectWebcamMode();
-    setParticipantStage('Ready: calibrate webcam');
-    setNotice('Participant session ready. Calibrate webcam, check accuracy, then start recording.', true);
+    const setupMessage = isSeeSoProviderSelected()
+      ? 'Participant session ready. Open Eyedid calibration, check accuracy, then start recording.'
+      : 'Participant session ready. Calibrate webcam, check accuracy, then start recording.';
+    setParticipantStage('Ready: calibrate tracker');
+    setNotice(setupMessage, true);
     syncParticipantSessionControls();
     resize();
     await requestParticipantFullscreen();
@@ -780,6 +1184,21 @@ export function createAppController({
     return resolveAoisForAnalysis(activeAois, sourceVideo.currentTime || 0, dimensions);
   }
 
+  function getOverlayRenderableAois() {
+    if (state.reviewActive && state.reviewSamples.length) {
+      const sampleIndex = findReviewSampleIndex(state.reviewSamples, sourceVideo.currentTime || 0);
+      const sample = state.reviewSamples[sampleIndex >= 0 ? sampleIndex : 0];
+
+      if (Array.isArray(sample?.activeAois) && sample.activeAois.length) {
+        return resolveOverlayAoisAtTime(sample.activeAois, sample.t || 0);
+      }
+
+      return resolveOverlayAoisAtTime(activeAois, sample?.t || 0);
+    }
+
+    return resolveOverlayAoisAtTime(activeAois, sourceVideo.currentTime || 0);
+  }
+
   function clampNumber(value, min, max) {
     return Math.min(max, Math.max(min, value));
   }
@@ -941,13 +1360,65 @@ export function createAppController({
     });
   }
 
-  function drawAoiOverlay() {
+  function invalidateAoiOverlay() {
+    aoiOverlayVersion += 1;
+  }
+
+  function buildAoiOverlaySignature(rect, videoRect) {
+    const dynamicTimeBucket = activeAois.some((aoi) => (
+      Array.isArray(aoi.keyframes) && aoi.keyframes.length
+    ))
+      ? Math.round((sourceVideo.currentTime || 0) * 10)
+      : 0;
+    const draftPointCount = Array.isArray(state.manualAnnotation.points)
+      ? state.manualAnnotation.points.length
+      : 0;
+
+    return [
+      aoiOverlayVersion,
+      Math.round(rect.width),
+      Math.round(rect.height),
+      Math.round((videoRect.x || 0) * 10),
+      Math.round((videoRect.y || 0) * 10),
+      Math.round(videoRect.width * 10),
+      Math.round(videoRect.height * 10),
+      Math.round(state.cameraYaw * 10),
+      Math.round(state.cameraPitch * 10),
+      Math.round(camera.fov * 10),
+      dynamicTimeBucket,
+      state.selectedAoiId || '',
+      state.manualAnnotation.mode,
+      state.manualAnnotation.dragIndex ?? '',
+      draftPointCount,
+    ].join('|');
+  }
+
+  function drawAoiOverlay({
+    nowMs = performance.now(),
+    force = true,
+    dragMode = false,
+    minRedrawIntervalMs,
+  } = {}) {
     const rect = viewer.getBoundingClientRect();
 
     if (!rect.width || !rect.height) {
       aoiOverlay.replaceChildren();
       return;
     }
+
+    const videoRect = getCurrentVideoRect(rect);
+    const signature = buildAoiOverlaySignature(rect, videoRect);
+
+    if (!aoiOverlayRedrawGate.shouldRedraw({
+      signature,
+      nowMs,
+      force,
+      minIntervalMs: minRedrawIntervalMs,
+    })) {
+      return;
+    }
+
+    const renderableAois = getOverlayRenderableAois();
 
     aoiOverlay.setAttribute('viewBox', `0 0 ${rect.width} ${rect.height}`);
     aoiOverlay.setAttribute('width', String(rect.width));
@@ -956,11 +1427,12 @@ export function createAppController({
     const fragment = document.createDocumentFragment();
 
     const models = buildAoiOverlayModels({
-      aois: getRenderableAois(),
+      aois: renderableAois,
       rect,
-      videoRect: getCurrentVideoRect(rect),
+      videoRect,
       camera: { yaw: state.cameraYaw, pitch: state.cameraPitch, fov: camera.fov },
       supportsColor: (color) => window.CSS?.supports('color', color),
+      dragMode,
     });
 
     models.forEach((model) => {
@@ -968,7 +1440,7 @@ export function createAppController({
       shape.setAttribute('class', 'aoi-overlay-shape');
       shape.setAttribute('points', model.points.map((point) => `${point.x.toFixed(1)},${point.y.toFixed(1)}`).join(' '));
       shape.setAttribute('fill', model.color);
-      shape.setAttribute('fill-opacity', '0.16');
+      shape.setAttribute('fill-opacity', String(model.fillOpacity ?? 0.16));
       shape.setAttribute('stroke', model.color);
       shape.dataset.aoiId = model.id;
       fragment.appendChild(shape);
@@ -1029,8 +1501,8 @@ export function createAppController({
     }
   }
 
-  function registerAois(aois, source) {
-    const loadedAois = extractAoisFromJson(aois);
+  function registerAois(aois, source, { preserveManualAnnotation = false } = {}) {
+    const loadedAois = filterGeneratedSceneBackgroundAois(extractAoisFromJson(aois));
     const projectMetadata = extractProjectMetadataFromJson(aois);
 
     if (!loadedAois.length || !loadedAois.every(isValidAoi)) {
@@ -1044,11 +1516,14 @@ export function createAppController({
 
     activeAois = withEffectiveAoisAnalysisPadding(loadedAois, getViewerAnalysisDimensions());
     resetAoiStability();
+    invalidateAoiOverlay();
     aoiSource = source;
     registeredProjectMetadata = projectMetadata;
     state.selectedAoiId = null;
     applyVideoMetadataControls(registeredProjectMetadata.video || {});
-    setManualAnnotationIdle();
+    if (!preserveManualAnnotation) {
+      setManualAnnotationIdle();
+    }
     renderAoiList();
   }
 
@@ -1074,7 +1549,9 @@ export function createAppController({
         return;
       }
 
-      registerAois(await response.json(), aoiPath);
+      registerAois(await response.json(), aoiPath, {
+        preserveManualAnnotation: state.manualAnnotation.mode === 'drawing',
+      });
       setNotice(`Loaded generated AOIs for ${video.label}.`, false);
     } catch (error) {
       if (loadId !== generatedAoiLoadId || selectedStudyVideo.id !== video.id) {
@@ -1083,6 +1560,7 @@ export function createAppController({
 
       activeAois = [];
       resetAoiStability();
+      invalidateAoiOverlay();
       aoiSource = 'none';
       registeredProjectMetadata = { video: { ...sourceVideoInfo } };
       state.selectedAoiId = null;
@@ -1187,11 +1665,22 @@ export function createAppController({
       stereoLayout: getCurrentStereoLayout(),
       eye: sourceVideoInfo.stereoEye || 'left',
     });
-    videoTexture.offset.set(transform.offsetX, transform.offsetY);
-    videoTexture.repeat.set(transform.repeatX, transform.repeatY);
-    videoTexture.updateMatrix();
-    videoTexture.needsUpdate = true;
-    material.needsUpdate = true;
+    const textureSignature = [
+      material.map?.uuid || '',
+      transform.offsetX,
+      transform.offsetY,
+      transform.repeatX,
+      transform.repeatY,
+    ].join('|');
+
+    if (textureSignature !== textureTransformSignature && material.map) {
+      material.map.offset.set(transform.offsetX, transform.offsetY);
+      material.map.repeat.set(transform.repeatX, transform.repeatY);
+      material.map.updateMatrix();
+      material.map.needsUpdate = true;
+      material.needsUpdate = true;
+      textureTransformSignature = textureSignature;
+    }
     sphere.visible = !isFlat;
     flatVideoPlane.visible = isFlat;
 
@@ -1219,6 +1708,7 @@ export function createAppController({
   function setWebcamStatus(status) {
     state.webcamStatus = status;
     webcamStatusLabel.textContent = status;
+    syncAdminGazeSetupControls();
     syncParticipantSessionControls();
   }
 
@@ -1230,9 +1720,17 @@ export function createAppController({
     await webcamProvider?.resetCalibration();
 
     state.gaze = createDefaultGaze();
+    state.webcamCalibrationTrained = false;
     state.rawPageGaze = null;
     state.rawViewerGaze = null;
     state.rawGazeAt = 0;
+    state.rawGazeDiagnostic = {
+      active: false,
+      index: 0,
+      targets: [],
+      latestSummary: null,
+    };
+    setRawDiagnosticStatus(null);
     clearAccuracyRefinement();
     state.gazeDropReason = null;
     state.droppedGazeSamples = 0;
@@ -1242,17 +1740,20 @@ export function createAppController({
   function setAccuracySummary(summary) {
     if (!summary || summary.quality === 'untested') {
       accuracyStatusLabel.textContent = 'untested';
+      syncAdminGazeSetupControls();
       syncParticipantSessionControls();
       return;
     }
 
     if (state.accuracyValidated && state.correctedAccuracySummary) {
       accuracyStatusLabel.textContent = `validated ${Math.round(state.correctedAccuracySummary.meanPx)}px`;
+      syncAdminGazeSetupControls();
       syncParticipantSessionControls();
       return;
     }
 
     accuracyStatusLabel.textContent = `${summary.quality} ${Math.round(summary.meanPx)}px`;
+    syncAdminGazeSetupControls();
     syncParticipantSessionControls();
   }
 
@@ -1288,6 +1789,7 @@ export function createAppController({
     state.localAccuracyErrorModel = null;
     state.accuracySamples = [];
     state.validationSamples = [];
+    state.accuracyTargetRejectCounts = [];
     state.accuracyValidated = false;
     state.accuracyValidatedAt = null;
     state.accuracyInvalidationReason = null;
@@ -1313,6 +1815,7 @@ export function createAppController({
     mouseModeButton.classList.add('is-active');
     webcamModeButton.classList.remove('is-active');
     modeLabel.textContent = 'mouse';
+    syncAdminGazeSetupControls();
   }
 
   function selectWebcamMode() {
@@ -1322,6 +1825,7 @@ export function createAppController({
     mouseModeButton.classList.remove('is-active');
     webcamModeButton.classList.add('is-active');
     modeLabel.textContent = 'webcam';
+    syncAdminGazeSetupControls();
   }
 
   function resetLiveGazeQuality() {
@@ -1764,22 +2268,29 @@ export function createAppController({
     registerLiveGazeQualityEvent({ accepted: true, reason: null });
   }
 
-  async function ensureWebcamGaze() {
-    if (!window.webgazer) {
+  async function startWebcamGazeProvider(providerId) {
+    if (state.webcamStarted || webcamProvider) {
+      stopWebcamProviderForSwitch();
+    }
+
+    if (providerId === 'webgazer' && !window.webgazer) {
       setNotice('WebGazer did not load. Check internet access or use mouse gaze mode.');
       setWebcamStatus('unloaded');
       return false;
     }
 
-    if (state.webcamStarted) {
-      return true;
+    if (providerId === 'seeso' && !getSeeSoLicenseKey()) {
+      setNotice('Eyedid SeeSo license key is required before starting webcam gaze.');
+      setWebcamStatus('no key');
+      return false;
     }
 
     setWebcamStatus('starting');
 
+    let provider = null;
+
     try {
-      webcamProvider = createWebGazerProvider({
-        webgazer: window.webgazer,
+      const providerCallbacks = {
         onGaze: (data) => {
           if (state.mode !== 'webcam') {
             return;
@@ -1788,16 +2299,87 @@ export function createAppController({
           processWebcamGaze(data);
         },
         onFaceQuality: handleFaceQuality,
-      });
-      await webcamProvider.start();
+      };
+
+      if (providerId === 'seeso') {
+        const calibrationData = getSeeSoCalibrationData();
+        provider = createSeeSoProvider({
+          licenseKey: getSeeSoLicenseKey(),
+          calibrationData,
+          windowRef: window,
+          navigatorRef: window.navigator,
+          ...providerCallbacks,
+        });
+        state.webcamCalibrationTrained = Boolean(calibrationData);
+      } else {
+        provider = createWebGazerProvider({
+          webgazer: window.webgazer,
+          ...providerCallbacks,
+        });
+      }
+
+      webcamProvider = provider;
+      await provider.start();
+
+      if (webcamProvider !== provider || getSelectedGazeProviderId() !== providerId) {
+        provider.stop?.();
+        if (webcamProvider === provider) {
+          webcamProvider = null;
+          activeGazeProviderId = null;
+          state.webcamStarted = false;
+        }
+        return false;
+      }
+
       state.webcamStarted = true;
-      blockWebGazerMouseTraining();
-      setWebcamStatus('active');
+      activeGazeProviderId = providerId;
+      if (providerId === 'webgazer') {
+        blockWebGazerMouseTraining();
+      }
+      setWebcamStatus(state.webcamCalibrationTrained ? 'calibrated' : 'active');
       return true;
     } catch (error) {
-      setNotice(`Could not start webcam gaze: ${error.message}`);
-      setWebcamStatus('blocked');
+      if (webcamProvider === provider) {
+        provider?.stop?.();
+        webcamProvider = null;
+        activeGazeProviderId = null;
+        state.webcamStarted = false;
+        state.webcamCalibrationTrained = false;
+        setNotice(`Could not start webcam gaze: ${error.message}`);
+        setWebcamStatus('blocked');
+      }
       return false;
+    }
+  }
+
+  async function ensureWebcamGaze() {
+    const providerId = getSelectedGazeProviderId();
+
+    if (state.webcamStarted && activeGazeProviderId === providerId) {
+      return true;
+    }
+
+    if (webcamStartPromise && webcamStartProviderId === providerId) {
+      return webcamStartPromise;
+    }
+
+    if (webcamStartPromise) {
+      const previousStartPromise = webcamStartPromise;
+      stopWebcamProviderForSwitch();
+      await previousStartPromise.catch(() => false);
+    }
+
+    const startPromise = startWebcamGazeProvider(providerId);
+    webcamStartPromise = startPromise;
+    webcamStartProviderId = providerId;
+
+    try {
+      return await startPromise;
+    } finally {
+      if (webcamStartPromise === startPromise) {
+        webcamStartPromise = null;
+        webcamStartProviderId = null;
+      }
     }
   }
 
@@ -1807,7 +2389,11 @@ export function createAppController({
 
     const started = await ensureWebcamGaze();
     if (started) {
-      setNotice('Webcam gaze is active. Calibrate before recording for usable AOI data.', false);
+      const providerName = activeGazeProviderId === 'seeso' ? 'Eyedid SeeSo' : 'WebGazer';
+      const calibrationMessage = state.webcamCalibrationTrained
+        ? 'Run accuracy validation before recording.'
+        : 'Calibrate before recording for usable AOI data.';
+      setNotice(`${providerName} webcam gaze is active. ${calibrationMessage}`, false);
     }
   }
 
@@ -1894,6 +2480,10 @@ export function createAppController({
     return RAW_GAZE_DIAGNOSTIC.targets[state.rawGazeDiagnostic.index];
   }
 
+  function setRawDiagnosticModeActive(active) {
+    viewer.classList.toggle('is-raw-diagnostic', active);
+  }
+
   function setRawDiagnosticStatus(summary = null) {
     if (!summary) {
       rawGazeDiagnosticStatus.textContent = 'Raw gaze diagnostic not run.';
@@ -1912,7 +2502,7 @@ export function createAppController({
     calibrationTarget.style.setProperty('--target-y', `${point.y}%`);
     calibrationOverlay.dataset.cardPosition = `${cardVerticalPosition}-${cardHorizontalPosition}`;
     calibrationProgress.textContent = `Raw gaze ${state.rawGazeDiagnostic.index + 1} of ${RAW_GAZE_DIAGNOSTIC.targets.length}`;
-    calibrationDescription.textContent = 'Look at the target, then click it. This measures raw WebGazer noise without training.';
+    calibrationDescription.textContent = 'Look at the target, then click it. This measures raw webcam gaze noise before app correction.';
   }
 
   async function startRawGazeDiagnostic() {
@@ -1920,6 +2510,19 @@ export function createAppController({
     await setWebcamMode();
 
     if (!state.webcamStarted) {
+      return;
+    }
+
+    if (!state.webcamCalibrationTrained) {
+      state.rawGazeDiagnostic = {
+        active: false,
+        index: 0,
+        targets: [],
+        latestSummary: null,
+      };
+      setRawDiagnosticStatus(null);
+      setWebcamStatus('active');
+      setNotice('Calibrate webcam before running Raw Gaze Diagnostic. Webcam gaze needs calibration before it can emit a usable raw cursor.', true);
       return;
     }
 
@@ -1931,6 +2534,7 @@ export function createAppController({
       latestSummary: null,
     };
     pauseVideoForTargetMode();
+    setRawDiagnosticModeActive(true);
     setCalibrationProfileSelectLocked(true);
     setValidationPolicySelectLocked(true);
     calibrationOverlay.hidden = false;
@@ -1957,14 +2561,21 @@ export function createAppController({
     await delay(RAW_GAZE_DIAGNOSTIC.settleDelayMs);
 
     for (let index = 0; index < RAW_GAZE_DIAGNOSTIC.samplesPerTarget; index += 1) {
-      if (Number.isFinite(state.rawViewerGaze?.x) && Number.isFinite(state.rawViewerGaze?.y)) {
+      const rawGaze = getFreshRawViewerGaze();
+      if (rawGaze) {
         samples.push({
-          x: state.rawViewerGaze.x,
-          y: state.rawViewerGaze.y,
+          x: rawGaze.x,
+          y: rawGaze.y,
           atMs: performance.now() - startedAt,
         });
       }
       await delay(RAW_GAZE_DIAGNOSTIC.sampleDelayMs);
+    }
+
+    if (!samples.length) {
+      setTargetCapturing(false);
+      setNotice('Waiting for raw webcam gaze. Keep your face in view until the cursor appears, then click the target again.', true);
+      return;
     }
 
     const durationMs = performance.now() - startedAt;
@@ -1984,6 +2595,7 @@ export function createAppController({
       state.rawGazeDiagnostic.latestSummary = summary;
       state.rawGazeDiagnostic.active = false;
       calibrationOverlay.hidden = true;
+      setRawDiagnosticModeActive(false);
       setCalibrationProfileSelectLocked(false);
       setValidationPolicySelectLocked(false);
       setWebcamStatus('calibrated');
@@ -1996,8 +2608,50 @@ export function createAppController({
     positionRawDiagnosticTarget();
   }
 
+  async function startSeeSoHostedCalibration() {
+    persistSeeSoLicenseKey();
+
+    if (!getSeeSoLicenseKey()) {
+      setNotice('Eyedid SeeSo license key is required before opening calibration.');
+      setWebcamStatus('no key');
+      return;
+    }
+
+    clearStoredSeeSoCalibrationData();
+    state.webcamCalibrationTrained = false;
+    clearAccuracyRefinement();
+    persistParticipantDraft();
+    persistParticipantSessionState();
+
+    const redirectUrl = buildSeeSoRedirectUrl(window.location.href).toString();
+    setNotice('Opening Eyedid SeeSo hosted calibration. Return here after it finishes.', false);
+    try {
+      const calibrationProvider = webcamProvider?.openCalibrationPage
+        ? webcamProvider
+        : createSeeSoProvider({
+          licenseKey: getSeeSoLicenseKey(),
+          windowRef: window,
+          navigatorRef: window.navigator,
+          onGaze: () => {},
+        });
+      await calibrationProvider.openCalibrationPage({
+        redirectUrl,
+        calibrationPointCount: SEESO_CALIBRATION_POINT_COUNT,
+        userId: getSeeSoCalibrationUserId(),
+      });
+    } catch (error) {
+      setNotice(`Could not open Eyedid SeeSo calibration: ${error.message}`);
+    }
+  }
+
   async function startCalibration() {
     stopActiveRecordingForTargetMode();
+
+    if (isSeeSoProviderSelected()) {
+      await startSeeSoHostedCalibration();
+      return;
+    }
+
     await setWebcamMode();
 
     if (!state.webcamStarted) {
@@ -2026,6 +2680,7 @@ export function createAppController({
       resetFaceQualityValidationState();
     } else if (state.targetMode === 'raw-diagnostic') {
       state.rawGazeDiagnostic.active = false;
+      setRawDiagnosticModeActive(false);
     }
 
     calibrationOverlay.hidden = true;
@@ -2068,6 +2723,7 @@ export function createAppController({
     state.calibrationIndex += 1;
 
     if (state.calibrationIndex >= calibrationTargetCount) {
+      state.webcamCalibrationTrained = true;
       calibrationOverlay.hidden = true;
       setCalibrationProfileSelectLocked(false);
       setValidationPolicySelectLocked(false);
@@ -2082,6 +2738,13 @@ export function createAppController({
 
   async function startAccuracyCheck() {
     stopActiveRecordingForTargetMode();
+
+    if (isSeeSoProviderSelected() && !getSeeSoCalibrationData()) {
+      setNotice('Open Eyedid SeeSo calibration before running accuracy validation.', true);
+      syncParticipantSessionControls();
+      return;
+    }
+
     await setWebcamMode();
 
     if (!state.webcamStarted) {
@@ -2094,6 +2757,7 @@ export function createAppController({
     state.accuracyIndex = 0;
     state.accuracySamples = [];
     state.validationSamples = [];
+    state.accuracyTargetRejectCounts = [];
     state.accuracyValidated = false;
     state.accuracyValidatedAt = null;
     state.accuracyInvalidationReason = null;
@@ -2116,6 +2780,19 @@ export function createAppController({
     setAccuracySummary(null);
     state.activeValidationPolicyId = validationPolicy.id;
     positionTargetOverlay();
+  }
+
+  async function abortAccuracyCheckForUnstableTarget(targetSampleSummary, rejection) {
+    clearAccuracyRefinement();
+    calibrationOverlay.hidden = true;
+    setCalibrationProfileSelectLocked(false);
+    setValidationPolicySelectLocked(false);
+    setWebcamStatus('calibrated');
+    const reason = targetSampleSummary.reason === 'unstable'
+      ? `Accuracy check stopped because target ${state.accuracyIndex + 1} stayed unstable after ${rejection.attempts} attempts.`
+      : `Accuracy check stopped because target ${state.accuracyIndex + 1} did not produce enough fresh gaze samples after ${rejection.attempts} attempts.`;
+    setNotice(`${reason} Recalibrate or improve tracker stability before recording.`, true);
+    await restoreVideoAfterTargetMode();
   }
 
   async function captureAccuracyPoint() {
@@ -2165,10 +2842,24 @@ export function createAppController({
     });
 
     if (!targetSampleSummary.accepted) {
+      const rejection = recordTargetCaptureRejection(
+        state.accuracyTargetRejectCounts[state.accuracyIndex],
+        { maxAttempts: VALIDATION_MAX_ATTEMPTS_PER_TARGET },
+      );
+      state.accuracyTargetRejectCounts[state.accuracyIndex] = rejection.attempts;
+
+      if (rejection.shouldAbort) {
+        await abortAccuracyCheckForUnstableTarget(targetSampleSummary, rejection);
+        return;
+      }
+
       positionTargetOverlay();
+      const retryMessage = rejection.remainingAttempts === 1
+        ? 'One retry left for this target.'
+        : `${rejection.remainingAttempts} retries left for this target.`;
       calibrationDescription.textContent = targetSampleSummary.reason === 'unstable'
-        ? 'Gaze was too unstable. Keep your face steady and retry this target.'
-        : 'Not enough fresh webcam gaze samples. Keep looking at the target and retry.';
+        ? `Gaze was too unstable. ${retryMessage}`
+        : `Not enough fresh webcam gaze samples. ${retryMessage}`;
       return;
     }
 
@@ -2304,6 +2995,54 @@ export function createAppController({
     return gaze;
   }
 
+  function getFreshRawViewerGaze(now = performance.now()) {
+    return getRecentRawViewerGaze(now, FRESH_GAZE_MAX_AGE_MS);
+  }
+
+  function getRecentRawViewerGaze(now = performance.now(), maxAgeMs = FRESH_GAZE_MAX_AGE_MS) {
+    if (
+      Number.isFinite(state.rawViewerGaze?.x) &&
+      Number.isFinite(state.rawViewerGaze?.y) &&
+      state.rawGazeAt > 0 &&
+      now - state.rawGazeAt <= maxAgeMs
+    ) {
+      return state.rawViewerGaze;
+    }
+
+    return null;
+  }
+
+  function renderRawDiagnosticCursor(now = performance.now()) {
+    const rawGaze = getRecentRawViewerGaze(now, RAW_GAZE_DIAGNOSTIC.cursorHoldMs);
+
+    if (!rawGaze) {
+      screenReadout.textContent = 'waiting for raw webcam gaze';
+      panoramaReadout.textContent = '--';
+      hitReadout.textContent = 'none';
+      gazeDot.style.transform = 'translate(-100px, -100px)';
+      state.latestPoint = null;
+      state.latestHits = [];
+      state.latestAois = [];
+      state.latestAoiClassification = null;
+      state.latestUncertainty = null;
+      return;
+    }
+
+    const gaze = clampGazeToViewer(rawGaze);
+    if (!gaze.visible) {
+      screenReadout.textContent = 'raw webcam gaze outside viewer';
+      panoramaReadout.textContent = '--';
+      hitReadout.textContent = 'none';
+      gazeDot.style.transform = 'translate(-100px, -100px)';
+      return;
+    }
+
+    gazeDot.style.transform = `translate(${gaze.x}px, ${gaze.y}px)`;
+    screenReadout.textContent = `raw x ${Math.round(gaze.x)}, y ${Math.round(gaze.y)}`;
+    panoramaReadout.textContent = '--';
+    hitReadout.textContent = 'none';
+  }
+
   function clampToViewer(value, max) {
     return Math.min(max, Math.max(0, value));
   }
@@ -2425,7 +3164,7 @@ export function createAppController({
     };
   }
 
-  function getCurrentPanoramaPoint() {
+  function getCurrentPanoramaPoint({ useOverlayAois = false } = {}) {
     if (state.reviewActive) {
       return getCurrentReviewPanoramaPoint();
     }
@@ -2492,7 +3231,9 @@ export function createAppController({
     return {
       gaze,
       timeSec,
-      aois: resolveAoisForAnalysis(activeAois, timeSec, analysisDimensions),
+      aois: useOverlayAois
+        ? resolveOverlayAoisAtTime(activeAois, timeSec)
+        : resolveAoisForAnalysis(activeAois, timeSec, analysisDimensions),
       viewport: analysisDimensions,
       point: screenPointToYawPitch({
         x: gaze.x,
@@ -2573,11 +3314,20 @@ export function createAppController({
       : `${held}, ${drop}`;
   }
 
-  function updateReadout() {
-    const current = getCurrentPanoramaPoint();
-
+  function updateReadout({ skipAoiClassification = false } = {}) {
     cameraReadout.textContent = `yaw ${formatDegrees(state.cameraYaw)}, pitch ${formatDegrees(state.cameraPitch)}`;
     updateGazeQualityReadout();
+
+    if (state.targetMode === 'raw-diagnostic' && !calibrationOverlay.hidden) {
+      renderRawDiagnosticCursor();
+      return;
+    }
+
+    if (skipAoiClassification) {
+      return;
+    }
+
+    const current = getCurrentPanoramaPoint({ useOverlayAois: !state.isRecording });
 
     if (!current) {
       screenReadout.textContent = state.mode === 'webcam' && state.gazeDropReason === 'out-of-bounds'
@@ -2759,10 +3509,33 @@ export function createAppController({
     }
   }
 
-  function drawMiniMap() {
+  function buildMiniMapSignature(width, height) {
+    const dynamicTimeBucket = activeAois.some((aoi) => (
+      Array.isArray(aoi.keyframes) && aoi.keyframes.length
+    ))
+      ? Math.round((sourceVideo.currentTime || 0) * 10)
+      : 0;
+
+    return [
+      aoiOverlayVersion,
+      width,
+      height,
+      getCurrentProjection(),
+      dynamicTimeBucket,
+      state.latestPoint ? Math.round(state.latestPoint.yaw * 10) : '',
+      state.latestPoint ? Math.round(state.latestPoint.pitch * 10) : '',
+    ].join('|');
+  }
+
+  function drawMiniMap({ nowMs = performance.now(), force = true } = {}) {
     const ctx = miniMap.getContext('2d');
     const width = miniMap.width;
     const height = miniMap.height;
+    const signature = buildMiniMapSignature(width, height);
+
+    if (!miniMapRedrawGate.shouldRedraw({ signature, nowMs, force })) {
+      return;
+    }
 
     ctx.clearRect(0, 0, width, height);
     ctx.fillStyle = '#0b0d0a';
@@ -2783,7 +3556,7 @@ export function createAppController({
       ctx.stroke();
     }
 
-    resolveAoisAtTime(activeAois, sourceVideo.currentTime || 0).forEach((aoi) => {
+    getOverlayRenderableAois().forEach((aoi) => {
       ctx.fillStyle = `${aoi.color}33`;
       ctx.strokeStyle = aoi.color;
       ctx.lineWidth = 2;
@@ -2872,9 +3645,21 @@ export function createAppController({
     syncReviewPlaybackWindow();
     syncProjectionMesh();
     updateCamera();
-    updateReadout();
-    drawAoiOverlay();
-    drawMiniMap();
+    const isDraggingCamera = viewer.classList.contains('is-dragging');
+    updateReadout({
+      skipAoiClassification: isDraggingCamera && !state.isRecording,
+    });
+    if (isDraggingCamera) {
+      drawAoiOverlay({
+        nowMs: now,
+        force: false,
+        dragMode: true,
+        minRedrawIntervalMs: 100,
+      });
+    } else {
+      drawAoiOverlay({ nowMs: now, force: false });
+      drawMiniMap({ nowMs: now, force: false });
+    }
     maybeSample(now);
     renderer.render(scene, camera);
     requestAnimationFrame(animate);
@@ -2894,6 +3679,7 @@ export function createAppController({
     }
 
     viewer.classList.add('is-dragging');
+    drawAoiOverlay({ force: true, dragMode: true });
     viewer.setPointerCapture(event.pointerId);
     viewer.dataset.lastX = String(event.clientX);
     viewer.dataset.lastY = String(event.clientY);
@@ -2933,6 +3719,9 @@ export function createAppController({
     if (viewer.hasPointerCapture(event.pointerId)) {
       viewer.releasePointerCapture(event.pointerId);
     }
+    updateReadout();
+    drawAoiOverlay();
+    drawMiniMap();
   }
 
   async function toggleVideoPlayback() {
@@ -2986,6 +3775,7 @@ export function createAppController({
     resetRecordingSampleScheduler();
     recordButton.textContent = state.isRecording ? 'Stop Recording' : 'Start Recording';
     recordButton.classList.toggle('primary', !state.isRecording);
+    syncAdminGazeSetupControls();
     syncParticipantSessionControls();
   }
 
@@ -3228,6 +4018,7 @@ export function createAppController({
 
     activeAois = [...activeAois, aoi];
     resetAoiStability();
+    invalidateAoiOverlay();
     aoiSource = 'manual';
     cancelPolygonAnnotation();
     renderAoiList();
@@ -3293,6 +4084,7 @@ export function createAppController({
         : aoi
     ));
     resetAoiStability();
+    invalidateAoiOverlay();
 
     renderAoiList({ focusAoiId: selectedAoi.id });
     drawAoiOverlay();
@@ -3314,6 +4106,7 @@ export function createAppController({
 
     activeAois = activeAois.filter((aoi) => aoi.id !== selectedAoi.id);
     resetAoiStability();
+    invalidateAoiOverlay();
     state.selectedAoiId = null;
     setManualAnnotationIdle('Click Draw Polygon, then click around the object edge.');
     renderAoiList();
@@ -3426,6 +4219,7 @@ export function createAppController({
         : aoi
     ));
     resetAoiStability();
+    invalidateAoiOverlay();
   }
 
   function startVertexHandleDrag(event) {
@@ -3551,6 +4345,7 @@ export function createAppController({
     aoi.keyframes = [{ t: timeSec, ...aoi }];
     activeAois = [...activeAois, aoi];
     resetAoiStability();
+    invalidateAoiOverlay();
     aoiSource = 'manual';
     renderAoiList();
     drawAoiOverlay();
@@ -3651,6 +4446,8 @@ export function createAppController({
       resetViewButton.addEventListener('click', resetView);
       mouseModeButton.addEventListener('click', setMouseMode);
       webcamModeButton.addEventListener('click', setWebcamMode);
+      gazeProviderSelect.addEventListener('change', handleGazeProviderChange);
+      seesoLicenseKeyInput.addEventListener('input', persistSeeSoLicenseKey);
       calibrateButton.addEventListener('click', startCalibration);
       accuracyButton.addEventListener('click', startAccuracyCheck);
       rawGazeDiagnosticButton.addEventListener('click', startRawGazeDiagnostic);
@@ -3676,10 +4473,12 @@ export function createAppController({
       exportColabJobButton.addEventListener('click', exportColabAoiJob);
       cloudAoiResultInput.addEventListener('change', loadCloudAoiResultFile);
       recordingFileInput.addEventListener('change', loadRecordingFile);
-      participantIdInput.addEventListener('input', updateParticipantStartState);
-      participantNameInput.addEventListener('input', updateParticipantStartState);
-      participantAgeInput.addEventListener('input', updateParticipantStartState);
-      participantConsentInput.addEventListener('change', updateParticipantStartState);
+      participantIdInput.addEventListener('input', handleParticipantMetadataChange);
+      participantNameInput.addEventListener('input', handleParticipantMetadataChange);
+      participantAgeInput.addEventListener('input', handleParticipantMetadataChange);
+      participantConsentInput.addEventListener('change', handleParticipantMetadataChange);
+      participantGazeProviderSelect.addEventListener('change', handleGazeProviderChange);
+      participantSeeSoLicenseKeyInput.addEventListener('input', persistSeeSoLicenseKey);
       participantStartButton.addEventListener('click', startParticipantSession);
       participantCalibrateButton.addEventListener('click', startCalibration);
       participantAccuracyButton.addEventListener('click', startAccuracyCheck);
@@ -3698,12 +4497,14 @@ export function createAppController({
         }
       });
       setStudyVideo(selectedStudyVideo.id, { clearAois: true });
+      initializeGazeProviderControls();
+      restoreParticipantState();
       syncSelectedCalibrationProfileState();
       syncSelectedValidationPolicyState();
       resize();
       updateCamera();
       selectWebcamMode();
-      setWebcamStatus('idle');
+      setWebcamStatus(state.webcamCalibrationTrained ? 'calibrated' : 'idle');
       syncVideoNotice();
       applyAppMode();
       animate();

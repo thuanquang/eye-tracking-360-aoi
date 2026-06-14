@@ -12,18 +12,21 @@ test('creates fresh app state without shared mutable arrays', () => {
   const second = createInitialAppState();
 
   first.samples.push({ t: 1 });
+  first.accuracyTargetRejectCounts.push(1);
   first.gaze.x = 123;
   first.rawGazeDiagnostic.targets.push({ id: 'x' });
   first.aoiStability.scores.sign = 1;
 
   assert.equal(second.samples.length, 0);
+  assert.deepEqual(second.accuracyTargetRejectCounts, []);
   assert.equal(second.gaze.x, 0);
   assert.equal(second.gaze.visible, false);
+  assert.equal(second.webcamCalibrationTrained, false);
   assert.deepEqual(second.selectedCalibrationProfile, {
     id: 'standard',
     label: 'Standard',
-    pointCount: 14,
-    samplesPerPoint: 12,
+    pointCount: 9,
+    samplesPerPoint: 2,
   });
   assert.equal(second.calibrationProfile, null);
   assert.equal(second.selectedValidationPolicyId, 'prototype');
@@ -51,9 +54,9 @@ test('creates fresh app state without shared mutable arrays', () => {
 test('creates initial video metadata for the default study video', () => {
   assert.deepEqual(createInitialVideoInfo(), {
     kind: 'study-video',
-    id: 'culture-3d',
-    name: 'culture_thap_ba_01m19s-01m49s.mp4',
-    path: 'assets/clips/culture_thap_ba_01m19s-01m49s.mp4',
+    id: 'nguyen-hue-360-0500',
+    name: 'nguyen-hue-360-0500-0530.mp4',
+    path: 'assets/replacement-videos/nguyen-hue-360-0500-0530.mp4',
     type: 'video/mp4',
     size: null,
     lastModified: null,

@@ -10,7 +10,7 @@ import {
   buildVideoPackageMetadata,
 } from '../src/recording/recordingExport.js';
 
-const STANDARD_PROFILE = { id: 'standard', label: 'Standard', pointCount: 14 };
+const STANDARD_PROFILE = { id: 'standard', label: 'Standard', pointCount: 9 };
 const RESEARCH_39_PROFILE = { id: 'research-39', label: 'Research 39', pointCount: 39 };
 const RESEARCH_78_PROFILE = { id: 'research-78', label: 'Research 78', pointCount: 78 };
 const POLICY_FAILURE = { metric: 'effectiveHz', actual: 12, limit: 20, comparator: '>=' };

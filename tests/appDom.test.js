@@ -45,6 +45,9 @@ test('queryAppDom resolves core app selectors', () => {
     '#resetViewButton',
     '#mouseModeButton',
     '#webcamModeButton',
+    '#gazeProviderSelect',
+    '#seesoLicenseKeyInput',
+    '#gazeEngineStatus',
     '#calibrateButton',
     '#accuracyButton',
     '#rawGazeDiagnosticButton',
@@ -99,6 +102,10 @@ test('queryAppDom resolves core app selectors', () => {
     '#participantNameInput',
     '#participantAgeInput',
     '#participantConsentInput',
+    '#participantGazeSetup',
+    '#participantGazeProviderSelect',
+    '#participantSeeSoLicenseKeyInput',
+    '#participantGazeSetupStatus',
     '#participantStartButton',
     '#participantStageLabel',
     '#participantSessionPanel',
@@ -120,6 +127,13 @@ test('queryAppDom resolves core app selectors', () => {
   assert.equal(dom.viewer.selector, '#viewer');
   assert.equal(dom.sourceVideo.selector, '#sourceVideo');
   assert.equal(dom.studyVideoSelect.selector, '#studyVideoSelect');
+  assert.equal(dom.gazeProviderSelect.selector, '#gazeProviderSelect');
+  assert.equal(dom.seesoLicenseKeyInput.selector, '#seesoLicenseKeyInput');
+  assert.equal(dom.gazeEngineStatus.selector, '#gazeEngineStatus');
+  assert.equal(dom.participantGazeSetup.selector, '#participantGazeSetup');
+  assert.equal(dom.participantGazeProviderSelect.selector, '#participantGazeProviderSelect');
+  assert.equal(dom.participantSeeSoLicenseKeyInput.selector, '#participantSeeSoLicenseKeyInput');
+  assert.equal(dom.participantGazeSetupStatus.selector, '#participantGazeSetupStatus');
   assert.equal(dom.calibrationProfileSelect.selector, '#calibrationProfileSelect');
   assert.equal(dom.validationPolicySelect.selector, '#validationPolicySelect');
   assert.equal(dom.rawGazeDiagnosticButton.selector, '#rawGazeDiagnosticButton');

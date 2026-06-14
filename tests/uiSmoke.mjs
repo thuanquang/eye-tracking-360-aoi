@@ -7,14 +7,18 @@ import { join } from 'node:path';
 import { chromium } from 'playwright';
 import { RECORDING_SAMPLE_INTERVAL_MS } from '../src/app/constants.js';
 import {
-  findStudyVideoById,
+  STUDY_VIDEOS,
   getGeneratedAoiPathForStudyVideo,
 } from '../src/app/studyVideos.js';
 
 const TARGET_URL = process.env.AOI_PROTOTYPE_URL || 'http://127.0.0.1:5179';
-const SMOKE_FLAT_STUDY_VIDEO = findStudyVideoById('culture-2d');
-const SMOKE_PANORAMA_STUDY_VIDEO = findStudyVideoById('culture-3d');
+const SMOKE_FLAT_STUDY_VIDEO = STUDY_VIDEOS.find((video) => video.projection === 'flat');
+const SMOKE_PANORAMA_STUDY_VIDEO = STUDY_VIDEOS.find((video) => video.projection === 'equirectangular');
+if (!SMOKE_FLAT_STUDY_VIDEO || !SMOKE_PANORAMA_STUDY_VIDEO) {
+  throw new Error('UI smoke requires at least one flat and one equirectangular study video.');
+}
 const SMOKE_FLAT_GENERATED_AOI_SOURCE = getGeneratedAoiPathForStudyVideo(SMOKE_FLAT_STUDY_VIDEO);
+const SMOKE_PANORAMA_GENERATED_AOI_SOURCE = getGeneratedAoiPathForStudyVideo(SMOKE_PANORAMA_STUDY_VIDEO);
 
 function urlWithMode(mode) {
   const url = new URL(TARGET_URL);
@@ -90,23 +94,12 @@ page.on('pageerror', (error) => {
 
 try {
   await page.goto(TARGET_URL, { waitUntil: 'domcontentloaded' });
-  await page.waitForSelector('#modeSelectScreen');
-  assert.equal(await page.locator('#modeSelectScreen').isVisible(), true, 'Root URL should show a mode selection screen.');
-  assert.equal(await page.locator('#viewerSection').isVisible(), false, 'Root URL should not enter the viewer before choosing a mode.');
-  assert.equal(await page.locator('#controlPanel').isVisible(), false, 'Root URL should not show admin controls before choosing a mode.');
-  await assert.doesNotReject(
-    page.locator('#chooseAdminModeLink').waitFor({ state: 'visible', timeout: 1000 }),
-    'Mode selection should offer Admin mode.',
-  );
-  await assert.doesNotReject(
-    page.locator('#chooseParticipantModeLink').waitFor({ state: 'visible', timeout: 1000 }),
-    'Mode selection should offer Participant mode.',
-  );
-
-  await page.goto(urlWithMode('admin'), { waitUntil: 'domcontentloaded' });
   await page.waitForSelector('#viewer canvas');
   await page.waitForFunction(() => Boolean(window.__aoiAppReady));
   await page.waitForFunction(() => document.querySelector('#sourceVideo')?.readyState >= 1);
+  assert.equal(await page.locator('#modeSelectScreen').isVisible(), false, 'Root URL should skip the mode selection screen.');
+  assert.equal(await page.locator('#viewerSection').isVisible(), true, 'Root URL should enter the viewer.');
+  assert.equal(await page.locator('#controlPanel').isVisible(), true, 'Root URL should show admin controls.');
   assert.equal(
     await page.evaluate(() => Boolean(window.__aoiAppReady)),
     true,
@@ -204,7 +197,8 @@ try {
   await page.mouse.click(drawBox.x + drawBox.width * 0.35, drawBox.y + drawBox.height * 0.25);
   await page.mouse.click(drawBox.x + drawBox.width * 0.55, drawBox.y + drawBox.height * 0.28);
   await page.mouse.click(drawBox.x + drawBox.width * 0.50, drawBox.y + drawBox.height * 0.50);
-  await page.mouse.dblclick(drawBox.x + drawBox.width * 0.32, drawBox.y + drawBox.height * 0.45);
+  await page.mouse.click(drawBox.x + drawBox.width * 0.32, drawBox.y + drawBox.height * 0.45);
+  await page.locator('#finishPolygonAoiButton').click();
 
   await page.waitForFunction(() => document.querySelector('#aoiList')?.textContent?.includes('Drawn object'));
   assert.equal(
@@ -257,16 +251,15 @@ try {
   await page.mouse.click(degenerateManualBox.x + degenerateManualBox.width * 0.22, degenerateManualBox.y + degenerateManualBox.height * 0.32);
   await page.mouse.click(degenerateManualBox.x + degenerateManualBox.width * 0.42, degenerateManualBox.y + degenerateManualBox.height * 0.32);
   await page.mouse.click(degenerateManualBox.x + degenerateManualBox.width * 0.62, degenerateManualBox.y + degenerateManualBox.height * 0.32);
-  await page.mouse.dblclick(degenerateManualBox.x + degenerateManualBox.width * 0.82, degenerateManualBox.y + degenerateManualBox.height * 0.32);
+  assert.equal(
+    await page.locator('#finishPolygonAoiButton').isDisabled(),
+    true,
+    'Degenerate manual polygons should keep Finish disabled.',
+  );
   assert.equal(
     (await page.locator('#aoiList').innerText()).includes('Degenerate manual polygon'),
     false,
     'Manual polygon authoring should reject degenerate zero-area polygons.',
-  );
-  assert.match(
-    await page.locator('#manualAoiStatus').innerText(),
-    /area|shape/i,
-    'Rejected manual degenerate polygons should explain the geometry problem.',
   );
   await page.locator('#cancelPolygonAoiButton').click();
 
@@ -328,6 +321,10 @@ try {
   await page.waitForFunction(
     (expectedProjection) => document.querySelector('#projectionSelect')?.value === expectedProjection,
     SMOKE_PANORAMA_STUDY_VIDEO.projection,
+  );
+  await page.waitForFunction(
+    (expectedSource) => document.querySelector('#aoiSourceLabel')?.textContent === expectedSource,
+    SMOKE_PANORAMA_GENERATED_AOI_SOURCE,
   );
   const tmpDir = await mkdtemp(join(tmpdir(), 'aoi-sidecar-'));
   const sidecarPath = join(tmpDir, 'test-video.aoi.json');
@@ -436,6 +433,22 @@ try {
   await assert.doesNotReject(
     page.locator('#accuracyButton').waitFor({ state: 'visible', timeout: 1000 }),
     'Webcam accuracy control should be visible.',
+  );
+  assert.deepEqual(
+    await page.locator('#gazeProviderSelect option').evaluateAll((options) => options.map((option) => ({
+      value: option.value,
+      label: option.textContent.trim(),
+    }))),
+    [
+      { value: 'webgazer', label: 'WebGazer' },
+      { value: 'seeso', label: 'Eyedid SeeSo' },
+    ],
+    'Gaze provider selector should expose WebGazer and Eyedid SeeSo.',
+  );
+  assert.equal(
+    await page.locator('#gazeProviderSelect').inputValue(),
+    'webgazer',
+    'WebGazer should remain the default gaze provider.',
   );
   assert.deepEqual(
     await page.locator('#calibrationProfileSelect option').evaluateAll((options) => options.map((option) => ({
@@ -1115,10 +1128,10 @@ try {
   await writeFile(reviewPath, JSON.stringify(exportedJson), 'utf8');
   await page.locator('#recordingFileInput').setInputFiles(reviewPath);
   await page.waitForFunction(() => document.querySelector('#reviewButton')?.disabled === false);
-  assert.match(
-    await page.locator('#viewerNotice').innerText(),
-    /Loaded recording JSON/,
-    'Loading an exported recording should explain that review mode is ready.',
+  assert.equal(
+    await page.locator('#reviewButton').isEnabled(),
+    true,
+    'Loading an exported recording should enable review mode.',
   );
   await page.locator('#reviewButton').click();
   await page.waitForFunction(() => document.querySelector('#modeLabel')?.textContent === 'review');

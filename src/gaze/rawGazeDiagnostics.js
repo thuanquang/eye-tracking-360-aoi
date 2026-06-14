@@ -39,7 +39,6 @@ function distance(a, b) {
 
 function qualityForTarget({ medianJitterPx, p90JitterPx, biasPx, effectiveHz, missingRate }) {
   if (
-    effectiveHz < 15 ||
     missingRate > 0.35 ||
     medianJitterPx > 70 ||
     p90JitterPx > 140 ||
@@ -106,6 +105,34 @@ function worstQuality(qualities) {
   return 'good';
 }
 
+function getUnusableReason({ p90JitterPx, p90BiasPx, effectiveHz, missingRate }) {
+  if (missingRate > 0.35) {
+    return `Raw gaze missing rate ${Math.round(missingRate * 100)}% is too high for recording.`;
+  }
+
+  if (p90BiasPx > 220) {
+    return `Raw gaze bias ${Math.round(p90BiasPx)}px is too high for recording.`;
+  }
+
+  return `Raw gaze jitter ${Math.round(p90JitterPx)}px is too high for recording.`;
+}
+
+function getCoarseReason({ p90JitterPx, p90BiasPx, effectiveHz, missingRate }) {
+  if (effectiveHz < 22) {
+    return `Raw gaze is coarse: sample rate ${Math.round(effectiveHz)} Hz.`;
+  }
+
+  if (missingRate > 0.2) {
+    return `Raw gaze is coarse: missing rate ${Math.round(missingRate * 100)}%.`;
+  }
+
+  if (p90BiasPx > 140) {
+    return `Raw gaze is coarse: p90 bias ${Math.round(p90BiasPx)}px.`;
+  }
+
+  return `Raw gaze is coarse: p90 jitter ${Math.round(p90JitterPx)}px.`;
+}
+
 export function summarizeRawGazeDiagnostic({ targets = [] } = {}) {
   const medianJitterPx = median(targets.map((target) => target.medianJitterPx)) ?? Infinity;
   const p90JitterPx = percentile(targets.map((target) => target.p90JitterPx), 0.9) ?? Infinity;
@@ -115,9 +142,9 @@ export function summarizeRawGazeDiagnostic({ targets = [] } = {}) {
   const quality = worstQuality(targets.map((target) => target.quality));
   const shouldBlockRecording = quality === 'unusable';
   const reason = shouldBlockRecording
-    ? `Raw gaze jitter ${Math.round(p90JitterPx)}px is too high for recording.`
+    ? getUnusableReason({ p90JitterPx, p90BiasPx, effectiveHz, missingRate })
     : quality === 'coarse'
-      ? `Raw gaze is coarse: p90 jitter ${Math.round(p90JitterPx)}px.`
+      ? getCoarseReason({ p90JitterPx, p90BiasPx, effectiveHz, missingRate })
       : 'Raw gaze diagnostic passed.';
 
   return {

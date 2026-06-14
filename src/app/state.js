@@ -94,6 +94,7 @@ export function createInitialAppState() {
     isRecording: false,
     webcamStarted: false,
     webcamStatus: 'idle',
+    webcamCalibrationTrained: false,
     rawPageGaze: null,
     rawViewerGaze: null,
     rawGazeAt: 0,
@@ -144,6 +145,7 @@ export function createInitialAppState() {
     targetMode: 'calibration',
     targetCaptureInProgress: false,
     accuracyIndex: 0,
+    accuracyTargetRejectCounts: [],
     accuracySamples: [],
     resumeVideoAfterTargetMode: false,
   };

@@ -193,6 +193,39 @@ test('resolves static and keyframed AOIs at a video time', () => {
   );
 });
 
+test('reuses sorted dynamic AOI keyframes across repeated time resolution', () => {
+  const originalSort = Array.prototype.sort;
+  let sortCount = 0;
+  const aois = [{
+    id: 'cached-dynamic',
+    label: 'Cached dynamic',
+    yawMin: 0,
+    yawMax: 10,
+    pitchMin: -5,
+    pitchMax: 5,
+    keyframes: [
+      { t: 2, yawMin: 20, yawMax: 30, pitchMin: -5, pitchMax: 5 },
+      { t: 0, yawMin: 0, yawMax: 10, pitchMin: -5, pitchMax: 5 },
+      { t: 1, yawMin: 10, yawMax: 20, pitchMin: -5, pitchMax: 5 },
+    ],
+  }];
+
+  Array.prototype.sort = function (...args) {
+    sortCount += 1;
+    return originalSort.apply(this, args);
+  };
+
+  try {
+    assert.equal(resolveAoisAtTime(aois, 0.5)[0].yawMin, 5);
+    assert.equal(resolveAoisAtTime(aois, 1.5)[0].yawMin, 15);
+    assert.equal(resolveAoisAtTime(aois, 2)[0].yawMin, 20);
+  } finally {
+    Array.prototype.sort = originalSort;
+  }
+
+  assert.equal(sortCount, 1);
+});
+
 test('maps screen gaze to normalized flat video coordinates', () => {
   const point = screenPointToVideoPoint({
     x: 640,

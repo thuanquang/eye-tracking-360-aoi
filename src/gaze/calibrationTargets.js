@@ -1,18 +1,13 @@
 export const CALIBRATION_POINTS = [
   { x: 50, y: 50 },
-  { x: 12, y: 14 },
-  { x: 88, y: 86 },
-  { x: 88, y: 14 },
-  { x: 12, y: 86 },
-  { x: 50, y: 14 },
-  { x: 50, y: 86 },
-  { x: 12, y: 50 },
-  { x: 88, y: 50 },
-  { x: 28, y: 28 },
-  { x: 72, y: 72 },
-  { x: 72, y: 28 },
-  { x: 28, y: 72 },
-  { x: 50, y: 50 },
+  { x: 25, y: 25 },
+  { x: 50, y: 25 },
+  { x: 75, y: 25 },
+  { x: 25, y: 50 },
+  { x: 75, y: 50 },
+  { x: 25, y: 75 },
+  { x: 50, y: 75 },
+  { x: 75, y: 75 },
 ];
 
 export const ACCURACY_REFINEMENT_POINTS = [
@@ -91,13 +86,13 @@ const CALIBRATION_PROFILES = {
   standard: {
     id: 'standard',
     label: 'Standard',
-    samplesPerPoint: 12,
+    samplesPerPoint: 2,
     calibrationPoints: CALIBRATION_POINTS,
   },
   'research-39': {
     id: 'research-39',
     label: 'Research 39',
-    samplesPerPoint: 8,
+    samplesPerPoint: 2,
     calibrationPoints: [
       ...buildGridCalibrationPoints({
         columns: 7,
@@ -114,7 +109,7 @@ const CALIBRATION_PROFILES = {
   'research-78': {
     id: 'research-78',
     label: 'Research 78',
-    samplesPerPoint: 4,
+    samplesPerPoint: 1,
     calibrationPoints: buildGridCalibrationPoints({
       columns: 13,
       rows: 6,

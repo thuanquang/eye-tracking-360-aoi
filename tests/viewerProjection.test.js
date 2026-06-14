@@ -129,14 +129,31 @@ test('keeps stereo eye crop when rendering flat stereo sources', () => {
   );
 });
 
-test('browser entrypoint cache-busts Modern stereo projection modules', async () => {
+test('browser entrypoint cache-busts viewer projection modules', async () => {
   const indexSource = await readFile(new URL('../index.html', import.meta.url), 'utf8');
   const appSource = await readFile(new URL('../src/app.js', import.meta.url), 'utf8');
   const controllerSource = await readFile(new URL('../src/app/appController.js', import.meta.url), 'utf8');
 
-  assert.match(indexSource, /src="\.\/src\/app\.js\?v=viewer-yaw-1"/);
-  assert.match(appSource, /'\.\/app\/appController\.js\?v=viewer-yaw-1'/);
+  assert.match(indexSource, /src="\.\/src\/app\.js\?v=nguyen-hue-1"/);
+  assert.match(appSource, /'\.\/app\/appController\.js\?v=nguyen-hue-1'/);
   assert.match(controllerSource, /'\.\.\/aois\/aoiMath\.js\?v=aoi-active-window-1'/);
-  assert.match(controllerSource, /'\.\.\/viewer\/projection\.js\?v=modern-stereo-1'/);
-  assert.match(controllerSource, /'\.\/studyVideos\.js\?v=generated-aoi-1'/);
+  assert.match(controllerSource, /'\.\.\/viewer\/projection\.js\?v=nguyen-hue-360-1'/);
+  assert.match(controllerSource, /'\.\/studyVideos\.js\?v=nguyen-hue-1'/);
+});
+
+test('browser entrypoint lists legacy and Nguyen Hue study videos', async () => {
+  const indexSource = await readFile(new URL('../index.html', import.meta.url), 'utf8');
+
+  [
+    'culture-thap-ba-360',
+    'culture-thap-ba-2d',
+    'nature-tam-coc-360',
+    'nature-tam-coc-2d',
+    'nguyen-hue-360-0500',
+    'nguyen-hue-360-0532',
+    'nguyen-hue-2d-0500',
+    'nguyen-hue-2d-0532',
+  ].forEach((id) => {
+    assert.match(indexSource, new RegExp(`<option value="${id}"`));
+  });
 });

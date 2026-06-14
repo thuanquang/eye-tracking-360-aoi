@@ -129,15 +129,15 @@ try {
 
   assert.equal(
     await page.evaluate(() => window.__aoiRecordScreenPositionCalls.length),
-    12,
-    'Calibration should train WebGazer from target clicks even before raw gaze predictions are usable.',
+    2,
+    'Default calibration should use a small WebGazer training budget per target to avoid overfeeding noisy snapshots.',
   );
   assert.ok(
     await page.evaluate(() => {
       const calls = window.__aoiRecordScreenPositionCalls;
-      return calls.at(-1).at - calls[0].at >= 400;
+      return calls.at(-1).at - calls[0].at >= 45;
     }),
-    'Accepted calibration targets should train WebGazer across multiple video frames, not one tight burst.',
+    'Default calibration should spread repeated writes across video frames, not one tight burst.',
   );
 
   await Promise.all([
@@ -147,7 +147,7 @@ try {
 
   await page.waitForFunction(() => document.querySelector('#calibrationProgress')?.textContent?.startsWith('Target 3'));
   assert.ok(
-    await page.evaluate(() => window.__aoiRecordScreenPositionCalls.length >= 24),
+    await page.evaluate(() => window.__aoiRecordScreenPositionCalls.length >= 4),
     'Subsequent calibration targets should keep adding WebGazer training records.',
   );
   }

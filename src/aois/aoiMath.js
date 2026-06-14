@@ -281,10 +281,32 @@ function interpolateYaw(start, end, ratio) {
   return normalizeYaw(start + normalizeYaw(end - start) * ratio);
 }
 
-function findAoiKeyframePair(keyframes, timeSec) {
-  const sorted = [...keyframes]
+const keyframeCache = new WeakMap();
+
+function getSortedFiniteKeyframes(keyframes) {
+  if (!Array.isArray(keyframes)) {
+    return [];
+  }
+
+  const cached = keyframeCache.get(keyframes);
+  if (cached && cached.sourceLength === keyframes.length) {
+    return cached.sorted;
+  }
+
+  const sorted = keyframes
     .filter((keyframe) => Number.isFinite(keyframe?.t))
     .sort((a, b) => a.t - b.t);
+
+  keyframeCache.set(keyframes, {
+    sourceLength: keyframes.length,
+    sorted,
+  });
+
+  return sorted;
+}
+
+function findAoiKeyframePair(keyframes, timeSec) {
+  const sorted = getSortedFiniteKeyframes(keyframes);
 
   if (!sorted.length) {
     return null;
@@ -320,17 +342,13 @@ function isTimeInsideGeneratedTrack(aoi, timeSec) {
     return true;
   }
 
-  const times = aoi.keyframes
-    .map((keyframe) => Number(keyframe?.t))
-    .filter(Number.isFinite)
-    .sort((a, b) => a - b);
-
-  if (!times.length) {
+  const sorted = getSortedFiniteKeyframes(aoi.keyframes);
+  if (!sorted.length) {
     return true;
   }
 
-  const start = times[0];
-  const end = times[times.length - 1];
+  const start = sorted[0].t;
+  const end = sorted[sorted.length - 1].t;
   return timeSec >= start && timeSec <= end;
 }
 

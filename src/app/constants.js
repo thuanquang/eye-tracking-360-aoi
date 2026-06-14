@@ -14,7 +14,7 @@ export const GAZE_SMOOTHING = {
 export const GAZE_TIMING = {
   freshGazeMaxAgeMs: 180,
   liveGazeStaleMs: 450,
-  liveGazeHoldMs: 1350,
+  liveGazeHoldMs: 350,
   targetSettleDelayMs: 250,
   targetSampleDelayMs: 55,
 };
@@ -23,6 +23,7 @@ export const TARGET_CAPTURE = {
   maxDispersionPx: 100,
   calibrationSamplesPerPoint: 12,
   validationSamplesPerPoint: 12,
+  validationMaxAttemptsPerTarget: 2,
   minAcceptedRefinementTargets: 7,
   minAcceptedValidationTargets: 5,
 };
@@ -31,6 +32,7 @@ export const RAW_GAZE_DIAGNOSTIC = {
   samplesPerTarget: 45,
   sampleDelayMs: 33,
   settleDelayMs: 300,
+  cursorHoldMs: 1400,
   targets: [
     { id: 'center', label: 'Center', x: 50, y: 50 },
     { id: 'top', label: 'Top', x: 50, y: 20 },
