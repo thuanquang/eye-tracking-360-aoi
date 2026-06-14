@@ -140,6 +140,22 @@ try {
     page.locator('#projectionSelect').waitFor({ state: 'visible', timeout: 1000 }),
     'Admin should expose video projection metadata controls.',
   );
+  await assert.doesNotReject(
+    page.locator('#exportStatsCsvButton').waitFor({ state: 'visible', timeout: 1000 }),
+    'Admin should expose AOI stats CSV export.',
+  );
+  await assert.doesNotReject(
+    page.locator('#aoiStatsPanel').waitFor({ state: 'visible', timeout: 1000 }),
+    'Admin should expose the AOI stats panel.',
+  );
+  await assert.doesNotReject(
+    page.locator('#aoiStatsTable').waitFor({ state: 'visible', timeout: 1000 }),
+    'Admin should expose the AOI stats table.',
+  );
+  await assert.doesNotReject(
+    page.locator('#heatmapCanvas').waitFor({ state: 'visible', timeout: 1000 }),
+    'Admin should expose the compact heatmap preview.',
+  );
   const participantPage = await browser.newPage({
     viewport: { width: 1366, height: 900 },
   });
@@ -870,6 +886,13 @@ try {
     exportedJson.namedAoiMetrics.perAoi['polygon-object'].label,
     'Reviewed polygon object',
     'Named AOI metrics should retain AOI labels.',
+  );
+  await page.locator('#refreshStatsButton').click();
+  await page.waitForFunction(() => document.querySelectorAll('#aoiStatsTable tbody tr').length > 0);
+  assert.equal(
+    await page.locator('#aoiStatsTable tbody tr').count(),
+    Object.keys(exportedJson.namedAoiMetrics.perAoi).length,
+    'AOI stats table should render one row per named AOI metric after sample data exists.',
   );
   assert.equal(
     exportedJson.aois[0].color,

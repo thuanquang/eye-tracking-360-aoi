@@ -65,6 +65,10 @@ const APP_SELECTORS = [
   '#clearButton',
   '#exportButton',
   '#exportStatsCsvButton',
+  '#aoiStatsPanel',
+  '#refreshStatsButton',
+  '#aoiStatsTable',
+  '#heatmapCanvas',
   '#sampleCount',
   '#modeLabel',
   '#webcamStatusLabel',
@@ -129,6 +133,10 @@ test('queryAppDom resolves core app selectors', () => {
   assert.equal(dom.rawGazeDiagnosticStatus.selector, '#rawGazeDiagnosticStatus');
   assert.equal(dom.gazeQualityReadout.selector, '#gazeQualityReadout');
   assert.equal(dom.exportStatsCsvButton.selector, '#exportStatsCsvButton');
+  assert.equal(dom.aoiStatsPanel.selector, '#aoiStatsPanel');
+  assert.equal(dom.refreshStatsButton.selector, '#refreshStatsButton');
+  assert.equal(dom.aoiStatsTable.selector, '#aoiStatsTable');
+  assert.equal(dom.heatmapCanvas.selector, '#heatmapCanvas');
 });
 
 test('queryAppDom requires the AOI stats CSV export button', () => {

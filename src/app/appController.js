@@ -14,6 +14,7 @@ import {
 } from '../aois/aoiStability.js';
 import { buildNamedAoiMetrics } from '../recording/analysisMetrics.js?v=ui-modes-1';
 import { buildAoiStatsCsv } from '../recording/csvExport.js?v=aoi-stats-csv-1';
+import { buildPanoramaHeatmap } from '../recording/heatmapMetrics.js';
 import { buildRecordingSample } from '../recording/sampleBuilder.js?v=recording-export-1';
 import {
   createSampleScheduler,
@@ -204,6 +205,9 @@ export function createAppController({
     clearButton,
     exportButton,
     exportStatsCsvButton,
+    refreshStatsButton,
+    aoiStatsTable,
+    heatmapCanvas,
     sampleCount,
     modeLabel,
     webcamStatusLabel,
@@ -1043,6 +1047,7 @@ export function createAppController({
     });
 
     aoiList.replaceChildren(...items);
+    renderAoiStatsPanel();
     syncSelectedAoiPanel();
     if (focusAoiId) {
       focusAoiListButton(focusAoiId);
@@ -1160,6 +1165,7 @@ export function createAppController({
     state.reviewIndex = 0;
     reviewButton.disabled = false;
     sampleCount.textContent = String(samples.length);
+    renderAoiStatsPanel();
   }
 
   async function loadRecordingFile(event) {
@@ -3007,6 +3013,9 @@ export function createAppController({
     recordButton.textContent = state.isRecording ? 'Stop Recording' : 'Start Recording';
     recordButton.classList.toggle('primary', !state.isRecording);
     syncParticipantSessionControls();
+    if (!state.isRecording) {
+      renderAoiStatsPanel();
+    }
   }
 
   function clearSamples() {
@@ -3016,6 +3025,7 @@ export function createAppController({
     resetRecordingSampleScheduler();
     sampleCount.textContent = '0';
     syncParticipantSessionControls();
+    renderAoiStatsPanel();
   }
 
   async function startReviewMode() {
@@ -3043,6 +3053,7 @@ export function createAppController({
 
     updateReadout();
     drawMiniMap();
+    renderAoiStatsPanel();
 
     const reviewWindow = getReviewTimeWindow(state.reviewSamples);
     const windowLabel = reviewWindow
@@ -3068,6 +3079,7 @@ export function createAppController({
       webcamModeButton.classList.remove('is-active');
       modeLabel.textContent = 'mouse';
       setNotice('Recording review stopped.', false);
+      renderAoiStatsPanel();
       return;
     }
 
@@ -3128,13 +3140,175 @@ export function createAppController({
     });
   }
 
-  function buildCurrentNamedAoiMetrics() {
+  function getStatsPanelSamples() {
+    if (state.reviewSamples.length && (state.reviewActive || !state.samples.length)) {
+      return state.reviewSamples;
+    }
+
+    return state.samples;
+  }
+
+  function buildCurrentNamedAoiMetrics(samples = state.samples) {
     const exportAois = withEffectiveAoisAnalysisPadding(activeAois, getViewerAnalysisDimensions());
-    const namedAoiMetrics = buildNamedAoiMetrics(state.samples, exportAois, {
+    const namedAoiMetrics = buildNamedAoiMetrics(samples, exportAois, {
       sampleIntervalMs: recordingSampleScheduler.intervalMs,
     });
 
     return { exportAois, namedAoiMetrics };
+  }
+
+  function formatMetricNumber(value, suffix = '') {
+    return Number.isFinite(value) ? `${value}${suffix}` : '--';
+  }
+
+  function formatMetricSeconds(value) {
+    return Number.isFinite(value) ? `${value.toFixed(2)}s` : '--';
+  }
+
+  function formatMetricMilliseconds(value) {
+    return Number.isFinite(value) && value > 0 ? `${Math.round(value)}ms` : '--';
+  }
+
+  function createStatsCell(value, className = '') {
+    const cell = document.createElement('td');
+    cell.textContent = value;
+    if (className) {
+      cell.className = className;
+    }
+
+    return cell;
+  }
+
+  function getAoiMetricEntries(namedAoiMetrics) {
+    const perAoi = namedAoiMetrics?.perAoi;
+
+    if (Array.isArray(perAoi)) {
+      return perAoi.map((metrics, index) => [metrics?.id ?? String(index), metrics]);
+    }
+
+    return perAoi && typeof perAoi === 'object' ? Object.entries(perAoi) : [];
+  }
+
+  function renderAoiStatsTable(namedAoiMetrics, samples) {
+    const body = aoiStatsTable.tBodies[0] || aoiStatsTable.createTBody();
+    const entries = getAoiMetricEntries(namedAoiMetrics)
+      .filter(([, metrics]) => metrics && typeof metrics === 'object');
+
+    if (!entries.length) {
+      const row = document.createElement('tr');
+      const cell = createStatsCell(
+        samples.length ? 'No AOI metrics available for the current regions.' : 'No samples yet. Record or load a session to populate AOI stats.',
+        'empty-table-cell',
+      );
+      cell.colSpan = 6;
+      row.append(cell);
+      body.replaceChildren(row);
+      return;
+    }
+
+    const rows = entries.map(([key, metrics]) => {
+      const row = document.createElement('tr');
+      const label = metrics.label ?? metrics.name ?? metrics.id ?? key;
+
+      row.append(
+        createStatsCell(label, 'aoi-name-cell'),
+        createStatsCell(formatMetricSeconds(metrics.totalDwellSec)),
+        createStatsCell(formatMetricNumber(metrics.fixationCount)),
+        createStatsCell(formatMetricMilliseconds(metrics.averageFixationDurationMs)),
+        createStatsCell(formatMetricMilliseconds(metrics.timeToFirstFixationMs)),
+        createStatsCell(formatMetricNumber(metrics.percentageOfViewingTime, '%')),
+      );
+
+      return row;
+    });
+
+    body.replaceChildren(...rows);
+  }
+
+  function drawHeatmapEmptyState(ctx, width, height, message) {
+    ctx.clearRect(0, 0, width, height);
+    ctx.fillStyle = '#fcfcfd';
+    ctx.fillRect(0, 0, width, height);
+    ctx.strokeStyle = '#e4e7ec';
+    ctx.strokeRect(0.5, 0.5, width - 1, height - 1);
+    ctx.fillStyle = '#667085';
+    ctx.font = '12px Barlow, Aptos, Segoe UI, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(message, width / 2, height / 2);
+  }
+
+  function drawHeatmapPreview(samples) {
+    const ctx = heatmapCanvas.getContext('2d');
+
+    if (!ctx) {
+      return;
+    }
+
+    const width = heatmapCanvas.width;
+    const height = heatmapCanvas.height;
+    const heatmap = buildPanoramaHeatmap(samples, {
+      columns: 36,
+      rows: 18,
+      sampleIntervalMs: recordingSampleScheduler.intervalMs,
+      trustedOnly: true,
+    });
+
+    if (!heatmap.bins.length) {
+      drawHeatmapEmptyState(
+        ctx,
+        width,
+        height,
+        samples.length ? 'No trusted panorama samples' : 'No heatmap samples yet',
+      );
+      return;
+    }
+
+    const cellWidth = width / heatmap.columns;
+    const cellHeight = height / heatmap.rows;
+    const maxWeight = Math.max(...heatmap.bins.map((bin) => bin.weightSec), 0.001);
+
+    ctx.clearRect(0, 0, width, height);
+    ctx.fillStyle = '#fcfcfd';
+    ctx.fillRect(0, 0, width, height);
+    ctx.strokeStyle = 'rgba(16, 24, 40, 0.08)';
+    ctx.lineWidth = 1;
+
+    for (let column = 0; column <= heatmap.columns; column += 1) {
+      const x = Math.round(column * cellWidth) + 0.5;
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, height);
+      ctx.stroke();
+    }
+
+    for (let row = 0; row <= heatmap.rows; row += 1) {
+      const y = Math.round(row * cellHeight) + 0.5;
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(width, y);
+      ctx.stroke();
+    }
+
+    heatmap.bins.forEach((bin) => {
+      const intensity = Math.min(1, bin.weightSec / maxWeight);
+      const alpha = 0.24 + (0.62 * intensity);
+      ctx.fillStyle = `rgba(252, 119, 83, ${alpha.toFixed(3)})`;
+      ctx.fillRect(
+        bin.column * cellWidth,
+        bin.row * cellHeight,
+        Math.ceil(cellWidth),
+        Math.ceil(cellHeight),
+      );
+    });
+  }
+
+  function renderAoiStatsPanel() {
+    const samples = getStatsPanelSamples();
+    const { namedAoiMetrics } = buildCurrentNamedAoiMetrics(samples);
+
+    renderAoiStatsTable(namedAoiMetrics, samples);
+    drawHeatmapPreview(samples);
   }
 
   function exportSamples() {
@@ -3155,6 +3329,7 @@ export function createAppController({
       state,
     });
     downloadJson(payload, `aoi-samples-${Date.now()}.json`);
+    renderAoiStatsPanel();
   }
 
   function exportStatsCsv() {
@@ -3163,6 +3338,7 @@ export function createAppController({
 
     downloadText(csv, `aoi-stats-${Date.now()}.csv`, 'text/csv;charset=utf-8');
     setNotice('AOI stats CSV exported.', true);
+    renderAoiStatsPanel();
   }
 
   function createUniqueAoiId(label) {
@@ -3701,6 +3877,7 @@ export function createAppController({
       clearButton.addEventListener('click', clearSamples);
       exportButton.addEventListener('click', exportSamples);
       exportStatsCsvButton.addEventListener('click', exportStatsCsv);
+      refreshStatsButton.addEventListener('click', renderAoiStatsPanel);
       studyVideoSelect.addEventListener('change', handleStudyVideoChange);
       aoiFileInput.addEventListener('change', loadAoiFile);
       calibrationProfileSelect.addEventListener('change', syncSelectedCalibrationProfileState);
