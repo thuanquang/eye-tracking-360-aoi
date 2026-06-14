@@ -81,6 +81,25 @@ test('reports first fixation duration and revisit count per AOI', () => {
   assert.equal(Object.hasOwn(metrics.fixations[0], 'dispersionPx'), false);
 });
 
+test('reports experimental saccade durations between fixation windows', () => {
+  const aois = [
+    { id: 'left', label: 'Left' },
+    { id: 'right', label: 'Right' },
+  ];
+  const samples = [
+    { t: 0.00, screen: { x: 100, y: 100 }, hits: ['left'], likelyHits: ['left'], possibleHits: [], ambiguousHits: [], activeAois: aois },
+    { t: 0.05, screen: { x: 102, y: 100 }, hits: ['left'], likelyHits: ['left'], possibleHits: [], ambiguousHits: [], activeAois: aois },
+    { t: 0.20, screen: { x: 500, y: 300 }, hits: ['right'], likelyHits: ['right'], possibleHits: [], ambiguousHits: [], activeAois: aois },
+    { t: 0.25, screen: { x: 502, y: 301 }, hits: ['right'], likelyHits: ['right'], possibleHits: [], ambiguousHits: [], activeAois: aois },
+  ];
+
+  const metrics = buildNamedAoiMetrics(samples, aois);
+
+  assert.equal(metrics.session.saccadeCount, 1);
+  assert.equal(metrics.session.averageSaccadeDurationMs, 100);
+  assert.deepEqual(metrics.transitions.map((transition) => [transition.fromAoiId, transition.toAoiId]), [['left', 'right']]);
+});
+
 test('does not count a revisit when an AOI repeats after an unmapped gap', () => {
   const aois = [{ id: 'logo', label: 'Logo' }];
   const samples = [
@@ -95,6 +114,9 @@ test('does not count a revisit when an AOI repeats after an unmapped gap', () =>
 
   assert.equal(metrics.perAoi.logo.fixationCount, 2);
   assert.equal(metrics.perAoi.logo.revisitCount, 0);
+  assert.equal(metrics.session.saccadeCount, 0);
+  assert.equal(metrics.session.averageSaccadeDurationMs, null);
+  assert.deepEqual(metrics.transitions, []);
 });
 
 test('counts a revisit when an AOI repeats after another AOI fixation', () => {

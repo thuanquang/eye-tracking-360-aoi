@@ -4,6 +4,7 @@ import { detectFixationsByDispersion } from './fixations.js';
 const DEFAULT_SAMPLE_INTERVAL_SEC = DEFAULT_RECORDING_SAMPLE_INTERVAL_MS / 1000;
 const MIN_FIXATION_DURATION_SEC = 0.1;
 const FIXATION_DURATION_EPSILON_SEC = 1e-9;
+const MAX_FIXATION_SAMPLE_GAP_SEC = (DEFAULT_RECORDING_SAMPLE_INTERVAL_MS * 3) / 1000;
 
 function roundNumber(value, digits = 3) {
   if (!Number.isFinite(value)) {
@@ -45,6 +46,27 @@ export function getSampleDurations(samples, fallbackSec = DEFAULT_SAMPLE_INTERVA
     const next = samples[index + 1];
     const duration = next ? next.t - sample.t : fallback;
     return Number.isFinite(duration) && duration > 0 && duration < 5 ? duration : fallback;
+  });
+}
+
+function getTypicalSampleIntervalSec(samples, fallbackSec = DEFAULT_SAMPLE_INTERVAL_SEC) {
+  const intervals = samples.slice(0, -1)
+    .map((sample, index) => samples[index + 1].t - sample.t)
+    .filter((duration) => Number.isFinite(duration) && duration > 0 && duration < 5);
+
+  return intervals.length ? median(intervals) : fallbackSec;
+}
+
+function capFixationDetectionDurations(samples, durations, fallbackSec = DEFAULT_SAMPLE_INTERVAL_SEC) {
+  const typicalIntervalSec = getTypicalSampleIntervalSec(samples, fallbackSec);
+
+  return durations.map((duration, index) => {
+    const next = samples[index + 1];
+    const gapSec = next ? next.t - samples[index].t : null;
+
+    return Number.isFinite(gapSec) && gapSec > MAX_FIXATION_SAMPLE_GAP_SEC
+      ? typicalIntervalSec
+      : duration;
   });
 }
 
@@ -258,6 +280,31 @@ function sanitizeFixation(fixation) {
   return sanitized;
 }
 
+function buildAoiTransitions(fixations) {
+  const transitions = [];
+
+  for (let index = 1; index < fixations.length; index += 1) {
+    const previous = fixations[index - 1];
+    const current = fixations[index];
+
+    if (!previous.aoiId || !current.aoiId || previous.aoiId === current.aoiId) {
+      continue;
+    }
+
+    const previousEndSec = fixationCoverageEndSec(previous);
+
+    transitions.push({
+      fromAoiId: previous.aoiId,
+      toAoiId: current.aoiId,
+      startSec: roundNumber(previousEndSec),
+      endSec: roundNumber(current.startSec),
+      durationMs: Math.max(0, Math.round((current.startSec - previousEndSec) * 1000)),
+    });
+  }
+
+  return transitions;
+}
+
 export function buildNamedAoiMetrics(samples = [], aois = [], { sampleIntervalMs = DEFAULT_RECORDING_SAMPLE_INTERVAL_MS } = {}) {
   const safeSamples = samples
     .filter((sample) => Number.isFinite(sample?.t))
@@ -266,6 +313,7 @@ export function buildNamedAoiMetrics(samples = [], aois = [], { sampleIntervalMs
     ? sampleIntervalMs / 1000
     : DEFAULT_SAMPLE_INTERVAL_SEC;
   const durations = getSampleDurations(safeSamples, fallbackSec);
+  const fixationDetectionDurations = capFixationDetectionDurations(safeSamples, durations, fallbackSec);
   const totalDurationSec = durations.reduce((sum, duration) => sum + duration, 0);
   const catalog = buildAoiCatalog(safeSamples, aois);
   const perAoi = {};
@@ -327,7 +375,7 @@ export function buildNamedAoiMetrics(samples = [], aois = [], { sampleIntervalMs
     });
   });
 
-  const screenFixations = detectScreenAoiFixations(safeSamples, durations);
+  const screenFixations = detectScreenAoiFixations(safeSamples, fixationDetectionDurations);
   const legacyFixations = detectAoiFixations(safeSamples, durations);
   const fixations = mergeFixations(screenFixations, legacyFixations);
   let previousFixationAoiId = null;
@@ -368,6 +416,7 @@ export function buildNamedAoiMetrics(samples = [], aois = [], { sampleIntervalMs
 
   const fixationDurationsMs = fixations.map(fixationDurationMs);
   const fixatedAoiIds = uniqueValues(fixations.map((fixation) => fixation.aoiId));
+  const transitions = buildAoiTransitions(fixations);
   const aoiCount = Object.keys(perAoi).length;
   const totalDwellSec = Object.values(perAoi)
     .reduce((sum, metric) => sum + (metric.totalDwellSec || 0), 0);
@@ -380,6 +429,10 @@ export function buildNamedAoiMetrics(samples = [], aois = [], { sampleIntervalMs
       averageFixationDurationMs: fixationDurationsMs.length
         ? Math.round(fixationDurationsMs.reduce((sum, duration) => sum + duration, 0) / fixationDurationsMs.length)
         : 0,
+      saccadeCount: transitions.length,
+      averageSaccadeDurationMs: transitions.length
+        ? Math.round(transitions.reduce((sum, transition) => sum + transition.durationMs, 0) / transitions.length)
+        : null,
       averageNumberOfAoisFixated: fixatedAoiIds.length,
       aoiCoveragePercent: aoiCount ? roundNumber((fixatedAoiIds.length / aoiCount) * 100, 2) : 0,
       overallProcessingEfficiency: totalDurationSec > 0
@@ -388,5 +441,6 @@ export function buildNamedAoiMetrics(samples = [], aois = [], { sampleIntervalMs
     },
     perAoi,
     fixations: fixations.map(sanitizeFixation),
+    transitions,
   };
 }
