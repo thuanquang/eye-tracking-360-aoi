@@ -13,6 +13,30 @@ function roundNumber(value, digits = 3) {
   return Number(value.toFixed(digits));
 }
 
+function clampPercent(value) {
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
+
+  return roundNumber(Math.min(100, Math.max(0, value)), 2);
+}
+
+function buildProcessingEfficiency({ aoiCoveragePercent, trustedAoiDwellPercent, fixationEfficiencyPercent }) {
+  const formula = '0.4*aoiCoveragePercent + 0.4*trustedAoiDwellPercent + 0.2*fixationEfficiencyPercent';
+  const components = {
+    aoiCoveragePercent: clampPercent(aoiCoveragePercent),
+    trustedAoiDwellPercent: clampPercent(trustedAoiDwellPercent),
+    fixationEfficiencyPercent: clampPercent(fixationEfficiencyPercent),
+  };
+  const score = clampPercent(
+    (0.4 * components.aoiCoveragePercent)
+      + (0.4 * components.trustedAoiDwellPercent)
+      + (0.2 * components.fixationEfficiencyPercent),
+  );
+
+  return { score, components, formula };
+}
+
 function uniqueValues(values) {
   return [...new Set(values.filter((value) => typeof value === 'string' && value.length > 0))];
 }
@@ -422,8 +446,17 @@ export function buildNamedAoiMetrics(samples = [], aois = [], { sampleIntervalMs
   const fixatedAoiIds = uniqueValues(fixations.map((fixation) => fixation.aoiId));
   const transitions = buildAoiTransitions(fixations, getTypicalSampleIntervalSec(safeSamples, fallbackSec));
   const aoiCount = Object.keys(perAoi).length;
-  const totalDwellSec = Object.values(perAoi)
-    .reduce((sum, metric) => sum + (metric.totalDwellSec || 0), 0);
+  const aoiCoveragePercent = aoiCount ? (fixatedAoiIds.length / aoiCount) * 100 : 0;
+  const totalStableDwellSec = Object.values(perAoi)
+    .reduce((sum, metric) => sum + (metric.stableDwellSec || 0), 0);
+  const totalLikelyDwellSec = Object.values(perAoi)
+    .reduce((sum, metric) => sum + (metric.likelyDwellSec || 0), 0);
+  const trustedAoiDwellSec = totalStableDwellSec > 0 ? totalStableDwellSec : totalLikelyDwellSec;
+  const processingEfficiency = buildProcessingEfficiency({
+    aoiCoveragePercent,
+    trustedAoiDwellPercent: totalDurationSec > 0 ? (trustedAoiDwellSec / totalDurationSec) * 100 : 0,
+    fixationEfficiencyPercent: Math.min(100, (fixations.length / Math.max(1, fixatedAoiIds.length)) * 20),
+  });
 
   return {
     session: {
@@ -438,10 +471,10 @@ export function buildNamedAoiMetrics(samples = [], aois = [], { sampleIntervalMs
         ? Math.round(transitions.reduce((sum, transition) => sum + transition.durationMs, 0) / transitions.length)
         : null,
       averageNumberOfAoisFixated: fixatedAoiIds.length,
-      aoiCoveragePercent: aoiCount ? roundNumber((fixatedAoiIds.length / aoiCount) * 100, 2) : 0,
-      overallProcessingEfficiency: totalDurationSec > 0
-        ? roundNumber((totalDwellSec / totalDurationSec) * 100, 2)
-        : 0,
+      aoiCoveragePercent: processingEfficiency.components.aoiCoveragePercent,
+      overallProcessingEfficiency: processingEfficiency.score,
+      processingEfficiencyComponents: processingEfficiency.components,
+      processingEfficiencyFormula: processingEfficiency.formula,
     },
     perAoi,
     fixations: fixations.map(sanitizeFixation),

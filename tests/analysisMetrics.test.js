@@ -309,3 +309,24 @@ test('uses the recording cadence for single-sample metric duration fallback', ()
 
   assert.equal(metrics.session.totalDurationSec, Number(((1000 / 30) / 1000).toFixed(3)));
 });
+
+test('reports transparent processing efficiency components', () => {
+  const aois = [
+    { id: 'a', label: 'A' },
+    { id: 'b', label: 'B' },
+  ];
+  const samples = [
+    { t: 0.0, hits: ['a'], stableHits: ['a'], likelyHits: ['a'], possibleHits: [], ambiguousHits: [], quality: { trustedForAoiAnalysis: true }, activeAois: aois },
+    { t: 0.1, hits: ['a'], stableHits: ['a'], likelyHits: ['a'], possibleHits: [], ambiguousHits: [], quality: { trustedForAoiAnalysis: true }, activeAois: aois },
+    { t: 0.2, hits: ['b'], stableHits: ['b'], likelyHits: ['b'], possibleHits: [], ambiguousHits: [], quality: { trustedForAoiAnalysis: true }, activeAois: aois },
+    { t: 0.3, hits: [], stableHits: [], likelyHits: [], possibleHits: [], ambiguousHits: [], quality: { trustedForAoiAnalysis: false }, activeAois: aois },
+  ];
+
+  const metrics = buildNamedAoiMetrics(samples, aois, { sampleIntervalMs: 100 });
+
+  assert.equal(typeof metrics.session.processingEfficiencyComponents, 'object');
+  assert.equal(metrics.session.processingEfficiencyComponents.aoiCoveragePercent, 100);
+  assert.equal(metrics.session.processingEfficiencyComponents.trustedAoiDwellPercent, 75);
+  assert.equal(metrics.session.overallProcessingEfficiency >= 0, true);
+  assert.equal(metrics.session.overallProcessingEfficiency <= 100, true);
+});
