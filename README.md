@@ -136,6 +136,8 @@ Exported JSON contains:
 
 For the MVP demo, prefer `likelyAoiDwellSec` when webcam accuracy is noisy. Use exact `aoiDwellSec` for mouse-mode sanity checks or very good webcam validation.
 
+The recommended stakeholder output is `statReport.perAoiRows` for table display, `namedAoiMetrics` for raw machine-readable metrics, `summary.heatmaps` for heatmap rendering, and the AOI stats CSV for spreadsheet analysis. See `docs/aoi-stat-definitions.md` for which metrics should be primary, secondary, or exploratory.
+
 ## Reviewing A Past Recording
 
 Use the same video that was used for recording. For the bundled test video this happens automatically.

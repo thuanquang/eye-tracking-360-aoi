@@ -43,6 +43,12 @@ Report these fields for every run:
 - Face/head quality availability, unavailable reason, and face stability invalidation count.
 - Fixation and dwell metrics from `namedAoiMetrics`, especially dwell seconds, likely dwell seconds, fixation count, average fixation duration, time to first fixation, AOI coverage percent, and overall processing efficiency.
 
+## Recommended Reporting Table
+
+For each AOI, report label, likely dwell seconds, total fixation duration, average fixation duration, fixation count, time to first fixation, revisit count, viewing time percent, trusted sample count, and ambiguous sample count. Include the heatmap image or the `summary.heatmaps` grid metadata when comparing visual attention patterns.
+
+Keep saccade duration and overall processing efficiency in an exploratory appendix unless the study protocol validates them. If overall processing efficiency is reported, include its formula and component values so reviewers can interpret the composite instead of treating it as a black-box cognitive score.
+
 ## Report Generation
 
 Use exported `benchmark` objects or manual run objects with `summarizeBenchmarkRuns(runs)` and `buildBenchmarkReport({ summary, runs })`.
