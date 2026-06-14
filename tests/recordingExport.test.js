@@ -337,7 +337,21 @@ test('builds export payload with state-derived accuracy and samples', () => {
     project: { version: 1 },
     video: { name: 'demo.mp4' },
     summary: { totalSamples: 1, recordingSampleIntervalMs: 1000 / 30, durationSec: 0.033 },
-    namedAoiMetrics: { Front: { samples: 1 } },
+    namedAoiMetrics: {
+      session: {
+        averageNumberOfAoisFixated: 1,
+        overallProcessingEfficiency: 64,
+      },
+      perAoi: {
+        front: {
+          id: 'front',
+          label: 'Front',
+          fixationCount: 1,
+          totalFixationDurationMs: 120,
+          timeToFirstFixationMs: 80,
+        },
+      },
+    },
     aoiSource: 'manual',
     aois: [{ id: 'front' }],
     state: {
@@ -405,6 +419,15 @@ test('builds export payload with state-derived accuracy and samples', () => {
   assert.equal(payload.benchmark.faceStabilityInvalidationCount, 0);
   assert.equal(payload.benchmark.samples, undefined);
   assert.deepEqual(payload.samples, [{ t: 0 }]);
+  assert.equal(typeof payload.statReport, 'object');
+  assert.equal(payload.statReport.exportedAt, '2026-06-11T00:00:00.000Z');
+  assert.equal(Array.isArray(payload.statReport.perAoiRows), true);
+  assert.equal(payload.statReport.perAoiRows.length, 1);
+  assert.equal(payload.statReport.perAoiRows[0].aoiId, 'front');
+  assert.ok(payload.statReport.perAoiRows[0].stats.some((stat) => stat.id === 'fixationCount'));
+  assert.ok(payload.statReport.sessionStats.some((stat) => stat.id === 'overallProcessingEfficiency'));
+  assert.equal(Array.isArray(payload.statReport.caveats), true);
+  assert.ok(payload.statReport.caveats.length > 0);
 });
 
 test('clones compact benchmark metadata without sample or nested quality references', () => {

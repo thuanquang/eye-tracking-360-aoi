@@ -1,6 +1,7 @@
 import { summarizeGazeStreamQuality } from '../gaze/qualityMonitor.js';
 import { buildPanoramaHeatmap, buildScreenHeatmap } from './heatmapMetrics.js';
 import { DEFAULT_RECORDING_SAMPLE_INTERVAL_MS } from './sampleScheduler.js';
+import { buildStatReport } from './statReport.js';
 
 function buildCalibrationProfileMetadata(profile) {
   if (!profile || typeof profile !== 'object' || !profile.id) {
@@ -439,6 +440,7 @@ export function buildExportPayload({
     video,
     summary,
     namedAoiMetrics,
+    statReport: buildStatReport({ namedAoiMetrics, summary, exportedAt }),
     aoiSource,
     aois,
     selectedCalibrationProfile,
