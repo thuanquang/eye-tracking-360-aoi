@@ -382,9 +382,6 @@ export function buildNamedAoiMetrics(samples = [], aois = [], { sampleIntervalMs
       }
       perAoi[id].stableHitCount += 1;
       perAoi[id].stableDwellSec += duration;
-      if (trusted) {
-        perAoi[id].trustedSampleCount += 1;
-      }
     });
 
     possibleHits.forEach((id) => {
@@ -401,6 +398,15 @@ export function buildNamedAoiMetrics(samples = [], aois = [], { sampleIntervalMs
       }
       perAoi[id].ambiguousSampleCount += 1;
     });
+
+    if (trusted) {
+      uniqueValues([...hits, ...likelyHits, ...stableHits]).forEach((id) => {
+        if (!perAoi[id]) {
+          perAoi[id] = createAoiMetric({ id, label: id });
+        }
+        perAoi[id].trustedSampleCount += 1;
+      });
+    }
   });
 
   const screenFixations = detectScreenAoiFixations(safeSamples, durations);
@@ -470,6 +476,7 @@ export function buildNamedAoiMetrics(samples = [], aois = [], { sampleIntervalMs
       averageSaccadeDurationMs: transitions.length
         ? Math.round(transitions.reduce((sum, transition) => sum + transition.durationMs, 0) / transitions.length)
         : null,
+      uniqueAoisFixated: fixatedAoiIds,
       averageNumberOfAoisFixated: fixatedAoiIds.length,
       aoiCoveragePercent: processingEfficiency.components.aoiCoveragePercent,
       overallProcessingEfficiency: processingEfficiency.score,

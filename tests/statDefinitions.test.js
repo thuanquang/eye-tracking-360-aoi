@@ -19,6 +19,12 @@ const REQUIRED_STAT_IDS = [
   'timeToFirstFixationMs',
   'revisitCount',
   'percentageOfViewingTime',
+  'totalSamples',
+  'totalDurationSec',
+  'totalFixations',
+  'averageFixationDurationMs',
+  'uniqueAoisFixated',
+  'saccadeCount',
   'averageNumberOfAoisFixated',
   'aoiCoveragePercent',
   'overallProcessingEfficiency',
@@ -28,26 +34,34 @@ const REQUIRED_STAT_IDS = [
 ];
 
 const EXPECTED_SCOPES = {
-  totalDwellSec: 'perAoi',
-  likelyDwellSec: 'perAoi',
-  stableDwellSec: 'perAoi',
-  fixationCount: 'perAoi',
-  totalFixationDurationMs: 'perAoi',
-  averageFixationDurationMs: 'perAoi',
-  firstFixationDurationMs: 'perAoi',
-  timeToFirstFixationMs: 'perAoi',
-  revisitCount: 'perAoi',
-  percentageOfViewingTime: 'perAoi',
-  averageNumberOfAoisFixated: 'session',
-  aoiCoveragePercent: 'session',
-  overallProcessingEfficiency: 'session',
-  averageSaccadeDurationMs: 'session',
-  screenHeatmap: 'heatmap',
-  panoramaHeatmap: 'heatmap',
+  totalDwellSec: ['perAoi'],
+  likelyDwellSec: ['perAoi'],
+  stableDwellSec: ['perAoi'],
+  fixationCount: ['perAoi'],
+  totalFixationDurationMs: ['perAoi'],
+  averageFixationDurationMs: ['perAoi', 'session'],
+  firstFixationDurationMs: ['perAoi'],
+  timeToFirstFixationMs: ['perAoi'],
+  revisitCount: ['perAoi'],
+  percentageOfViewingTime: ['perAoi'],
+  totalSamples: ['session'],
+  totalDurationSec: ['session'],
+  totalFixations: ['session'],
+  uniqueAoisFixated: ['session'],
+  saccadeCount: ['session'],
+  averageNumberOfAoisFixated: ['session'],
+  aoiCoveragePercent: ['session'],
+  overallProcessingEfficiency: ['session'],
+  averageSaccadeDurationMs: ['session'],
+  screenHeatmap: ['heatmap'],
+  panoramaHeatmap: ['heatmap'],
 };
 
 function requiredIdsByScope(scope) {
-  return REQUIRED_STAT_IDS.filter((id) => EXPECTED_SCOPES[id] === scope);
+  return REQUIRED_STAT_IDS.filter((id, index) => {
+    const occurrence = REQUIRED_STAT_IDS.slice(0, index).filter((candidate) => candidate === id).length;
+    return EXPECTED_SCOPES[id][occurrence] === scope;
+  });
 }
 
 test('stat definitions have stable ids, labels, scopes, units, and reliability', () => {
@@ -55,10 +69,10 @@ test('stat definitions have stable ids, labels, scopes, units, and reliability',
   const validReliabilities = Object.values(STAT_RELIABILITY);
 
   assert.deepEqual(ids, REQUIRED_STAT_IDS);
-  assert.deepEqual(Object.keys(EXPECTED_SCOPES), REQUIRED_STAT_IDS);
+  assert.deepEqual(Object.keys(EXPECTED_SCOPES), [...new Set(REQUIRED_STAT_IDS)]);
 
   AOI_STAT_DEFINITIONS.forEach((definition) => {
-    assert.equal(definition.scope, EXPECTED_SCOPES[definition.id], `${definition.id} scope`);
+    assert.ok(EXPECTED_SCOPES[definition.id].includes(definition.scope), `${definition.id} scope`);
     assert.equal(typeof definition.label, 'string', `${definition.id} label type`);
     assert.notEqual(definition.label.trim(), '', `${definition.id} label`);
     assert.equal(typeof definition.unit, 'string', `${definition.id} unit type`);
@@ -72,6 +86,8 @@ test('stat definitions have stable ids, labels, scopes, units, and reliability',
   assert.equal(getStatDefinition('averageSaccadeDurationMs').reliability, STAT_RELIABILITY.EXPERIMENTAL);
   assert.equal(getStatDefinition('overallProcessingEfficiency').reliability, STAT_RELIABILITY.ESTIMATED);
   assert.equal(getStatDefinition('timeToFirstFixationMs').scope, 'perAoi');
+  assert.equal(getStatDefinition('averageFixationDurationMs', 'perAoi').scope, 'perAoi');
+  assert.equal(getStatDefinition('averageFixationDurationMs', 'session').scope, 'session');
 });
 
 test('exports uppercase reliability constants with stable string values', () => {

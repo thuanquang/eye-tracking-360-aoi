@@ -50,8 +50,11 @@ function getSampleDurations(timedSamples, sampleIntervalMs) {
   });
 }
 
-function shouldIncludeSample(sample, trustedOnly) {
-  return !trustedOnly || Boolean(sample?.quality?.trustedForAoiAnalysis);
+function shouldIncludeSample(sample, trustedOnly, sampleFilter = null) {
+  const trusted = !trustedOnly || Boolean(sample?.quality?.trustedForAoiAnalysis);
+  const matchesFilter = typeof sampleFilter === 'function' ? sampleFilter(sample) : true;
+
+  return trusted && matchesFilter;
 }
 
 function hasFiniteScreenPosition(sample) {
@@ -71,10 +74,13 @@ function inferScreenDimension(screenEntries, getCoordinate) {
   return Number.isFinite(max) ? Math.max(1, Math.ceil(max + 1)) : null;
 }
 
-function getScreenContributorEntries(timedSamples, durations, trustedOnly) {
+function getScreenContributorEntries(timedSamples, durations, trustedOnly, sampleFilter) {
   return timedSamples
     .map((entry, index) => ({ ...entry, durationSec: durations[index] }))
-    .filter(({ sample }) => hasFiniteScreenPosition(sample) && shouldIncludeSample(sample, trustedOnly));
+    .filter(({ sample }) => (
+      hasFiniteScreenPosition(sample) &&
+      shouldIncludeSample(sample, trustedOnly, sampleFilter)
+    ));
 }
 
 function resolveScreenDimensions(requestedWidth, requestedHeight, screenEntries) {
@@ -147,12 +153,13 @@ export function buildScreenHeatmap(samples = [], options = {}) {
     rows: requestedRows = DEFAULT_SCREEN_ROWS,
     sampleIntervalMs = DEFAULT_RECORDING_SAMPLE_INTERVAL_MS,
     trustedOnly = false,
+    sampleFilter = null,
   } = options;
   const columns = gridSize(requestedColumns, DEFAULT_SCREEN_COLUMNS);
   const rows = gridSize(requestedRows, DEFAULT_SCREEN_ROWS);
   const timedSamples = orderedTimedSamples(samples);
   const durations = getSampleDurations(timedSamples, sampleIntervalMs);
-  const screenEntries = getScreenContributorEntries(timedSamples, durations, trustedOnly);
+  const screenEntries = getScreenContributorEntries(timedSamples, durations, trustedOnly, sampleFilter);
   const { width, height, dimensionSource } = resolveScreenDimensions(
     requestedWidth,
     requestedHeight,
@@ -191,6 +198,7 @@ export function buildPanoramaHeatmap(samples = [], options = {}) {
     rows: requestedRows = DEFAULT_PANORAMA_ROWS,
     sampleIntervalMs = DEFAULT_RECORDING_SAMPLE_INTERVAL_MS,
     trustedOnly = false,
+    sampleFilter = null,
   } = options;
   const columns = gridSize(requestedColumns, DEFAULT_PANORAMA_COLUMNS);
   const rows = gridSize(requestedRows, DEFAULT_PANORAMA_ROWS);
@@ -203,7 +211,11 @@ export function buildPanoramaHeatmap(samples = [], options = {}) {
     const yaw = sample?.panorama?.yaw;
     const pitch = sample?.panorama?.pitch;
 
-    if (!Number.isFinite(yaw) || !Number.isFinite(pitch) || !shouldIncludeSample(sample, trustedOnly)) {
+    if (
+      !Number.isFinite(yaw) ||
+      !Number.isFinite(pitch) ||
+      !shouldIncludeSample(sample, trustedOnly, sampleFilter)
+    ) {
       return;
     }
 

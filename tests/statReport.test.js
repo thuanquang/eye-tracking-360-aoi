@@ -7,7 +7,13 @@ test('builds display-ready AOI stat rows with definitions and caveats', () => {
   const report = buildStatReport({
     namedAoiMetrics: {
       session: {
+        totalSamples: 4,
         totalDurationSec: 10,
+        totalFixations: 2,
+        averageFixationDurationMs: 250,
+        uniqueAoisFixated: ['logo'],
+        saccadeCount: 1,
+        averageNumberOfAoisFixated: 1,
         overallProcessingEfficiency: 72,
         averageSaccadeDurationMs: 40,
       },
@@ -28,6 +34,20 @@ test('builds display-ready AOI stat rows with definitions and caveats', () => {
   assert.equal(report.perAoiRows[0].aoiId, 'logo');
   assert.ok(report.perAoiRows[0].stats.some((stat) => stat.id === 'totalFixationDurationMs'));
   assert.ok(report.sessionStats.some((stat) => stat.id === 'overallProcessingEfficiency'));
+  assert.deepEqual(
+    report.sessionStats.map((stat) => stat.id),
+    [
+      'totalSamples',
+      'totalDurationSec',
+      'totalFixations',
+      'averageFixationDurationMs',
+      'uniqueAoisFixated',
+      'saccadeCount',
+      'averageNumberOfAoisFixated',
+      'overallProcessingEfficiency',
+      'averageSaccadeDurationMs',
+    ],
+  );
   assert.ok(report.caveats.some((caveat) => caveat.includes('saccade')));
 });
 

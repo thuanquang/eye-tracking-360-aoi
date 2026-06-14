@@ -34,7 +34,7 @@ export const AOI_STAT_DEFINITIONS = Object.freeze([
     label: 'Fixation count',
     scope: 'perAoi',
     unit: 'count',
-    reliability: STAT_RELIABILITY.STABLE,
+    reliability: STAT_RELIABILITY.ESTIMATED,
     description: 'Number of fixations assigned to the AOI.',
   },
   {
@@ -42,7 +42,7 @@ export const AOI_STAT_DEFINITIONS = Object.freeze([
     label: 'Total fixation duration',
     scope: 'perAoi',
     unit: 'milliseconds',
-    reliability: STAT_RELIABILITY.STABLE,
+    reliability: STAT_RELIABILITY.ESTIMATED,
     description: 'Total duration of fixations assigned to the AOI.',
   },
   {
@@ -50,7 +50,7 @@ export const AOI_STAT_DEFINITIONS = Object.freeze([
     label: 'Average fixation duration',
     scope: 'perAoi',
     unit: 'milliseconds',
-    reliability: STAT_RELIABILITY.STABLE,
+    reliability: STAT_RELIABILITY.ESTIMATED,
     description: 'Mean duration of fixations assigned to the AOI.',
   },
   {
@@ -58,7 +58,7 @@ export const AOI_STAT_DEFINITIONS = Object.freeze([
     label: 'First fixation duration',
     scope: 'perAoi',
     unit: 'milliseconds',
-    reliability: STAT_RELIABILITY.STABLE,
+    reliability: STAT_RELIABILITY.ESTIMATED,
     description: 'Duration of the first fixation assigned to the AOI.',
   },
   {
@@ -66,7 +66,7 @@ export const AOI_STAT_DEFINITIONS = Object.freeze([
     label: 'Time to first fixation',
     scope: 'perAoi',
     unit: 'milliseconds',
-    reliability: STAT_RELIABILITY.STABLE,
+    reliability: STAT_RELIABILITY.ESTIMATED,
     description: 'Elapsed time before the first fixation assigned to the AOI.',
   },
   {
@@ -74,7 +74,7 @@ export const AOI_STAT_DEFINITIONS = Object.freeze([
     label: 'Revisit count',
     scope: 'perAoi',
     unit: 'count',
-    reliability: STAT_RELIABILITY.STABLE,
+    reliability: STAT_RELIABILITY.ESTIMATED,
     description: 'Number of fixation returns to the AOI after looking elsewhere.',
   },
   {
@@ -86,11 +86,59 @@ export const AOI_STAT_DEFINITIONS = Object.freeze([
     description: 'Share of total viewing time spent dwelling on the AOI.',
   },
   {
+    id: 'totalSamples',
+    label: 'Total samples',
+    scope: 'session',
+    unit: 'count',
+    reliability: STAT_RELIABILITY.STABLE,
+    description: 'Number of gaze samples in the analyzed session.',
+  },
+  {
+    id: 'totalDurationSec',
+    label: 'Total duration',
+    scope: 'session',
+    unit: 'seconds',
+    reliability: STAT_RELIABILITY.STABLE,
+    description: 'Estimated analyzed recording duration from sample timing.',
+  },
+  {
+    id: 'totalFixations',
+    label: 'Total fixations',
+    scope: 'session',
+    unit: 'count',
+    reliability: STAT_RELIABILITY.ESTIMATED,
+    description: 'Number of fixation windows mapped to AOIs.',
+  },
+  {
+    id: 'averageFixationDurationMs',
+    label: 'Session average fixation duration',
+    scope: 'session',
+    unit: 'milliseconds',
+    reliability: STAT_RELIABILITY.ESTIMATED,
+    description: 'Mean duration of all AOI-mapped fixation windows in the session.',
+  },
+  {
+    id: 'uniqueAoisFixated',
+    label: 'Unique AOIs fixated',
+    scope: 'session',
+    unit: 'ids',
+    reliability: STAT_RELIABILITY.ESTIMATED,
+    description: 'AOI ids that received at least one fixation, in first-fixation order.',
+  },
+  {
+    id: 'saccadeCount',
+    label: 'Transition count',
+    scope: 'session',
+    unit: 'count',
+    reliability: STAT_RELIABILITY.EXPERIMENTAL,
+    description: 'Experimental count of transition gaps between AOI fixation windows.',
+  },
+  {
     id: 'averageNumberOfAoisFixated',
     label: 'Average number of AOIs fixated',
     scope: 'session',
     unit: 'count',
-    reliability: STAT_RELIABILITY.STABLE,
+    reliability: STAT_RELIABILITY.ESTIMATED,
     description: 'Number of distinct AOIs that received at least one fixation.',
   },
   {
@@ -135,11 +183,19 @@ export const AOI_STAT_DEFINITIONS = Object.freeze([
   },
 ].map(Object.freeze));
 
-const STAT_DEFINITIONS_BY_ID = new Map(
-  AOI_STAT_DEFINITIONS.map((definition) => [definition.id, definition]),
-);
+const STAT_DEFINITIONS_BY_ID = AOI_STAT_DEFINITIONS.reduce((definitions, definition) => {
+  if (!definitions.has(definition.id)) {
+    definitions.set(definition.id, definition);
+  }
 
-export function getStatDefinition(id) {
+  return definitions;
+}, new Map());
+
+export function getStatDefinition(id, scope = null) {
+  if (scope) {
+    return AOI_STAT_DEFINITIONS.find((definition) => definition.id === id && definition.scope === scope);
+  }
+
   return STAT_DEFINITIONS_BY_ID.get(id);
 }
 

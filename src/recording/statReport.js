@@ -15,7 +15,7 @@ function hasReportValue(value) {
 }
 
 function buildDisplayStat(definition, value) {
-  const metadata = getStatDefinition(definition.id) ?? definition;
+  const metadata = getStatDefinition(definition.id, definition.scope) ?? definition;
 
   return {
     id: metadata.id,

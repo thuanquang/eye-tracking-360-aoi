@@ -127,6 +127,12 @@ test('builds summary counts and duration from samples', () => {
   assert.equal(summary.heatmaps.screen.height, 80);
   assert.equal(summary.heatmaps.screen.dimensionSource, 'provided');
   assert.equal(summary.heatmaps.screen.trustedOnly, true);
+  assert.equal(summary.heatmaps.variants.trusted.screen.type, 'screen');
+  assert.equal(summary.heatmaps.variants.trusted.panorama.type, 'panorama');
+  assert.equal(summary.heatmaps.variants.likely.screen.totalWeightSec, 0.067);
+  assert.equal(summary.heatmaps.variants.likely.panorama.totalWeightSec, 0.067);
+  assert.equal(summary.heatmaps.variants.possible.screen.totalWeightSec, 0.067);
+  assert.equal(summary.heatmaps.variants.possible.panorama.totalWeightSec, 0.067);
   assert.deepEqual(summary.heatmaps.screen.bins[0], {
     column: 9,
     row: 10,

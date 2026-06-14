@@ -45,7 +45,7 @@ Report these fields for every run:
 
 ## Recommended Reporting Table
 
-For each AOI, report label, likely dwell seconds, total fixation duration, average fixation duration, fixation count, time to first fixation, revisit count, viewing time percent, trusted sample count, and ambiguous sample count. Include the heatmap image or the `summary.heatmaps` grid metadata when comparing visual attention patterns.
+For each AOI, report label, likely dwell seconds, total fixation duration, average fixation duration, fixation count, time to first fixation, revisit count, viewing time percent, trusted sample count, and ambiguous sample count. Include the heatmap image or the `summary.heatmaps` grid metadata when comparing visual attention patterns; use `summary.heatmaps.variants` when the report needs separate trusted, likely-AOI, and possible-AOI views.
 
 Keep saccade duration and overall processing efficiency in an exploratory appendix unless the study protocol validates them. If overall processing efficiency is reported, include its formula and component values so reviewers can interpret the composite instead of treating it as a black-box cognitive score.
 

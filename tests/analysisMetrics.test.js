@@ -335,6 +335,50 @@ test('reports transparent processing efficiency components', () => {
   assert.equal(metrics.session.overallProcessingEfficiency, 74);
 });
 
+test('reports unique AOIs fixated and trusted likely AOI samples', () => {
+  const aois = [
+    { id: 'a', label: 'A' },
+    { id: 'b', label: 'B' },
+  ];
+  const metrics = buildNamedAoiMetrics([
+    {
+      t: 0.0,
+      hits: ['a'],
+      stableHits: [],
+      likelyHits: ['a'],
+      possibleHits: [],
+      ambiguousHits: [],
+      quality: { trustedForAoiAnalysis: true },
+      activeAois: aois,
+    },
+    {
+      t: 0.1,
+      hits: [],
+      stableHits: [],
+      likelyHits: ['a'],
+      possibleHits: ['b'],
+      ambiguousHits: [],
+      quality: { trustedForAoiAnalysis: true },
+      activeAois: aois,
+    },
+    {
+      t: 0.2,
+      hits: ['b'],
+      stableHits: [],
+      likelyHits: ['b'],
+      possibleHits: [],
+      ambiguousHits: [],
+      quality: { trustedForAoiAnalysis: false },
+      activeAois: aois,
+    },
+  ], aois, { sampleIntervalMs: 100 });
+
+  assert.deepEqual(metrics.session.uniqueAoisFixated, ['a', 'b']);
+  assert.equal(metrics.session.averageNumberOfAoisFixated, 2);
+  assert.equal(metrics.perAoi.a.trustedSampleCount, 2);
+  assert.equal(metrics.perAoi.b.trustedSampleCount, 0);
+});
+
 test('uses likely dwell for processing efficiency when stable dwell is absent', () => {
   const aois = [{ id: 'a', label: 'A' }];
   const samples = [

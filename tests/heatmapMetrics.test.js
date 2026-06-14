@@ -182,3 +182,23 @@ test('maps panorama yaw and pitch boundaries deterministically', () => {
     { column: 0, row: 1, weightSec: 0.1, sampleCount: 1 },
   ]);
 });
+
+test('preserves original sample durations when filtering heatmap samples', () => {
+  const heatmap = buildPanoramaHeatmap([
+    { t: 0.0, panorama: { yaw: 0, pitch: 0 }, likelyHits: ['a'], quality: { trustedForAoiAnalysis: true } },
+    { t: 0.1, panorama: { yaw: 10, pitch: 0 }, likelyHits: [], quality: { trustedForAoiAnalysis: true } },
+    { t: 0.2, panorama: { yaw: 20, pitch: 0 }, likelyHits: ['a'], quality: { trustedForAoiAnalysis: true } },
+  ], {
+    columns: 36,
+    rows: 18,
+    sampleIntervalMs: 100,
+    trustedOnly: true,
+    sampleFilter: (sample) => (sample.likelyHits || []).length > 0,
+  });
+
+  assert.equal(heatmap.totalWeightSec, 0.2);
+  assert.deepEqual(
+    heatmap.bins.map((bin) => bin.weightSec),
+    [0.1, 0.1],
+  );
+});

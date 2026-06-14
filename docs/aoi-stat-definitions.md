@@ -10,7 +10,8 @@ This app reports AOI metrics from webcam or mouse gaze samples. Webcam-derived m
 - `averageFixationDurationMs`: average duration of fixations mapped to each AOI.
 - `timeToFirstFixationMs`: milliseconds from recording start to the first fixation on each AOI.
 - `percentageOfViewingTime`: AOI dwell share of total recording duration.
-- `summary.heatmaps.screen` and `summary.heatmaps.panorama`: duration-weighted gaze density grids for heatmap rendering.
+- `summary.heatmaps.screen` and `summary.heatmaps.panorama`: trusted duration-weighted gaze density grids for heatmap rendering.
+- `summary.heatmaps.variants`: trusted, likely-AOI, and possible-AOI heatmap views for comparing confidence levels.
 
 ## Secondary Metrics
 
@@ -19,7 +20,7 @@ This app reports AOI metrics from webcam or mouse gaze samples. Webcam-derived m
 - `revisitCount`: number of returns to an AOI after fixating another AOI.
 - `averageNumberOfAoisFixated`: unique AOIs fixated in one recording; average this field across participants for study-level reporting.
 - `aoiCoveragePercent`: percent of AOIs fixated at least once.
-- `trustedSampleCount` and `ambiguousSampleCount`: context fields for judging whether AOI results are usable.
+- `trustedSampleCount` and `ambiguousSampleCount`: context fields for judging whether AOI results are usable. Per-AOI `trustedSampleCount` counts trusted samples with exact, likely, or stable evidence for that AOI.
 
 ## Experimental Metrics
 

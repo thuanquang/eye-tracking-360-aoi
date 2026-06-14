@@ -178,6 +178,34 @@ function sumDwellSeconds(samples, getValues, sampleIntervalMs) {
   }, {});
 }
 
+function hasSampleIds(values) {
+  return Array.isArray(values) && values.length > 0;
+}
+
+function hasLikelyAoiEvidence(sample) {
+  return hasSampleIds(sample?.likelyHits) || hasSampleIds(sample?.hits);
+}
+
+function hasPossibleAoiEvidence(sample) {
+  return hasSampleIds(sample?.possibleHits) || hasLikelyAoiEvidence(sample);
+}
+
+function buildHeatmapPair(samples, recordingSampleIntervalMs, screenHeatmapDimensions, sampleFilter = null) {
+  return {
+    screen: buildScreenHeatmap(samples, {
+      ...screenHeatmapDimensions,
+      sampleIntervalMs: recordingSampleIntervalMs,
+      trustedOnly: true,
+      sampleFilter,
+    }),
+    panorama: buildPanoramaHeatmap(samples, {
+      sampleIntervalMs: recordingSampleIntervalMs,
+      trustedOnly: true,
+      sampleFilter,
+    }),
+  };
+}
+
 export function buildExportSummary(
   samples,
   stateLike,
@@ -202,6 +230,23 @@ export function buildExportSummary(
   const faceQualityInvalidations = cloneFaceQualityInvalidations(stateLike.faceQualityInvalidations);
   const rawGazeDiagnostic = cloneRawGazeDiagnostic(stateLike.rawGazeDiagnostic);
   const aoiStability = cloneAoiStability(stateLike.aoiStability);
+  const trustedHeatmaps = buildHeatmapPair(
+    samples,
+    recordingSampleIntervalMs,
+    screenHeatmapDimensions,
+  );
+  const likelyHeatmaps = buildHeatmapPair(
+    samples,
+    recordingSampleIntervalMs,
+    screenHeatmapDimensions,
+    hasLikelyAoiEvidence,
+  );
+  const possibleHeatmaps = buildHeatmapPair(
+    samples,
+    recordingSampleIntervalMs,
+    screenHeatmapDimensions,
+    hasPossibleAoiEvidence,
+  );
 
   const benchmark = buildBenchmarkMetadata({
     participant: stateLike.participant ?? null,
@@ -228,12 +273,13 @@ export function buildExportSummary(
     recordingSampleIntervalMs,
     durationSec: Number(durationSec.toFixed(3)),
     heatmaps: {
-      screen: buildScreenHeatmap(samples, {
-        ...screenHeatmapDimensions,
-        sampleIntervalMs: recordingSampleIntervalMs,
-        trustedOnly: true,
-      }),
-      panorama: buildPanoramaHeatmap(samples, { sampleIntervalMs: recordingSampleIntervalMs, trustedOnly: true }),
+      screen: trustedHeatmaps.screen,
+      panorama: trustedHeatmaps.panorama,
+      variants: {
+        trusted: trustedHeatmaps,
+        likely: likelyHeatmaps,
+        possible: possibleHeatmaps,
+      },
     },
     sources: countValues(samples, (sample) => [sample.source]),
     aoiHitCounts: countValues(samples, (sample) => sample.hits || []),
