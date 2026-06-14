@@ -330,6 +330,7 @@ export function buildNamedAoiMetrics(samples = [], aois = [], { sampleIntervalMs
   const screenFixations = detectScreenAoiFixations(safeSamples, durations);
   const legacyFixations = detectAoiFixations(safeSamples, durations);
   const fixations = mergeFixations(screenFixations, legacyFixations);
+  let previousFixationAoiId = null;
 
   fixations.forEach((fixation) => {
     if (!perAoi[fixation.aoiId]) {
@@ -342,11 +343,12 @@ export function buildNamedAoiMetrics(samples = [], aois = [], { sampleIntervalMs
     metric.totalFixationDurationMs += durationMs;
     if (metric.firstFixationDurationMs === null) {
       metric.firstFixationDurationMs = Math.round(durationMs);
-    } else {
+    } else if (previousFixationAoiId !== fixation.aoiId) {
       metric.revisitCount += 1;
     }
     metric.timeToFirstFixationMs = metric.timeToFirstFixationMs
       ?? Math.round(fixation.startSec * 1000);
+    previousFixationAoiId = fixation.aoiId;
   });
 
   Object.values(perAoi).forEach((metric) => {

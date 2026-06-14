@@ -70,6 +70,51 @@ test('reports first fixation duration and revisit count per AOI', () => {
   assert.equal(metrics.perAoi.product.firstFixationDurationMs, 100);
   assert.equal(Array.isArray(metrics.fixations), true);
   assert.equal(metrics.fixations.length, 3);
+  assert.deepEqual(metrics.fixations[0], {
+    aoiId: 'logo',
+    startSec: 0,
+    endSec: 0.1,
+    durationMs: 100,
+    sampleCount: 2,
+    centroid: { x: 101, y: 100.5 },
+  });
+  assert.equal(Object.hasOwn(metrics.fixations[0], 'dispersionPx'), false);
+});
+
+test('does not count a revisit when an AOI repeats after an unmapped gap', () => {
+  const aois = [{ id: 'logo', label: 'Logo' }];
+  const samples = [
+    { t: 0.00, hits: ['logo'], likelyHits: ['logo'], possibleHits: [], ambiguousHits: [], activeAois: aois },
+    { t: 0.05, hits: ['logo'], likelyHits: ['logo'], possibleHits: [], ambiguousHits: [], activeAois: aois },
+    { t: 0.10, hits: [], likelyHits: [], possibleHits: [], ambiguousHits: [], activeAois: aois },
+    { t: 0.20, hits: ['logo'], likelyHits: ['logo'], possibleHits: [], ambiguousHits: [], activeAois: aois },
+    { t: 0.25, hits: ['logo'], likelyHits: ['logo'], possibleHits: [], ambiguousHits: [], activeAois: aois },
+  ];
+
+  const metrics = buildNamedAoiMetrics(samples, aois);
+
+  assert.equal(metrics.perAoi.logo.fixationCount, 2);
+  assert.equal(metrics.perAoi.logo.revisitCount, 0);
+});
+
+test('counts a revisit when an AOI repeats after another AOI fixation', () => {
+  const aois = [
+    { id: 'logo', label: 'Logo' },
+    { id: 'product', label: 'Product' },
+  ];
+  const samples = [
+    { t: 0.00, hits: ['logo'], likelyHits: ['logo'], possibleHits: [], ambiguousHits: [], activeAois: aois },
+    { t: 0.05, hits: ['logo'], likelyHits: ['logo'], possibleHits: [], ambiguousHits: [], activeAois: aois },
+    { t: 0.10, hits: ['product'], likelyHits: ['product'], possibleHits: [], ambiguousHits: [], activeAois: aois },
+    { t: 0.15, hits: ['product'], likelyHits: ['product'], possibleHits: [], ambiguousHits: [], activeAois: aois },
+    { t: 0.20, hits: ['logo'], likelyHits: ['logo'], possibleHits: [], ambiguousHits: [], activeAois: aois },
+    { t: 0.25, hits: ['logo'], likelyHits: ['logo'], possibleHits: [], ambiguousHits: [], activeAois: aois },
+  ];
+
+  const metrics = buildNamedAoiMetrics(samples, aois);
+
+  assert.equal(metrics.perAoi.logo.fixationCount, 2);
+  assert.equal(metrics.perAoi.logo.revisitCount, 1);
 });
 
 test('counts final screen sample duration toward fixation threshold', () => {
