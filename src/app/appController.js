@@ -130,6 +130,7 @@ export function createAppController({
   let registeredProjectMetadata = {};
   let sourceVideoInfo = createInitialVideoInfo();
   let selectedStudyVideo = getDefaultStudyVideo();
+  let activeStatsSampleSource = 'live';
   let webcamProvider = null;
 
   let recordingSampleScheduler = createSampleScheduler({ intervalMs: RECORDING_SAMPLE_INTERVAL_MS });
@@ -1163,6 +1164,7 @@ export function createAppController({
     state.reviewSource = source;
     state.reviewActive = false;
     state.reviewIndex = 0;
+    activeStatsSampleSource = 'review';
     reviewButton.disabled = false;
     sampleCount.textContent = String(samples.length);
     renderAoiStatsPanel();
@@ -3006,6 +3008,7 @@ export function createAppController({
 
     if (startingRecording) {
       state.gazeStreamStats = null;
+      activeStatsSampleSource = 'live';
     }
 
     state.isRecording = !state.isRecording;
@@ -3021,6 +3024,7 @@ export function createAppController({
   function clearSamples() {
     state.samples = [];
     state.gazeStreamStats = null;
+    activeStatsSampleSource = 'live';
     resetAoiStability();
     resetRecordingSampleScheduler();
     sampleCount.textContent = '0';
@@ -3037,6 +3041,7 @@ export function createAppController({
     state.reviewActive = true;
     state.mode = 'review';
     state.isRecording = false;
+    activeStatsSampleSource = 'review';
     resetRecordingSampleScheduler();
     recordButton.textContent = 'Start Recording';
     recordButton.classList.add('primary');
@@ -3086,8 +3091,8 @@ export function createAppController({
     await startReviewMode();
   }
 
-  function buildExportSummary() {
-    return createExportSummary(state.samples, state, recordingSampleScheduler.intervalMs, {
+  function buildExportSummary(samples = state.samples, exportState = state) {
+    return createExportSummary(samples, exportState, recordingSampleScheduler.intervalMs, {
       screenHeatmapDimensions: getViewerScreenDimensions(),
     });
   }
@@ -3140,15 +3145,11 @@ export function createAppController({
     });
   }
 
-  function getStatsPanelSamples() {
-    if (state.reviewSamples.length && (state.reviewActive || !state.samples.length)) {
-      return state.reviewSamples;
-    }
-
-    return state.samples;
+  function getActiveStatsSamples() {
+    return activeStatsSampleSource === 'review' ? state.reviewSamples : state.samples;
   }
 
-  function buildCurrentNamedAoiMetrics(samples = state.samples) {
+  function buildCurrentNamedAoiMetrics(samples = getActiveStatsSamples()) {
     const exportAois = withEffectiveAoisAnalysisPadding(activeAois, getViewerAnalysisDimensions());
     const namedAoiMetrics = buildNamedAoiMetrics(samples, exportAois, {
       sampleIntervalMs: recordingSampleScheduler.intervalMs,
@@ -3194,7 +3195,7 @@ export function createAppController({
     const entries = getAoiMetricEntries(namedAoiMetrics)
       .filter(([, metrics]) => metrics && typeof metrics === 'object');
 
-    if (!entries.length) {
+    if (!samples.length || !entries.length) {
       const row = document.createElement('tr');
       const cell = createStatsCell(
         samples.length ? 'No AOI metrics available for the current regions.' : 'No samples yet. Record or load a session to populate AOI stats.',
@@ -3212,7 +3213,7 @@ export function createAppController({
 
       row.append(
         createStatsCell(label, 'aoi-name-cell'),
-        createStatsCell(formatMetricSeconds(metrics.totalDwellSec)),
+        createStatsCell(formatMetricSeconds(metrics.likelyDwellSec)),
         createStatsCell(formatMetricNumber(metrics.fixationCount)),
         createStatsCell(formatMetricMilliseconds(metrics.averageFixationDurationMs)),
         createStatsCell(formatMetricMilliseconds(metrics.timeToFirstFixationMs)),
@@ -3304,7 +3305,7 @@ export function createAppController({
   }
 
   function renderAoiStatsPanel() {
-    const samples = getStatsPanelSamples();
+    const samples = getActiveStatsSamples();
     const { namedAoiMetrics } = buildCurrentNamedAoiMetrics(samples);
 
     renderAoiStatsTable(namedAoiMetrics, samples);
@@ -3314,7 +3315,11 @@ export function createAppController({
   function exportSamples() {
     syncSelectedCalibrationProfileState();
     syncSelectedValidationPolicyState();
-    const { exportAois, namedAoiMetrics } = buildCurrentNamedAoiMetrics();
+    const activeStatsSamples = getActiveStatsSamples();
+    const exportState = activeStatsSampleSource === 'live'
+      ? state
+      : { ...state, samples: activeStatsSamples };
+    const { exportAois, namedAoiMetrics } = buildCurrentNamedAoiMetrics(activeStatsSamples);
     const video = buildVideoPackageMetadata();
     const payload = buildExportPayload({
       sourceVideo: sourceVideo.currentSrc || sourceVideo.src,
@@ -3322,18 +3327,18 @@ export function createAppController({
       participant: getExportParticipantMetadata(),
       project: buildProjectPackage(),
       video,
-      summary: buildExportSummary(),
+      summary: buildExportSummary(activeStatsSamples, exportState),
       namedAoiMetrics,
       aoiSource,
       aois: exportAois,
-      state,
+      state: exportState,
     });
     downloadJson(payload, `aoi-samples-${Date.now()}.json`);
     renderAoiStatsPanel();
   }
 
   function exportStatsCsv() {
-    const { namedAoiMetrics } = buildCurrentNamedAoiMetrics();
+    const { namedAoiMetrics } = buildCurrentNamedAoiMetrics(getActiveStatsSamples());
     const csv = buildAoiStatsCsv({ namedAoiMetrics });
 
     downloadText(csv, `aoi-stats-${Date.now()}.csv`, 'text/csv;charset=utf-8');

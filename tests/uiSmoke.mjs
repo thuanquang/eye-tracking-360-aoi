@@ -128,22 +128,27 @@ try {
   assert.equal(await page.locator('#adminRecordingPanel').isVisible(), true, 'Admin recording/export controls should be grouped in one workflow panel.');
   assert.equal(await page.locator('#modeLabel').innerText(), 'webcam');
   assert.match(await page.locator('#screenReadout').innerText(), /waiting for webcam gaze|--/);
+  await page.locator('#manualAoiPanel').scrollIntoViewIfNeeded();
   await assert.doesNotReject(
     page.locator('#manualAoiPanel').waitFor({ state: 'visible', timeout: 1000 }),
     'Admin should expose manual AOI authoring controls.',
   );
+  await page.locator('#cloudAoiPanel').scrollIntoViewIfNeeded();
   await assert.doesNotReject(
     page.locator('#cloudAoiPanel').waitFor({ state: 'visible', timeout: 1000 }),
     'Admin should expose Google Colab auto-AOI controls.',
   );
+  await page.locator('#projectionSelect').scrollIntoViewIfNeeded();
   await assert.doesNotReject(
     page.locator('#projectionSelect').waitFor({ state: 'visible', timeout: 1000 }),
     'Admin should expose video projection metadata controls.',
   );
+  await page.locator('#exportStatsCsvButton').scrollIntoViewIfNeeded();
   await assert.doesNotReject(
     page.locator('#exportStatsCsvButton').waitFor({ state: 'visible', timeout: 1000 }),
     'Admin should expose AOI stats CSV export.',
   );
+  await page.locator('#aoiStatsPanel').scrollIntoViewIfNeeded();
   await assert.doesNotReject(
     page.locator('#aoiStatsPanel').waitFor({ state: 'visible', timeout: 1000 }),
     'Admin should expose the AOI stats panel.',
@@ -887,12 +892,21 @@ try {
     'Reviewed polygon object',
     'Named AOI metrics should retain AOI labels.',
   );
-  await page.locator('#refreshStatsButton').click();
   await page.waitForFunction(() => document.querySelectorAll('#aoiStatsTable tbody tr').length > 0);
   assert.equal(
     await page.locator('#aoiStatsTable tbody tr').count(),
     Object.keys(exportedJson.namedAoiMetrics.perAoi).length,
-    'AOI stats table should render one row per named AOI metric after sample data exists.',
+    'AOI stats table should auto-render one row per named AOI metric after sample data exists.',
+  );
+  assert.equal(
+    await page.locator('#heatmapCanvas').evaluate((canvas) => {
+      const context = canvas.getContext('2d');
+      const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
+
+      return pixels.some((value) => value !== 0);
+    }),
+    true,
+    'Heatmap preview should draw non-empty pixels after sample data exists.',
   );
   assert.equal(
     exportedJson.aois[0].color,
@@ -1014,7 +1028,91 @@ try {
     'Mouse-mode samples should export zero gaze uncertainty.',
   );
 
+  const statsRecordingPath = join(tmpDir, 'loaded-stats-recording.json');
+  await writeFile(statsRecordingPath, JSON.stringify({
+    video: {
+      name: SMOKE_FLAT_STUDY_VIDEO.name,
+      projection: SMOKE_FLAT_STUDY_VIDEO.projection,
+      stereoLayout: SMOKE_FLAT_STUDY_VIDEO.stereoLayout,
+    },
+    project: {
+      aois: { source: 'loaded-stats-recording.aoi.json' },
+    },
+    aois: [
+      {
+        id: 'loaded-stats-aoi',
+        label: 'Loaded stats AOI',
+        color: '#fc7753',
+        space: 'video',
+        xMin: 0.2,
+        xMax: 0.8,
+        yMin: 0.2,
+        yMax: 0.8,
+      },
+    ],
+    samples: [
+      {
+        t: 0,
+        source: 'review',
+        panorama: { yaw: 0, pitch: 0 },
+        hits: [],
+        likelyHits: ['loaded-stats-aoi'],
+        possibleHits: [],
+        ambiguousHits: [],
+        quality: { trustedForAoiAnalysis: true },
+      },
+      {
+        t: 1,
+        source: 'review',
+        panorama: { yaw: 40, pitch: 0 },
+        hits: [],
+        likelyHits: [],
+        possibleHits: [],
+        ambiguousHits: [],
+        quality: { trustedForAoiAnalysis: true },
+      },
+    ],
+  }));
+  await page.locator('#recordingFileInput').setInputFiles(statsRecordingPath);
+  await page.waitForFunction(() => document.querySelector('#aoiStatsTable')?.textContent?.includes('Loaded stats AOI'));
+  await page.waitForFunction(() => document.querySelector('#aoiStatsTable')?.textContent?.includes('1.00s'));
+  assert.match(
+    await page.locator('#aoiStatsTable tbody tr').first().innerText(),
+    /^Loaded stats AOI\t1\.00s\t/,
+    'Loaded recording stats should auto-refresh from likely dwell without clicking Refresh.',
+  );
+  const loadedStatsCsvDownloadPromise = page.waitForEvent('download');
+  await page.locator('#exportStatsCsvButton').click();
+  const loadedStatsCsvDownload = await loadedStatsCsvDownloadPromise;
+  const loadedStatsCsv = await readFile(await loadedStatsCsvDownload.path(), 'utf8');
+  assert.match(
+    loadedStatsCsv,
+    /loaded-stats-aoi,Loaded stats AOI,0,1,0,/,
+    'Stats CSV should use the same loaded recording sample source as the visible panel.',
+  );
+  const loadedStatsJsonDownloadPromise = page.waitForEvent('download');
+  await page.locator('#exportButton').click();
+  const loadedStatsJsonDownload = await loadedStatsJsonDownloadPromise;
+  const loadedStatsJson = JSON.parse(await readFile(await loadedStatsJsonDownload.path(), 'utf8'));
+  assert.equal(
+    loadedStatsJson.namedAoiMetrics.perAoi['loaded-stats-aoi'].likelyDwellSec,
+    1,
+    'JSON named AOI metrics should use the same loaded recording sample source as the visible panel.',
+  );
+  assert.equal(
+    loadedStatsJson.statReport.perAoiRows[0].stats.find((stat) => stat.id === 'likelyDwellSec')?.value,
+    1,
+    'JSON stat report should use the same loaded recording sample source as the visible panel.',
+  );
+
   await page.locator('#clearButton').click();
+  await page.waitForFunction(() => document.querySelector('#sampleCount')?.textContent === '0');
+  await page.waitForFunction(() => document.querySelector('#aoiStatsTable')?.textContent?.includes('No samples yet'));
+  assert.equal(
+    await page.locator('#aoiStatsTable').innerText(),
+    'AOI\tDwell\tFixations\tAvg fix\tTTFF\tView %\nNo samples yet. Record or load a session to populate AOI stats.',
+    'Clearing samples should not repopulate stats from the stale loaded recording.',
+  );
   const dynamicPolygonSidecarPath = join(tmpDir, 'dynamic-polygon-video.aoi.json');
   const dynamicTopLevelPoints = [
     { x: 0.18, y: 0.18 },
