@@ -42,12 +42,20 @@ const SEESO_INITIALIZATION_ERRORS = new Map([
 
 export function parseSeeSoCalibrationDataFromUrl(urlString) {
   try {
-    const match = String(urlString).match(/[?&]calibrationData=([^&#]*)/);
-    if (!match) {
-      return null;
+    const rawUrl = String(urlString);
+    const directMatch = rawUrl.match(/[?&]calibrationData=([^&#]*)/);
+    if (directMatch) {
+      return decodeURIComponent(directMatch[1]);
     }
 
-    return decodeURIComponent(match[1]);
+    const url = new URL(rawUrl);
+    const modeValue = url.searchParams.get('mode') || '';
+    const embeddedMatch = modeValue.match(/[?&]calibrationData=([^&#]*)/);
+    if (embeddedMatch) {
+      return decodeURIComponent(embeddedMatch[1]);
+    }
+
+    return null;
   } catch {
     return null;
   }
@@ -55,6 +63,11 @@ export function parseSeeSoCalibrationDataFromUrl(urlString) {
 
 export function buildSeeSoRedirectUrl(urlString) {
   const url = new URL(urlString);
+  const modeValue = url.searchParams.get('mode') || '';
+  const embeddedQueryIndex = modeValue.indexOf('?');
+  if (embeddedQueryIndex >= 0) {
+    url.searchParams.set('mode', modeValue.slice(0, embeddedQueryIndex));
+  }
   url.searchParams.set('gazeProvider', 'seeso');
   url.searchParams.delete('calibrationData');
   return url;

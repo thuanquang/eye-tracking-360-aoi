@@ -174,6 +174,7 @@ export function createAppController({
   const SEESO_LICENSE_KEY_STORAGE_KEY = 'aoi.seesoLicenseKey';
   const SEESO_CALIBRATION_DATA_STORAGE_KEY = 'aoi.seesoCalibrationData';
   const SEESO_CALIBRATION_USER_ID_STORAGE_KEY = 'aoi.seesoCalibrationUserId';
+  const SEESO_CALIBRATION_RETURN_MODE_STORAGE_KEY = 'aoi.seesoCalibrationReturnMode';
   const PARTICIPANT_DRAFT_STORAGE_KEY = 'aoi.participantDraft';
   const PARTICIPANT_SESSION_STORAGE_KEY = 'aoi.participantSession';
   const SEESO_CALIBRATION_POINT_COUNT = 5;
@@ -262,6 +263,12 @@ export function createAppController({
     participantRecordButton,
     participantExportButton,
     participantFlowSteps,
+    validationTestPanel,
+    validationTestStatus,
+    validationTestKeyInput,
+    validationTestCalibrateButton,
+    validationTestBlankButton,
+    validationTestAccuracyButton,
     calibrationOverlay,
     calibrationTarget,
     calibrationProgress,
@@ -504,14 +511,19 @@ export function createAppController({
     if (participantSeeSoLicenseKeyInput) {
       participantSeeSoLicenseKeyInput.value = seeSoLicenseKeyValue;
     }
+    if (validationTestKeyInput) {
+      validationTestKeyInput.value = seeSoLicenseKeyValue;
+    }
     syncAdminGazeSetupControls();
     syncParticipantGazeSetupControls();
+    syncValidationTestControls();
   }
 
   function persistSeeSoLicenseKey(event = null) {
     setSeeSoLicenseKeyControlValue(event?.target?.value ?? seeSoLicenseKeyValue);
     setLocalStorageValue(SEESO_LICENSE_KEY_STORAGE_KEY, getSeeSoLicenseKey());
     syncParticipantSessionControls();
+    syncValidationTestControls();
   }
 
   function getSeeSoCalibrationDataFromUrl() {
@@ -528,6 +540,10 @@ export function createAppController({
 
     try {
       const cleanedUrl = buildSeeSoRedirectUrl(window.location.href);
+      const calibrationReturnMode = getSessionStorageValue(SEESO_CALIBRATION_RETURN_MODE_STORAGE_KEY);
+      if (!cleanedUrl.searchParams.has('mode') && ['admin', 'participant', 'validation'].includes(calibrationReturnMode)) {
+        cleanedUrl.searchParams.set('mode', calibrationReturnMode);
+      }
       window.history?.replaceState?.(null, '', cleanedUrl.toString());
     } catch {
       // A clean address bar is nice-to-have; the stored calibration is the important part.
@@ -671,11 +687,20 @@ export function createAppController({
   function getRequestedAppMode() {
     const params = new URLSearchParams(window.location.search);
     if (!params.has('mode')) {
+      const calibrationReturnMode = getSessionStorageValue(SEESO_CALIBRATION_RETURN_MODE_STORAGE_KEY);
+      if (params.has('calibrationData') && ['admin', 'participant', 'validation'].includes(calibrationReturnMode)) {
+        return calibrationReturnMode;
+      }
+
       return 'admin';
     }
 
-    const mode = params.get('mode');
-    return mode === 'participant' ? 'participant' : 'admin';
+    const mode = String(params.get('mode') || '').split('?')[0];
+    if (mode === 'participant' || mode === 'validation') {
+      return mode;
+    }
+
+    return 'admin';
   }
 
   function setParticipantStage(message) {
@@ -914,19 +939,78 @@ export function createAppController({
     }
   }
 
+  function syncValidationTestControls() {
+    const isValidationTest = state.appMode === 'validation';
+    const hasSeeSoKey = Boolean(getSeeSoLicenseKey());
+    const hasSeeSoCalibration = Boolean(getSeeSoCalibrationData()) || state.webcamCalibrationTrained;
+
+    validationTestPanel.hidden = !isValidationTest;
+    validationTestCalibrateButton.disabled = !hasSeeSoKey;
+    validationTestAccuracyButton.disabled = !hasSeeSoKey || !hasSeeSoCalibration || state.isRecording;
+    validationTestBlankButton.disabled = (
+      (state.targetMode === 'accuracy' && !calibrationOverlay.hidden) ||
+      state.webcamStatus === 'validating'
+    );
+    validationTestCalibrateButton.textContent = hasSeeSoCalibration
+      ? 'Recalibrate Eyedid'
+      : 'Open Eyedid Calibration';
+    validationTestAccuracyButton.classList.toggle(
+      'primary',
+      hasSeeSoKey && hasSeeSoCalibration && !state.accuracyValidated,
+    );
+
+    if (!isValidationTest) {
+      return;
+    }
+
+    if (!hasSeeSoKey) {
+      validationTestStatus.textContent = 'Enter Eyedid key';
+    } else if (state.webcamStatus === 'validating') {
+      validationTestStatus.textContent = 'Checking accuracy';
+    } else if (state.accuracyValidated) {
+      validationTestStatus.textContent = 'Accuracy check complete';
+    } else if (hasSeeSoCalibration) {
+      validationTestStatus.textContent = 'Blank screen ready';
+    } else {
+      validationTestStatus.textContent = 'Ready to calibrate';
+    }
+  }
+
+  function showValidationBlankScreen() {
+    if (state.appMode !== 'validation') {
+      return;
+    }
+
+    calibrationOverlay.hidden = true;
+    setTargetCapturing(false);
+    setNotice('Blank validation screen. When the user is ready, start the accuracy check.', true);
+    syncValidationTestControls();
+  }
+
   function applyAppMode(mode = getRequestedAppMode()) {
     state.appMode = mode;
     const isParticipant = mode === 'participant';
+    const isValidationTest = mode === 'validation';
     const isModeSelect = mode === 'select';
 
     appShell.classList.toggle('is-mode-select', isModeSelect);
     appShell.classList.toggle('is-participant-mode', isParticipant);
+    appShell.classList.toggle('is-validation-test', isValidationTest);
     appShell.classList.toggle('is-admin-mode', mode === 'admin');
     participantPanel.hidden = !isParticipant;
-    controlPanel.hidden = isParticipant || isModeSelect;
+    validationTestPanel.hidden = !isValidationTest;
+    controlPanel.hidden = isParticipant || isValidationTest || isModeSelect;
     viewerSection.hidden = isModeSelect;
     adminModeLink.classList.toggle('is-active', mode === 'admin');
     participantModeLink.classList.toggle('is-active', isParticipant);
+
+    if (isValidationTest) {
+      setGazeProviderControlValue('seeso');
+      selectWebcamMode();
+      showValidationBlankScreen();
+      syncValidationTestControls();
+      return;
+    }
 
     if (isParticipant) {
       updateParticipantStartState();
@@ -942,6 +1026,8 @@ export function createAppController({
     if (isModeSelect) {
       setNotice('Choose Admin or Participant mode to begin.', true);
     }
+
+    syncValidationTestControls();
   }
 
   async function requestParticipantFullscreen() {
@@ -1710,6 +1796,7 @@ export function createAppController({
     webcamStatusLabel.textContent = status;
     syncAdminGazeSetupControls();
     syncParticipantSessionControls();
+    syncValidationTestControls();
   }
 
   function blockWebGazerMouseTraining() {
@@ -1742,6 +1829,7 @@ export function createAppController({
       accuracyStatusLabel.textContent = 'untested';
       syncAdminGazeSetupControls();
       syncParticipantSessionControls();
+      syncValidationTestControls();
       return;
     }
 
@@ -1749,12 +1837,14 @@ export function createAppController({
       accuracyStatusLabel.textContent = `validated ${Math.round(state.correctedAccuracySummary.meanPx)}px`;
       syncAdminGazeSetupControls();
       syncParticipantSessionControls();
+      syncValidationTestControls();
       return;
     }
 
     accuracyStatusLabel.textContent = `${summary.quality} ${Math.round(summary.meanPx)}px`;
     syncAdminGazeSetupControls();
     syncParticipantSessionControls();
+    syncValidationTestControls();
   }
 
   function getCurrentUncertaintyPx(point = null) {
@@ -2620,6 +2710,7 @@ export function createAppController({
     clearStoredSeeSoCalibrationData();
     state.webcamCalibrationTrained = false;
     clearAccuracyRefinement();
+    setSessionStorageValue(SEESO_CALIBRATION_RETURN_MODE_STORAGE_KEY, state.appMode || getRequestedAppMode());
     persistParticipantDraft();
     persistParticipantSessionState();
 
@@ -4408,6 +4499,11 @@ export function createAppController({
   }
 
   function syncVideoNotice() {
+    if (state.appMode === 'validation') {
+      setNotice('Blank validation screen. When the user is ready, start the accuracy check.', true);
+      return;
+    }
+
     if (state.reviewActive || sourceVideo.readyState < HTMLMediaElement.HAVE_METADATA) {
       return;
     }
@@ -4484,6 +4580,10 @@ export function createAppController({
       participantAccuracyButton.addEventListener('click', startAccuracyCheck);
       participantRecordButton.addEventListener('click', toggleRecording);
       participantExportButton.addEventListener('click', exportSamples);
+      validationTestKeyInput.addEventListener('input', persistSeeSoLicenseKey);
+      validationTestCalibrateButton.addEventListener('click', startCalibration);
+      validationTestBlankButton.addEventListener('click', showValidationBlankScreen);
+      validationTestAccuracyButton.addEventListener('click', startAccuracyCheck);
       window.addEventListener('resize', handleResize);
       window.addEventListener('blur', handleWindowFocusLoss);
       document.addEventListener('visibilitychange', handleVisibilityChange);

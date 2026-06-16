@@ -4,7 +4,9 @@ node_modules/
 .tools/
 server.log
 server.err.log
+server.*.current.log
 verification-*.png
+tmp-debug/
 mediapipe/
 diagnostics/
 eyelab-2.html
@@ -12,6 +14,7 @@ runpod-aoi-results.zip
 runpod-aoi-upload*.zip
 runpod-aoi-results/
 runpod-aoi-results-absolute-quality/
+runpod-aoi-results-absolute-quality-aligned-raw/
 runpod-aoi-results-absolute-quality-enhanced/
 runpod-aoi-results-enhanced/
 runpod-aoi-upload/

@@ -171,6 +171,59 @@ try {
   assert.equal(await participantPage.locator('#modeLabel').innerText(), 'webcam');
   await participantPage.close();
 
+  const validationPage = await browser.newPage({
+    viewport: { width: 1366, height: 900 },
+  });
+  await validationPage.goto(urlWithMode('validation'), { waitUntil: 'domcontentloaded' });
+  await validationPage.waitForSelector('#validationTestPanel');
+  assert.equal(await validationPage.locator('#controlPanel').isVisible(), false, 'Validation test should hide admin controls.');
+  assert.equal(await validationPage.locator('#participantPanel').isVisible(), false, 'Validation test should hide participant setup.');
+  assert.equal(await validationPage.locator('#viewerSection').isVisible(), true, 'Validation test should show the blank app screen.');
+  assert.equal(await validationPage.locator('#validationTestPanel').isVisible(), true, 'Validation test controls should be visible.');
+  assert.equal(await validationPage.locator('#gazeProviderSelect').inputValue(), 'seeso', 'Validation test should force Eyedid SeeSo.');
+  assert.equal(await validationPage.locator('#validationTestBlankButton').isVisible(), true, 'Validation test should expose the blank-screen step.');
+  assert.equal(await validationPage.locator('#validationTestAccuracyButton').isVisible(), true, 'Validation test should expose the accuracy-check step.');
+  assert.equal(await validationPage.locator('#participantRecordButton').isVisible(), false, 'Validation test should not expose recording.');
+  assert.equal(
+    await validationPage.locator('#gazeDot').evaluate((element) => getComputedStyle(element).opacity),
+    '1',
+    'Validation test should show the live tracking cursor on the blank screen.',
+  );
+  assert.match(await validationPage.locator('#viewerNotice').innerText(), /blank/i, 'Validation viewer should read as a blank app screen.');
+  await validationPage.close();
+
+  const validationReturnPage = await browser.newPage({
+    viewport: { width: 1366, height: 900 },
+  });
+  await validationReturnPage.goto(TARGET_URL, { waitUntil: 'domcontentloaded' });
+  await validationReturnPage.evaluate(() => {
+    sessionStorage.setItem('aoi.seesoCalibrationReturnMode', 'validation');
+  });
+  const returnedCalibrationUrl = new URL(TARGET_URL);
+  returnedCalibrationUrl.searchParams.set('gazeProvider', 'seeso');
+  returnedCalibrationUrl.searchParams.set('calibrationData', JSON.stringify({ vector: 'validation-return' }));
+  await validationReturnPage.goto(returnedCalibrationUrl.toString(), { waitUntil: 'domcontentloaded' });
+  await validationReturnPage.waitForSelector('#validationTestPanel');
+  assert.equal(await validationReturnPage.locator('#validationTestPanel').isVisible(), true, 'Eyedid calibration return should restore validation mode.');
+  assert.equal(await validationReturnPage.locator('#controlPanel').isVisible(), false, 'Eyedid calibration return should not fall back to admin mode.');
+  assert.equal(await validationReturnPage.locator('#gazeProviderSelect').inputValue(), 'seeso', 'Eyedid calibration return should keep SeeSo selected.');
+  await validationReturnPage.close();
+
+  const malformedValidationReturnPage = await browser.newPage({
+    viewport: { width: 1366, height: 900 },
+  });
+  const malformedValidationUrl = new URL(TARGET_URL);
+  malformedValidationUrl.searchParams.set(
+    'mode',
+    `validation?calibrationData=${JSON.stringify({ vector: 'malformed-validation-return' })}`,
+  );
+  malformedValidationUrl.searchParams.set('gazeProvider', 'seeso');
+  await malformedValidationReturnPage.goto(malformedValidationUrl.toString(), { waitUntil: 'domcontentloaded' });
+  await malformedValidationReturnPage.waitForSelector('#validationTestPanel');
+  assert.equal(await malformedValidationReturnPage.locator('#validationTestPanel').isVisible(), true, 'Malformed Eyedid return should still restore validation mode.');
+  assert.equal(await malformedValidationReturnPage.locator('#controlPanel').isVisible(), false, 'Malformed Eyedid return should not fall back to admin mode.');
+  await malformedValidationReturnPage.close();
+
   await page.locator('#studyVideoSelect').selectOption(SMOKE_FLAT_STUDY_VIDEO.id);
   await page.waitForFunction(
     (expectedProjection) => document.querySelector('#projectionSelect')?.value === expectedProjection,

@@ -39,41 +39,41 @@ test('exposes the culture, nature, and Nguyen Hue study videos', () => {
   assert.equal(findStudyVideoByName('nature_tam_coc_04m31s-05m01s_2d.mp4')?.projection, 'flat');
 });
 
-test('maps Nguyen Hue to cleaned AOIs and legacy 360 clips to yaw-aligned AOIs', () => {
+test('maps study videos to surface-merged cleaned AOIs', () => {
   assert.deepEqual(
     STUDY_VIDEOS.map((video) => [video.name, getGeneratedAoiPathForStudyVideo(video)]),
     [
       [
         'nguyen-hue-360-0500-0530.mp4',
-        'runpod-aoi-results-absolute-quality-enhanced/outputs/nguyen-hue-360-0500-0530.enhanced-aois.json',
+        'runpod-aoi-results-absolute-quality-with-surfaces/outputs/nguyen-hue-360-0500-0530.enhanced-aois.json',
       ],
       [
         'nguyen-hue-360-0532-0602.mp4',
-        'runpod-aoi-results-absolute-quality-enhanced/outputs/nguyen-hue-360-0532-0602.enhanced-aois.json',
+        'runpod-aoi-results-absolute-quality-with-surfaces/outputs/nguyen-hue-360-0532-0602.enhanced-aois.json',
       ],
       [
         'nguyen-hue-2d-view-0500-0530-yaw0.mp4',
-        'runpod-aoi-results-absolute-quality-enhanced/outputs/nguyen-hue-2d-view-0500-0530-yaw0.enhanced-aois.json',
+        'runpod-aoi-results-absolute-quality-with-surfaces/outputs/nguyen-hue-2d-view-0500-0530-yaw0.enhanced-aois.json',
       ],
       [
         'nguyen-hue-2d-view-0532-0602-yaw-45.mp4',
-        'runpod-aoi-results-absolute-quality-enhanced/outputs/nguyen-hue-2d-view-0532-0602-yaw-45.enhanced-aois.json',
+        'runpod-aoi-results-absolute-quality-with-surfaces/outputs/nguyen-hue-2d-view-0532-0602-yaw-45.enhanced-aois.json',
       ],
       [
         'culture_thap_ba_01m19s-01m49s.mp4',
-        'runpod-aoi-results-absolute-quality-aligned/outputs/culture_thap_ba_01m19s-01m49s.enhanced-aois.json',
+        'runpod-aoi-results-absolute-quality-with-surfaces/outputs/culture_thap_ba_01m19s-01m49s.enhanced-aois.json',
       ],
       [
         'culture_thap_ba_01m19s-01m49s_2d.mp4',
-        'runpod-aoi-results-absolute-quality-enhanced/outputs/culture_thap_ba_01m19s-01m49s_2d.enhanced-aois.json',
+        'runpod-aoi-results-absolute-quality-with-surfaces/outputs/culture_thap_ba_01m19s-01m49s_2d.enhanced-aois.json',
       ],
       [
         'nature_tam_coc_04m31s-05m01s.mp4',
-        'runpod-aoi-results-absolute-quality-aligned/outputs/nature_tam_coc_04m31s-05m01s.enhanced-aois.json',
+        'runpod-aoi-results-absolute-quality-with-surfaces/outputs/nature_tam_coc_04m31s-05m01s.enhanced-aois.json',
       ],
       [
         'nature_tam_coc_04m31s-05m01s_2d.mp4',
-        'runpod-aoi-results-absolute-quality-enhanced/outputs/nature_tam_coc_04m31s-05m01s_2d.enhanced-aois.json',
+        'runpod-aoi-results-absolute-quality-with-surfaces/outputs/nature_tam_coc_04m31s-05m01s_2d.enhanced-aois.json',
       ],
     ],
   );

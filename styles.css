@@ -498,6 +498,14 @@ h1 {
   box-shadow: var(--shadow);
 }
 
+.validation-test-panel {
+  min-width: 0;
+  overflow: auto;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  box-shadow: var(--shadow);
+}
+
 .participant-flow-rail {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -697,7 +705,36 @@ h1 {
   min-height: 44px;
 }
 
+.validation-test-card {
+  height: 100%;
+  display: grid;
+  align-content: start;
+  gap: 18px;
+}
+
+.validation-test-card h2 {
+  margin: 0;
+  font-size: 1.45rem;
+  letter-spacing: 0;
+}
+
+.validation-step-list {
+  display: grid;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 0.92rem;
+  font-weight: 600;
+}
+
+.validation-test-actions {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .app-shell.is-participant-mode {
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 360px);
+}
+
+.app-shell.is-validation-test {
   grid-template-columns: minmax(0, 1fr) minmax(300px, 360px);
 }
 
@@ -707,11 +744,58 @@ h1 {
   display: none;
 }
 
+.app-shell.is-validation-test .viewer-toolbar,
+.app-shell.is-validation-test .timeline-strip,
+.app-shell.is-validation-test #controlPanel,
+.app-shell.is-validation-test #participantPanel {
+  display: none;
+}
+
+.app-shell.is-validation-test .viewer-section {
+  grid-template-rows: minmax(0, 1fr);
+  border-color: #d0d5dd;
+  box-shadow: none;
+}
+
+.app-shell.is-validation-test .viewer {
+  background: #ffffff;
+}
+
+.app-shell.is-validation-test #viewer canvas,
+.app-shell.is-validation-test #aoiOverlay {
+  opacity: 0;
+}
+
+.app-shell.is-validation-test #gazeDot {
+  opacity: 1;
+  z-index: 12;
+  background: #156ec8;
+  box-shadow:
+    0 0 0 4px rgba(21, 110, 200, 0.18),
+    0 0 18px rgba(21, 110, 200, 0.28);
+}
+
+.app-shell.is-validation-test #viewerNotice {
+  color: #344054;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+}
+
 .app-shell.is-participant-mode #participantPanel {
   display: block;
 }
 
 .app-shell.is-admin-mode #participantPanel {
+  display: none;
+}
+
+.app-shell.is-validation-test #validationTestPanel {
+  display: block;
+}
+
+.app-shell.is-admin-mode #validationTestPanel,
+.app-shell.is-participant-mode #validationTestPanel {
   display: none;
 }
 

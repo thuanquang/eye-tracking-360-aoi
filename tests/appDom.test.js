@@ -115,6 +115,12 @@ test('queryAppDom resolves core app selectors', () => {
     '#participantRecordButton',
     '#participantExportButton',
     '#participantFlowRail .flow-step',
+    '#validationTestPanel',
+    '#validationTestStatus',
+    '#validationTestKeyInput',
+    '#validationTestCalibrateButton',
+    '#validationTestBlankButton',
+    '#validationTestAccuracyButton',
     '#calibrationOverlay',
     '#calibrationTarget',
     '#calibrationProgress',
@@ -136,6 +142,8 @@ test('queryAppDom resolves core app selectors', () => {
   assert.equal(dom.participantGazeSetupStatus.selector, '#participantGazeSetupStatus');
   assert.equal(dom.calibrationProfileSelect.selector, '#calibrationProfileSelect');
   assert.equal(dom.validationPolicySelect.selector, '#validationPolicySelect');
+  assert.equal(dom.validationTestPanel.selector, '#validationTestPanel');
+  assert.equal(dom.validationTestBlankButton.selector, '#validationTestBlankButton');
   assert.equal(dom.rawGazeDiagnosticButton.selector, '#rawGazeDiagnosticButton');
   assert.equal(dom.rawGazeDiagnosticStatus.selector, '#rawGazeDiagnosticStatus');
   assert.equal(dom.gazeQualityReadout.selector, '#gazeQualityReadout');

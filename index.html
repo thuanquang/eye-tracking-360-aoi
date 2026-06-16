@@ -52,6 +52,11 @@
             <strong>Run participant session</strong>
             <span>Enter participant details, calibrate webcam gaze, record the session, and export results.</span>
           </a>
+          <a id="chooseValidationModeLink" class="mode-choice" href="./?mode=validation">
+            <span class="section-label">Validation Test</span>
+            <strong>Eyedid accuracy flow</strong>
+            <span>Run only Eyedid calibration, a blank app screen, and the accuracy check.</span>
+          </a>
         </div>
       </section>
 
@@ -165,6 +170,31 @@
           <div class="participant-status">
             <span>Session</span>
             <strong id="participantSessionStatus">Waiting to start</strong>
+          </div>
+        </section>
+      </aside>
+
+      <aside id="validationTestPanel" class="validation-test-panel" aria-label="Eyedid validation test" hidden>
+        <section class="panel-section validation-test-card">
+          <p class="section-label">Validation Test</p>
+          <h2>Eyedid accuracy flow</h2>
+          <div class="validation-step-list" aria-label="Validation flow">
+            <span>01 Eyedid calibration</span>
+            <span>02 Blank app screen</span>
+            <span>03 Accuracy check</span>
+          </div>
+          <label class="field-stack">
+            <span>Eyedid key</span>
+            <input id="validationTestKeyInput" type="password" autocomplete="off" placeholder="License key" />
+          </label>
+          <div class="participant-status">
+            <span>Status</span>
+            <strong id="validationTestStatus">Enter Eyedid key</strong>
+          </div>
+          <div class="participant-actions validation-test-actions">
+            <button id="validationTestCalibrateButton" class="primary" type="button">Open Eyedid Calibration</button>
+            <button id="validationTestBlankButton" type="button">Show Blank Screen</button>
+            <button id="validationTestAccuracyButton" type="button">Start Accuracy Check</button>
           </div>
         </section>
       </aside>

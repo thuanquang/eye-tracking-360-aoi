@@ -367,6 +367,15 @@ test('seeso provider opens hosted calibration and parses returned data', async (
     buildSeeSoRedirectUrl('http://localhost:5179/?mode=admin&calibrationData=old').toString(),
     'http://localhost:5179/?mode=admin&gazeProvider=seeso',
   );
+  const malformedValidationReturn = 'http://localhost:5179/?mode=validation%3FcalibrationData%3D%7B%22vector%22%3A%22abc%22%7D&gazeProvider=seeso';
+  assert.equal(
+    parseSeeSoCalibrationDataFromUrl(malformedValidationReturn),
+    '{"vector":"abc"}',
+  );
+  assert.equal(
+    buildSeeSoRedirectUrl(malformedValidationReturn).toString(),
+    'http://localhost:5179/?mode=validation&gazeProvider=seeso',
+  );
 });
 
 test('seeso provider explains missing SharedArrayBuffer runtime before starting', async () => {

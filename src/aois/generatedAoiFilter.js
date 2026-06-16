@@ -27,8 +27,14 @@ export function isGeneratedAoi(aoi) {
     && aoi.metadata.generatedBy.trim().length > 0;
 }
 
+export function isDedicatedSceneSurfaceAoi(aoi) {
+  return aoi?.metadata?.sceneSurface === true
+    || aoi?.metadata?.generatedBy === 'runpod-scene-surface-aoi';
+}
+
 export function isGeneratedSceneBackgroundAoi(aoi) {
   return isGeneratedAoi(aoi)
+    && !isDedicatedSceneSurfaceAoi(aoi)
     && GENERATED_SCENE_BACKGROUND_LABELS.has(normalizeGeneratedAoiLabel(aoi.label));
 }
 
