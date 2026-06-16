@@ -201,11 +201,11 @@
 
       <aside id="controlPanel" class="control-panel" aria-label="Experiment controls">
         <nav id="adminWorkflowRail" class="admin-workflow-rail" aria-label="Admin workflow">
-          <span class="admin-flow-step">01 Setup</span>
-          <span class="admin-flow-step">02 AOIs</span>
-          <span class="admin-flow-step">03 Calibrate</span>
-          <span class="admin-flow-step">04 Record</span>
-          <span class="admin-flow-step">05 Export</span>
+          <a class="admin-flow-step" href="#adminSetupPanel">01 Setup</a>
+          <a class="admin-flow-step" href="#manualAoiPanel">02 AOIs</a>
+          <a class="admin-flow-step" href="#adminCalibrationPanel">03 Calibrate</a>
+          <a class="admin-flow-step" href="#adminRecordingPanel">04 Record</a>
+          <a class="admin-flow-step" href="#adminAoiListPanel">05 Export</a>
         </nav>
 
         <section id="adminSetupPanel" class="panel-section admin-panel-section" data-step="01">
@@ -243,55 +243,6 @@
               </select>
             </label>
           </div>
-        </section>
-
-        <section id="adminCalibrationPanel" class="panel-section admin-panel-section" data-step="03">
-          <div class="panel-heading">
-            <p class="section-label">Calibration</p>
-            <h2>Tracker quality</h2>
-          </div>
-          <div class="segmented">
-            <button id="mouseModeButton" type="button">Mouse demo</button>
-            <button id="webcamModeButton" class="is-active" type="button">Webcam gaze</button>
-          </div>
-          <label class="field-label compact-field">
-            <span>Gaze engine</span>
-            <select id="gazeProviderSelect">
-              <option value="webgazer">WebGazer</option>
-              <option value="seeso">Eyedid SeeSo</option>
-            </select>
-          </label>
-          <label class="field-label compact-field">
-            <span>Eyedid key</span>
-            <input id="seesoLicenseKeyInput" type="password" autocomplete="off" placeholder="License key" />
-          </label>
-          <div class="tracker-status-row">
-            <span>Tracker status</span>
-            <strong id="gazeEngineStatus">WebGazer selected</strong>
-          </div>
-          <label class="field-label compact-field">
-            <span>Calibration</span>
-            <select id="calibrationProfileSelect">
-              <option value="standard">Standard</option>
-              <option value="research-39">Research 39</option>
-              <option value="research-78">Research 78</option>
-            </select>
-          </label>
-          <label class="field-label compact-field">
-            <span>Validation policy</span>
-            <select id="validationPolicySelect">
-              <option value="prototype">Prototype</option>
-              <option value="research">Research</option>
-            </select>
-          </label>
-          <div class="button-pair">
-            <button id="calibrateButton" class="wide-action" type="button">Calibrate webcam</button>
-            <button id="accuracyButton" class="wide-action" type="button">Check accuracy</button>
-          </div>
-          <div class="button-pair">
-            <button id="rawGazeDiagnosticButton" class="wide-action" type="button">Diagnose Raw Gaze</button>
-          </div>
-          <p id="rawGazeDiagnosticStatus" class="fine-print">Raw gaze diagnostic not run.</p>
         </section>
 
         <section id="manualAoiPanel" class="panel-section admin-panel-section" data-step="02">
@@ -383,6 +334,55 @@ product</textarea>
           </div>
         </section>
 
+        <section id="adminCalibrationPanel" class="panel-section admin-panel-section" data-step="03">
+          <div class="panel-heading">
+            <p class="section-label">Calibration</p>
+            <h2>Tracker quality</h2>
+          </div>
+          <div class="segmented">
+            <button id="mouseModeButton" type="button">Mouse demo</button>
+            <button id="webcamModeButton" class="is-active" type="button">Webcam gaze</button>
+          </div>
+          <label class="field-label compact-field">
+            <span>Gaze engine</span>
+            <select id="gazeProviderSelect">
+              <option value="webgazer">WebGazer</option>
+              <option value="seeso">Eyedid SeeSo</option>
+            </select>
+          </label>
+          <label class="field-label compact-field">
+            <span>Eyedid key</span>
+            <input id="seesoLicenseKeyInput" type="password" autocomplete="off" placeholder="License key" />
+          </label>
+          <div class="tracker-status-row">
+            <span>Tracker status</span>
+            <strong id="gazeEngineStatus">WebGazer selected</strong>
+          </div>
+          <label class="field-label compact-field">
+            <span>Calibration</span>
+            <select id="calibrationProfileSelect">
+              <option value="standard">Standard</option>
+              <option value="research-39">Research 39</option>
+              <option value="research-78">Research 78</option>
+            </select>
+          </label>
+          <label class="field-label compact-field">
+            <span>Validation policy</span>
+            <select id="validationPolicySelect">
+              <option value="prototype">Prototype</option>
+              <option value="research">Research</option>
+            </select>
+          </label>
+          <div class="button-pair">
+            <button id="calibrateButton" class="wide-action" type="button">Calibrate webcam</button>
+            <button id="accuracyButton" class="wide-action" type="button">Check accuracy</button>
+          </div>
+          <div class="button-pair">
+            <button id="rawGazeDiagnosticButton" class="wide-action" type="button">Diagnose Raw Gaze</button>
+          </div>
+          <p id="rawGazeDiagnosticStatus" class="fine-print">Raw gaze diagnostic not run.</p>
+        </section>
+
         <section id="adminRecordingPanel" class="panel-section admin-panel-section" data-step="04">
           <div class="panel-heading">
             <p class="section-label">Record</p>
@@ -422,11 +422,11 @@ product</textarea>
           </div>
         </section>
 
-        <section id="adminReadoutPanel" class="panel-section admin-panel-section compact-admin-section" data-step="03">
-          <div class="panel-heading">
+        <details id="adminReadoutPanel" class="panel-section admin-panel-section compact-admin-section" data-step="05" open>
+          <summary>
             <p class="section-label">Live Readout</p>
             <h2>Gaze state</h2>
-          </div>
+          </summary>
           <dl class="readout">
             <div>
               <dt>Screen</dt>
@@ -449,15 +449,15 @@ product</textarea>
               <dd id="gazeQualityReadout">--</dd>
             </div>
           </dl>
-        </section>
+        </details>
 
-        <section id="adminAoiListPanel" class="panel-section admin-panel-section compact-admin-section" data-step="05">
-          <div class="panel-heading">
+        <details id="adminAoiListPanel" class="panel-section admin-panel-section compact-admin-section" data-step="05" open>
+          <summary>
             <p class="section-label">AOI List</p>
             <h2>Current regions</h2>
-          </div>
+          </summary>
           <ul id="aoiList" class="aoi-list"></ul>
-        </section>
+        </details>
       </aside>
     </main>
 
