@@ -159,10 +159,14 @@ try {
     '02 AOIS',
     'Admin workflow should mark AOIs selected after clicking the AOI step.',
   );
-  await page.locator('#projectionSelect').scrollIntoViewIfNeeded();
   await assert.doesNotReject(
-    page.locator('#projectionSelect').waitFor({ state: 'visible', timeout: 1000 }),
-    'Admin should expose video projection metadata controls.',
+    page.locator('#projectionSelect').waitFor({ state: 'attached', timeout: 1000 }),
+    'Admin should keep projection metadata controls mounted for study video state.',
+  );
+  assert.equal(
+    await page.locator('.source-metadata-controls').isHidden(),
+    true,
+    'Admin should keep projection metadata controls hidden from the primary setup flow.',
   );
   await page.locator('#exportStatsCsvButton').scrollIntoViewIfNeeded();
   await assert.doesNotReject(
