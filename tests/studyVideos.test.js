@@ -6,6 +6,7 @@ import {
   findStudyVideoByName,
   getGeneratedAoiPathForStudyVideo,
   getDefaultStudyVideo,
+  getRandomStudyVideo,
   validateAoiVideoCompatibility,
 } from '../src/app/studyVideos.js';
 
@@ -79,6 +80,13 @@ test('maps study videos to surface-merged cleaned AOIs', () => {
   );
 });
 
+test('selects a random study video from the configured choices', () => {
+  const video = getRandomStudyVideo(() => 0.51);
+
+  assert.equal(video.id, STUDY_VIDEOS[Math.floor(0.51 * STUDY_VIDEOS.length)].id);
+  assert.notEqual(video, STUDY_VIDEOS[Math.floor(0.51 * STUDY_VIDEOS.length)]);
+});
+
 test('accepts AOI JSON whose video metadata matches the selected study video', () => {
   const video = findStudyVideoByName('nguyen-hue-360-0500-0530.mp4');
   assert.doesNotThrow(() => validateAoiVideoCompatibility({
@@ -123,7 +131,7 @@ test('rejects AOI JSON for a different study video or projection', () => {
         stereoLayout: 'mono',
       },
     }),
-    /does not match selected video/,
+    /không khớp với video đã chọn/,
   );
 
   assert.throws(
@@ -135,7 +143,7 @@ test('rejects AOI JSON for a different study video or projection', () => {
         stereoLayout: 'mono',
       },
     }),
-    /projection/,
+    /Phép chiếu/,
   );
 
   assert.throws(
@@ -147,7 +155,7 @@ test('rejects AOI JSON for a different study video or projection', () => {
         stereoLayout: 'top-bottom',
       },
     }),
-    /stereo layout/,
+    /Bố cục stereo/,
   );
 });
 
@@ -157,6 +165,6 @@ test('requires AOI JSON to include video metadata for study checks', () => {
       selectedVideo: findStudyVideoByName('nguyen-hue-2d-view-0532-0602-yaw-45.mp4'),
       metadataVideo: null,
     }),
-    /must include video metadata/,
+    /phải bao gồm metadata video/,
   );
 });

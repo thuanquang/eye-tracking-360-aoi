@@ -106,9 +106,10 @@ try {
   await page.locator('#recordButton').click();
   assert.equal(
     await page.locator('#recordButton').innerText(),
-    'Start Recording',
-    'Recording should remain blocked after failed independent validation.',
+    'Stop Recording',
+    'Recording should be allowed after failed independent validation while remaining unvalidated in exports.',
   );
+  await page.locator('#recordButton').click();
 
   const downloadPromise = page.waitForEvent('download');
   await page.locator('#exportButton').click();

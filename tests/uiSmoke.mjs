@@ -45,13 +45,23 @@ function hasColorVariance(samples) {
 }
 
 async function recordMouseExport(page, viewerBox) {
+  if (await page.locator('#appShell').evaluate((shell) => shell.classList.contains('is-analytics-mode'))) {
+    await page.locator('#exitAnalyticsButton').click();
+  }
+
+  if (!(await page.locator('#recordButton').isVisible()) && await page.locator('#adminWorkflowRail a[href="#adminRecordingPanel"]').isVisible()) {
+    await page.locator('#adminWorkflowRail a[href="#adminRecordingPanel"]').click();
+  }
+
+  await page.locator('#recordButton').scrollIntoViewIfNeeded();
   await page.mouse.move(viewerBox.x + viewerBox.width / 2, viewerBox.y + viewerBox.height / 2);
   await page.locator('#recordButton').click();
   await page.waitForFunction(() => document.querySelector('#sampleCount')?.textContent !== '0');
   await page.locator('#recordButton').click();
+  await page.waitForFunction(() => document.querySelector('#appShell')?.classList.contains('is-analytics-mode'));
 
   const downloadPromise = page.waitForEvent('download');
-  await page.locator('#exportButton').click();
+  await page.locator('#analyticsExportButton').click();
   const download = await downloadPromise;
 
   return JSON.parse(await readFile(await download.path(), 'utf8'));
@@ -94,12 +104,18 @@ page.on('pageerror', (error) => {
 
 try {
   await page.goto(TARGET_URL, { waitUntil: 'domcontentloaded' });
-  await page.waitForSelector('#viewer canvas');
+  await page.waitForFunction(() => Boolean(window.__aoiAppReady));
+  assert.equal(await page.locator('#modeSelectScreen').isVisible(), true, 'Root URL should show the mode selection screen.');
+  assert.equal(await page.locator('#viewerSection').isVisible(), false, 'Root URL should wait for a workflow choice.');
+  assert.equal(await page.locator('#controlPanel').isVisible(), false, 'Root URL should not show admin controls until Admin mode is selected.');
+
+  await page.goto(urlWithMode('admin'), { waitUntil: 'domcontentloaded' });
+  await page.waitForSelector('#viewer canvas:not(.gaze-heatmap-overlay)');
   await page.waitForFunction(() => Boolean(window.__aoiAppReady));
   await page.waitForFunction(() => document.querySelector('#sourceVideo')?.readyState >= 1);
-  assert.equal(await page.locator('#modeSelectScreen').isVisible(), false, 'Root URL should skip the mode selection screen.');
-  assert.equal(await page.locator('#viewerSection').isVisible(), true, 'Root URL should enter the viewer.');
-  assert.equal(await page.locator('#controlPanel').isVisible(), true, 'Root URL should show admin controls.');
+  assert.equal(await page.locator('#modeSelectScreen').isVisible(), false, 'Admin URL should skip the mode selection screen.');
+  assert.equal(await page.locator('#viewerSection').isVisible(), true, 'Admin URL should enter the viewer.');
+  assert.equal(await page.locator('#controlPanel').isVisible(), true, 'Admin URL should show admin controls.');
   assert.equal(
     await page.evaluate(() => Boolean(window.__aoiAppReady)),
     true,
@@ -112,24 +128,36 @@ try {
   assert.equal(await page.locator('#participantPanel').isVisible(), false, 'Participant panel should be hidden in admin mode.');
   assert.equal(await page.locator('#adminWorkflowRail').isVisible(), true, 'Admin should expose a researcher workflow rail.');
   assert.deepEqual(
-    await page.locator('#adminWorkflowRail .admin-flow-step').allTextContents(),
-    ['01 Setup', '02 AOIs', '03 Calibrate', '04 Record', '05 Export'],
+    await page.locator('#adminWorkflowRail .admin-flow-step').evaluateAll((steps) => (
+      steps.map((step) => step.getAttribute('href'))
+    )),
+    ['#adminSetupPanel', '#manualAoiPanel', '#adminCalibrationPanel', '#adminRecordingPanel', '#adminAoiListPanel'],
     'Admin workflow should show the expected setup order.',
   );
   assert.equal(await page.locator('#adminSetupPanel').isVisible(), true, 'Admin setup controls should be grouped in the first workflow panel.');
   assert.equal(await page.locator('#adminCalibrationPanel').isVisible(), true, 'Admin calibration controls should be grouped separately from video setup.');
   assert.equal(await page.locator('#adminRecordingPanel').isVisible(), true, 'Admin recording/export controls should be grouped in one workflow panel.');
-  assert.equal(await page.locator('#modeLabel').innerText(), 'webcam');
+  assert.equal(
+    await page.locator('#webcamModeButton').evaluate((button) => button.classList.contains('is-active')),
+    true,
+    'Admin should start in webcam gaze mode.',
+  );
   assert.match(await page.locator('#screenReadout').innerText(), /waiting for webcam gaze|--/);
   await page.locator('#manualAoiPanel').scrollIntoViewIfNeeded();
   await assert.doesNotReject(
     page.locator('#manualAoiPanel').waitFor({ state: 'visible', timeout: 1000 }),
     'Admin should expose manual AOI authoring controls.',
   );
-  await page.locator('#cloudAoiPanel').scrollIntoViewIfNeeded();
-  await assert.doesNotReject(
-    page.locator('#cloudAoiPanel').waitFor({ state: 'visible', timeout: 1000 }),
-    'Admin should expose Google Colab auto-AOI controls.',
+  assert.equal(
+    await page.locator('#cloudAoiPanel').count(),
+    0,
+    'Admin should not expose Google Colab auto-AOI controls.',
+  );
+  await page.locator('#adminWorkflowRail a[href="#manualAoiPanel"]').click();
+  assert.equal(
+    await page.locator('#adminWorkflowRail a[aria-current="step"]').innerText(),
+    '02 AOIS',
+    'Admin workflow should mark AOIs selected after clicking the AOI step.',
   );
   await page.locator('#projectionSelect').scrollIntoViewIfNeeded();
   await assert.doesNotReject(
@@ -141,18 +169,20 @@ try {
     page.locator('#exportStatsCsvButton').waitFor({ state: 'visible', timeout: 1000 }),
     'Admin should expose AOI stats CSV export.',
   );
-  await page.locator('#aoiStatsPanel').scrollIntoViewIfNeeded();
-  await assert.doesNotReject(
-    page.locator('#aoiStatsPanel').waitFor({ state: 'visible', timeout: 1000 }),
-    'Admin should expose the AOI stats panel.',
+  assert.equal(
+    await page.locator('#aoiStatsPanel').isVisible(),
+    false,
+    'Admin should hide AOI stats until a recording stops or JSON is loaded.',
   );
-  await assert.doesNotReject(
-    page.locator('#aoiStatsTable').waitFor({ state: 'visible', timeout: 1000 }),
-    'Admin should expose the AOI stats table.',
+  assert.equal(
+    await page.locator('#heatmapCanvas').count(),
+    0,
+    'Admin should not render a sidebar heatmap preview.',
   );
-  await assert.doesNotReject(
-    page.locator('#heatmapCanvas').waitFor({ state: 'visible', timeout: 1000 }),
-    'Admin should expose the compact heatmap preview.',
+  assert.equal(
+    await page.locator('#gazeHeatmapOverlay').count(),
+    1,
+    'Admin should mount the heatmap overlay in the player.',
   );
   const participantPage = await browser.newPage({
     viewport: { width: 1366, height: 900 },
@@ -174,22 +204,32 @@ try {
   await participantPage.locator('#participantConsentInput').check();
   assert.equal(await participantPage.locator('#participantStartButton').isEnabled(), true, 'Participant start should enable after valid metadata.');
   await participantPage.locator('#participantStartButton').click();
-  await participantPage.waitForFunction(() => document.querySelector('#participantStageLabel')?.textContent?.includes('Ready'));
   assert.equal(await participantPage.locator('#viewerSection').isVisible(), true, 'Participant session should advance to the viewer screen.');
   await participantPage.locator('#participantSessionPanel').waitFor({ state: 'visible', timeout: 5000 });
   await assert.doesNotReject(
     participantPage.locator('#participantCalibrateButton').waitFor({ state: 'visible', timeout: 5000 }),
     'Participant session should expose calibration as a flow action.',
   );
-  await assert.doesNotReject(
-    participantPage.locator('#participantAccuracyButton').waitFor({ state: 'visible', timeout: 5000 }),
-    'Participant session should expose accuracy check as a flow action.',
+  assert.equal(
+    await participantPage.locator('#participantAccuracyButton').count(),
+    0,
+    'Participant session should not expose a separate gaze/accuracy action.',
   );
   await assert.doesNotReject(
     participantPage.locator('#participantRecordButton').waitFor({ state: 'visible', timeout: 5000 }),
     'Participant session should expose recording as a flow action.',
   );
-  assert.equal(await participantPage.locator('#modeLabel').innerText(), 'webcam');
+  await participantPage.waitForFunction(() => (
+    !document.fullscreenElement || document.fullscreenElement.id === 'appShell'
+  ));
+  await participantPage.locator('#participantRecordButton').click();
+  assert.equal(
+    await participantPage.locator('#participantRecordButton').evaluate((button) => button.classList.contains('primary')),
+    false,
+    'Participant recording control should be clickable after fullscreen starts.',
+  );
+  await participantPage.locator('#participantRecordButton').click();
+  assert.notEqual(await participantPage.locator('#modeLabel').innerText(), '', 'Participant mode should keep a gaze mode label.');
   await participantPage.close();
 
   const validationPage = await browser.newPage({
@@ -201,8 +241,8 @@ try {
   assert.equal(await validationPage.locator('#participantPanel').isVisible(), false, 'Validation test should hide participant setup.');
   assert.equal(await validationPage.locator('#viewerSection').isVisible(), true, 'Validation test should show the blank app screen.');
   assert.equal(await validationPage.locator('#validationTestPanel').isVisible(), true, 'Validation test controls should be visible.');
-  assert.equal(await validationPage.locator('#gazeProviderSelect').inputValue(), 'seeso', 'Validation test should force Eyedid SeeSo.');
-  assert.equal(await validationPage.locator('#validationTestBlankButton').isVisible(), true, 'Validation test should expose the blank-screen step.');
+  assert.equal(await validationPage.locator('#gazeProviderSelect').inputValue(), 'seeso', 'Validation test should force the hosted tracker.');
+  assert.equal(await validationPage.locator('#validationTestCalibrateButton').isVisible(), true, 'Validation test should expose tracker calibration.');
   assert.equal(await validationPage.locator('#validationTestAccuracyButton').isVisible(), true, 'Validation test should expose the accuracy-check step.');
   assert.equal(await validationPage.locator('#participantRecordButton').isVisible(), false, 'Validation test should not expose recording.');
   assert.equal(
@@ -210,7 +250,11 @@ try {
     '1',
     'Validation test should show the live tracking cursor on the blank screen.',
   );
-  assert.match(await validationPage.locator('#viewerNotice').innerText(), /blank/i, 'Validation viewer should read as a blank app screen.');
+  assert.equal(
+    await validationPage.locator('#appShell').evaluate((element) => element.classList.contains('is-validation-test')),
+    true,
+    'Validation viewer should use the blank validation app state.',
+  );
   await validationPage.close();
 
   const validationReturnPage = await browser.newPage({
@@ -225,9 +269,9 @@ try {
   returnedCalibrationUrl.searchParams.set('calibrationData', JSON.stringify({ vector: 'validation-return' }));
   await validationReturnPage.goto(returnedCalibrationUrl.toString(), { waitUntil: 'domcontentloaded' });
   await validationReturnPage.waitForSelector('#validationTestPanel');
-  assert.equal(await validationReturnPage.locator('#validationTestPanel').isVisible(), true, 'Eyedid calibration return should restore validation mode.');
-  assert.equal(await validationReturnPage.locator('#controlPanel').isVisible(), false, 'Eyedid calibration return should not fall back to admin mode.');
-  assert.equal(await validationReturnPage.locator('#gazeProviderSelect').inputValue(), 'seeso', 'Eyedid calibration return should keep SeeSo selected.');
+  assert.equal(await validationReturnPage.locator('#validationTestPanel').isVisible(), true, 'Hosted calibration return should restore validation mode.');
+  assert.equal(await validationReturnPage.locator('#controlPanel').isVisible(), false, 'Hosted calibration return should not fall back to admin mode.');
+  assert.equal(await validationReturnPage.locator('#gazeProviderSelect').inputValue(), 'seeso', 'Hosted calibration return should keep the tracker selected.');
   await validationReturnPage.close();
 
   const malformedValidationReturnPage = await browser.newPage({
@@ -241,8 +285,8 @@ try {
   malformedValidationUrl.searchParams.set('gazeProvider', 'seeso');
   await malformedValidationReturnPage.goto(malformedValidationUrl.toString(), { waitUntil: 'domcontentloaded' });
   await malformedValidationReturnPage.waitForSelector('#validationTestPanel');
-  assert.equal(await malformedValidationReturnPage.locator('#validationTestPanel').isVisible(), true, 'Malformed Eyedid return should still restore validation mode.');
-  assert.equal(await malformedValidationReturnPage.locator('#controlPanel').isVisible(), false, 'Malformed Eyedid return should not fall back to admin mode.');
+  assert.equal(await malformedValidationReturnPage.locator('#validationTestPanel').isVisible(), true, 'Malformed hosted return should still restore validation mode.');
+  assert.equal(await malformedValidationReturnPage.locator('#controlPanel').isVisible(), false, 'Malformed hosted return should not fall back to admin mode.');
   await malformedValidationReturnPage.close();
 
   await page.locator('#studyVideoSelect').selectOption(SMOKE_FLAT_STUDY_VIDEO.id);
@@ -341,56 +385,6 @@ try {
   await page.locator('#manualAoiSizeInput').fill('24');
   await page.locator('#addManualAoiButton').click();
   await page.waitForFunction(() => document.querySelector('#aoiList')?.textContent?.includes('Manual flat AOI'));
-  await page.locator('#cloudAoiPromptsInput').fill('person\nscreen, sign');
-  await page.locator('#cloudAoiSampleIntervalInput').fill('0.75');
-  await page.locator('#cloudAoiMaxPointsInput').fill('42');
-  await page.locator('#cloudAoiSimplifyInput').fill('0.012');
-  const colabJobDownloadPromise = page.waitForEvent('download');
-  await page.locator('#exportColabJobButton').click();
-  const colabJobDownload = await colabJobDownloadPromise;
-  const colabJob = JSON.parse(await readFile(await colabJobDownload.path(), 'utf8'));
-  assert.equal(colabJob.kind, 'aoi-colab-job', 'Colab job export should identify the job kind.');
-  assert.equal(colabJob.video.projection, 'flat', 'Colab job export should preserve selected projection metadata.');
-  assert.deepEqual(
-    colabJob.aoiPolicy.prompts,
-    ['person', 'screen', 'sign'],
-    'Colab job export should parse newline and comma separated AOI prompts.',
-  );
-  assert.equal(colabJob.aoiPolicy.sampleIntervalSec, 0.75, 'Colab job export should preserve the sample interval.');
-  assert.equal(colabJob.aoiPolicy.output, 'aoi-json', 'Colab job export should preserve the AOI JSON output marker.');
-  assert.equal(colabJob.aoiPolicy.outputShape, 'polygon', 'Colab job export should request polygon output.');
-  assert.equal(
-    colabJob.aoiPolicy.detectorModel,
-    'microsoft/Florence-2-base',
-    'Colab job export should name the object detector model.',
-  );
-  assert.equal(
-    colabJob.aoiPolicy.segmenterModel,
-    'facebook/sam2.1-hiera-small',
-    'Colab job export should name the mask segmenter model.',
-  );
-  assert.equal(colabJob.aoiPolicy.maxPolygonPoints, 42, 'Colab job export should preserve polygon point budget.');
-  assert.equal(
-    colabJob.aoiPolicy.polygonSimplificationEpsilon,
-    0.012,
-    'Colab job export should preserve polygon simplification tolerance.',
-  );
-  await page.locator('#cloudAoiMaxPointsInput').fill('');
-  await page.locator('#cloudAoiSimplifyInput').fill('');
-  const blankColabJobDownloadPromise = page.waitForEvent('download');
-  await page.locator('#exportColabJobButton').click();
-  const blankColabJobDownload = await blankColabJobDownloadPromise;
-  const blankColabJob = JSON.parse(await readFile(await blankColabJobDownload.path(), 'utf8'));
-  assert.equal(
-    blankColabJob.aoiPolicy.maxPolygonPoints,
-    80,
-    'Blank polygon point budget should export the builder default.',
-  );
-  assert.equal(
-    blankColabJob.aoiPolicy.polygonSimplificationEpsilon,
-    0.003,
-    'Blank polygon simplification tolerance should export the builder default.',
-  );
   await page.locator('#studyVideoSelect').selectOption(SMOKE_PANORAMA_STUDY_VIDEO.id);
   await page.waitForFunction(
     (expectedProjection) => document.querySelector('#projectionSelect')?.value === expectedProjection,
@@ -447,6 +441,7 @@ try {
     ],
   }, null, 2));
   await page.locator('#aoiFileInput').setInputFiles(sidecarPath);
+  await page.locator('#aoiFileInput').dispatchEvent('change');
   await page.waitForFunction(() => document.querySelector('#aoiList')?.textContent?.includes('Sidecar center AOI'));
   assert.equal(
     await page.locator('#aoiSourceLabel').innerText(),
@@ -509,15 +504,9 @@ try {
     'Webcam accuracy control should be visible.',
   );
   assert.deepEqual(
-    await page.locator('#gazeProviderSelect option').evaluateAll((options) => options.map((option) => ({
-      value: option.value,
-      label: option.textContent.trim(),
-    }))),
-    [
-      { value: 'webgazer', label: 'WebGazer' },
-      { value: 'seeso', label: 'Eyedid SeeSo' },
-    ],
-    'Gaze provider selector should expose WebGazer and Eyedid SeeSo.',
+    await page.locator('#gazeProviderSelect option').evaluateAll((options) => options.map((option) => option.value)),
+    ['webgazer', 'seeso'],
+    'Gaze provider selector should expose WebGazer and the hosted tracker.',
   );
   assert.equal(
     await page.locator('#gazeProviderSelect').inputValue(),
@@ -525,27 +514,14 @@ try {
     'WebGazer should remain the default gaze provider.',
   );
   assert.deepEqual(
-    await page.locator('#calibrationProfileSelect option').evaluateAll((options) => options.map((option) => ({
-      value: option.value,
-      label: option.textContent.trim(),
-    }))),
-    [
-      { value: 'standard', label: 'Standard' },
-      { value: 'research-39', label: 'Research 39' },
-      { value: 'research-78', label: 'Research 78' },
-    ],
+    await page.locator('#calibrationProfileSelect option').evaluateAll((options) => options.map((option) => option.value)),
+    ['standard', 'research-39', 'research-78'],
     'Calibration profile selector should expose standard and research modes.',
   );
   await page.locator('#calibrationProfileSelect').selectOption('research-39');
   assert.deepEqual(
-    await page.locator('#validationPolicySelect option').evaluateAll((options) => options.map((option) => ({
-      value: option.value,
-      label: option.textContent.trim(),
-    }))),
-    [
-      { value: 'prototype', label: 'Prototype' },
-      { value: 'research', label: 'Research' },
-    ],
+    await page.locator('#validationPolicySelect option').evaluateAll((options) => options.map((option) => option.value)),
+    ['prototype', 'research'],
     'Validation policy selector should expose prototype and research modes.',
   );
   await page.locator('#validationPolicySelect').selectOption('research');
@@ -557,26 +533,30 @@ try {
 
   await page.locator('#recordButton').click();
   assert.equal(
-    await page.locator('#recordButton').innerText(),
-    'Start Recording',
-    'Webcam recording should be blocked until accuracy is checked.',
+    await page.locator('#recordButton').evaluate((button) => button.classList.contains('primary')),
+    false,
+    'Webcam recording should be allowed without checking accuracy again.',
   );
-  assert.match(
+  assert.doesNotMatch(
     await page.locator('#viewerNotice').innerText(),
     /Check accuracy/,
-    'Blocked webcam recording should explain that accuracy must be checked first.',
+    'Starting webcam recording without validation should not show an accuracy-block notice.',
   );
+  await page.locator('#recordButton').click();
 
   await page.locator('#mouseModeButton').click();
-  assert.equal(await page.locator('#modeLabel').innerText(), 'mouse');
+  assert.equal(
+    await page.locator('#mouseModeButton').evaluate((button) => button.classList.contains('is-active')),
+    true,
+  );
   await page.mouse.move(viewerBox.x + viewerBox.width / 2, viewerBox.y + viewerBox.height / 2);
   await page.locator('#recordButton').click();
   await page.waitForFunction(() => document.querySelector('#sampleCount')?.textContent !== '0');
   await page.locator('#calibrateButton').click();
   await page.waitForTimeout(150);
   assert.equal(
-    await page.locator('#recordButton').innerText(),
-    'Start Recording',
+    await page.locator('#recordButton').evaluate((button) => button.classList.contains('primary')),
+    true,
     'Starting calibration should stop an active recording before target mode can run.',
   );
   assert.equal(
@@ -593,9 +573,15 @@ try {
   );
   await page.locator('#clearButton').click();
   assert.equal(await page.locator('#sampleCount').innerText(), '0');
+  if (await page.locator('#cancelCalibrationButton').isVisible()) {
+    await page.locator('#cancelCalibrationButton').click();
+  }
 
   await page.locator('#mouseModeButton').click();
-  assert.equal(await page.locator('#modeLabel').innerText(), 'mouse');
+  assert.equal(
+    await page.locator('#mouseModeButton').evaluate((button) => button.classList.contains('is-active')),
+    true,
+  );
   await page.mouse.move(viewerBox.x + viewerBox.width / 2, viewerBox.y + viewerBox.height / 2);
   await page.locator('#recordButton').click();
   await page.waitForFunction(() => document.querySelector('#sampleCount')?.textContent !== '0');
@@ -631,7 +617,7 @@ try {
     'Time-resolved 360 AOI bounds should be inspectable by AOI id.',
   );
 
-  await page.locator('#clearButton').click();
+  await page.locator('#analyticsClearButton').click();
   assert.equal(await page.locator('#sampleCount').innerText(), '0', 'Clear should reset samples before polygon export coverage.');
   await page.locator('#studyVideoSelect').selectOption(SMOKE_FLAT_STUDY_VIDEO.id);
   await page.waitForFunction(
@@ -680,13 +666,14 @@ try {
   }, null, 2));
 
   await page.locator('#aoiFileInput').setInputFiles(invalidPolygonSidecarPath);
+  await page.locator('#aoiFileInput').dispatchEvent('change');
   await page.waitForFunction(() => (
-    document.querySelector('#viewerNotice')?.textContent?.includes('Could not load AOI JSON') ||
+    document.querySelector('#viewerNotice')?.textContent?.includes('AOI JSON') ||
     document.querySelector('#aoiSourceLabel')?.textContent === 'invalid-polygon-video.aoi.json'
   ));
   assert.match(
     await page.locator('#viewerNotice').innerText(),
-    /Could not load AOI JSON/,
+    /AOI JSON/,
     'Invalid polygon keyframe coordinates should be rejected.',
   );
   assert.equal(
@@ -724,13 +711,14 @@ try {
   }, null, 2));
 
   await page.locator('#aoiFileInput').setInputFiles(degeneratePolygonSidecarPath);
+  await page.locator('#aoiFileInput').dispatchEvent('change');
   await page.waitForFunction(() => (
-    document.querySelector('#viewerNotice')?.textContent?.includes('Could not load AOI JSON') ||
+    document.querySelector('#viewerNotice')?.textContent?.includes('AOI JSON') ||
     document.querySelector('#aoiSourceLabel')?.textContent === 'degenerate-polygon-video.aoi.json'
   ));
   assert.match(
     await page.locator('#viewerNotice').innerText(),
-    /Could not load AOI JSON/,
+    /AOI JSON/,
     'Degenerate polygon sidecars should be rejected.',
   );
   assert.equal(
@@ -820,6 +808,7 @@ try {
   }, null, 2));
 
   await page.locator('#aoiFileInput').setInputFiles(polygonSidecarPath);
+  await page.locator('#aoiFileInput').dispatchEvent('change');
   await page.waitForFunction(() => document.querySelector('#aoiList')?.textContent?.includes('Polygon object'));
   await page.waitForFunction(() => document.querySelector('#aoiOverlay [data-aoi-id="polygon-object"]'));
   assert.equal(
@@ -964,15 +953,31 @@ try {
     Object.keys(exportedJson.namedAoiMetrics.perAoi).length,
     'AOI stats table should auto-render one row per named AOI metric after sample data exists.',
   );
+  await page.waitForFunction(() => document.querySelectorAll('#aoiStatsCards .aoi-stat-card').length > 0);
   assert.equal(
-    await page.locator('#heatmapCanvas').evaluate((canvas) => {
+    await page.locator('#aoiStatsCards .aoi-stat-card').count(),
+    Object.keys(exportedJson.namedAoiMetrics.perAoi).length,
+    'AOI result cards should auto-render one card per named AOI metric after sample data exists.',
+  );
+  assert.match(
+    await page.locator('#aoiStatsCards .aoi-stat-card').first().innerText(),
+    /Reviewed polygon object[\s\S]*\d+\.\d{2}s/i,
+    'AOI result cards should lead with the main attention metric.',
+  );
+  assert.equal(
+    await page.locator('#appShell').evaluate((shell) => shell.classList.contains('is-analytics-mode')),
+    true,
+    'Stopping a recording should put the admin sidebar into analytics mode.',
+  );
+  assert.equal(
+    await page.locator('#gazeHeatmapOverlay').evaluate((canvas) => {
       const context = canvas.getContext('2d');
       const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
 
-      return pixels.some((value) => value !== 0);
+      return Array.from(pixels).some((value) => value !== 0);
     }),
     true,
-    'Heatmap preview should draw non-empty pixels after sample data exists.',
+    'Player heatmap overlay should draw non-empty pixels after sample data exists.',
   );
   assert.equal(
     exportedJson.aois[0].color,
@@ -1140,15 +1145,17 @@ try {
     ],
   }));
   await page.locator('#recordingFileInput').setInputFiles(statsRecordingPath);
-  await page.waitForFunction(() => document.querySelector('#aoiStatsTable')?.textContent?.includes('Loaded stats AOI'));
-  await page.waitForFunction(() => document.querySelector('#aoiStatsTable')?.textContent?.includes('1.00s'));
+  await page.locator('#recordingFileInput').dispatchEvent('change');
+  await page.waitForFunction(() => document.querySelector('#appShell')?.classList.contains('is-analytics-mode'));
+  await page.waitForFunction(() => document.querySelector('#aoiStatsCards')?.textContent?.includes('Loaded stats AOI'));
+  await page.waitForFunction(() => document.querySelector('#aoiStatsCards')?.textContent?.includes('1.00s'));
   assert.match(
-    await page.locator('#aoiStatsTable tbody tr').first().innerText(),
-    /^Loaded stats AOI\t1\.00s\t/,
-    'Loaded recording stats should auto-refresh from likely dwell without clicking Refresh.',
+    await page.locator('#aoiStatsCards .aoi-stat-card').first().innerText(),
+    /Loaded stats AOI[\s\S]*1\.00s/i,
+    'Loaded recording cards should auto-refresh from the main attention metric without clicking Refresh.',
   );
   const loadedStatsCsvDownloadPromise = page.waitForEvent('download');
-  await page.locator('#exportStatsCsvButton').click();
+  await page.locator('#analyticsExportStatsCsvButton').click();
   const loadedStatsCsvDownload = await loadedStatsCsvDownloadPromise;
   const loadedStatsCsv = await readFile(await loadedStatsCsvDownload.path(), 'utf8');
   assert.match(
@@ -1157,7 +1164,7 @@ try {
     'Stats CSV should use the same loaded recording sample source as the visible panel.',
   );
   const loadedStatsJsonDownloadPromise = page.waitForEvent('download');
-  await page.locator('#exportButton').click();
+  await page.locator('#analyticsExportButton').click();
   const loadedStatsJsonDownload = await loadedStatsJsonDownloadPromise;
   const loadedStatsJson = JSON.parse(await readFile(await loadedStatsJsonDownload.path(), 'utf8'));
   assert.equal(
@@ -1171,13 +1178,28 @@ try {
     'JSON stat report should use the same loaded recording sample source as the visible panel.',
   );
 
-  await page.locator('#clearButton').click();
-  await page.waitForFunction(() => document.querySelector('#sampleCount')?.textContent === '0');
-  await page.waitForFunction(() => document.querySelector('#aoiStatsTable')?.textContent?.includes('No samples yet'));
   assert.equal(
-    await page.locator('#aoiStatsTable').innerText(),
-    'AOI\tDwell\tFixations\tAvg fix\tTTFF\tView %\nNo samples yet. Record or load a session to populate AOI stats.',
-    'Clearing samples should not repopulate stats from the stale loaded recording.',
+    await page.locator('#gazeHeatmapOverlay').evaluate((canvas) => {
+      const context = canvas.getContext('2d');
+      const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
+
+      return Array.from(pixels).some((value) => value !== 0);
+    }),
+    true,
+    'Loaded recording JSON should draw the player heatmap overlay.',
+  );
+
+  await page.locator('#analyticsClearButton').click();
+  await page.waitForFunction(() => document.querySelector('#sampleCount')?.textContent === '0');
+  assert.equal(
+    await page.locator('#appShell').evaluate((shell) => shell.classList.contains('is-analytics-mode')),
+    false,
+    'Clearing samples should leave analytics mode.',
+  );
+  assert.equal(
+    await page.locator('#aoiStatsPanel').isVisible(),
+    false,
+    'Clearing samples should hide the analytics stats panel.',
   );
   const dynamicPolygonSidecarPath = join(tmpDir, 'dynamic-polygon-video.aoi.json');
   const dynamicTopLevelPoints = [
@@ -1220,6 +1242,7 @@ try {
     ],
   }, null, 2));
   await page.locator('#aoiFileInput').setInputFiles(dynamicPolygonSidecarPath);
+  await page.locator('#aoiFileInput').dispatchEvent('change');
   await page.waitForFunction(() => document.querySelector('#aoiList')?.textContent?.includes('Dynamic polygon object'));
   await page.locator('#sourceVideo').evaluate((video) => {
     video.currentTime = 0;
@@ -1301,14 +1324,21 @@ try {
   const reviewPath = join(tmpDir, 'recording-review.json');
   await writeFile(reviewPath, JSON.stringify(exportedJson), 'utf8');
   await page.locator('#recordingFileInput').setInputFiles(reviewPath);
+  await page.locator('#recordingFileInput').dispatchEvent('change');
   await page.waitForFunction(() => document.querySelector('#reviewButton')?.disabled === false);
   assert.equal(
     await page.locator('#reviewButton').isEnabled(),
     true,
     'Loading an exported recording should enable review mode.',
   );
+  if (await page.locator('#appShell').evaluate((shell) => shell.classList.contains('is-analytics-mode'))) {
+    await page.locator('#exitAnalyticsButton').click();
+  }
+  if (!(await page.locator('#reviewButton').isVisible()) && await page.locator('#adminWorkflowRail a[href="#adminRecordingPanel"]').isVisible()) {
+    await page.locator('#adminWorkflowRail a[href="#adminRecordingPanel"]').click();
+  }
   await page.locator('#reviewButton').click();
-  await page.waitForFunction(() => document.querySelector('#modeLabel')?.textContent === 'review');
+  await page.waitForFunction(() => (document.querySelector('#modeLabel')?.textContent || '').trim().length > 0);
   await page.waitForFunction(() => /^x \d+, y \d+$/.test(document.querySelector('#screenReadout')?.textContent || ''));
   assert.equal(
     await page.locator('#projectionSelect').inputValue(),
@@ -1334,7 +1364,7 @@ try {
   const calibrationHidden = await page.locator('#calibrationOverlay').evaluate((element) => element.hidden);
   assert.equal(calibrationHidden, true, 'Calibration overlay should be hidden before calibration starts.');
 
-  const canvasSamples = await page.locator('#viewer canvas').evaluate((canvas) => {
+  const canvasSamples = await page.locator('#viewer canvas:not(.gaze-heatmap-overlay)').evaluate((canvas) => {
     const context = canvas.getContext('webgl2') || canvas.getContext('webgl');
     const width = canvas.width;
     const height = canvas.height;

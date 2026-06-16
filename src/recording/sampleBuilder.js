@@ -12,11 +12,21 @@ function serializeAoiCoordinate(value) {
 
 function serializeAoiPoints(points) {
   return Array.isArray(points)
-    ? points.map((point) => (
-      point && typeof point === 'object'
-        ? { ...point }
-        : point
-    ))
+    ? points.map((point) => {
+      if (!point || typeof point !== 'object') {
+        return point;
+      }
+
+      return ['yaw', 'pitch', 'x', 'y'].reduce((serialized, key) => {
+        const value = Number(point[key]);
+
+        if (Number.isFinite(value)) {
+          serialized[key] = Number(value.toFixed(6));
+        }
+
+        return serialized;
+      }, {});
+    })
     : null;
 }
 
@@ -63,6 +73,14 @@ function buildSampleQuality(quality, gazeStreamQuality) {
   return {
     ...(quality || {}),
     gazeStreamQuality,
+  };
+}
+
+function buildAoiStabilityCandidateSnapshot(candidate) {
+  return {
+    id: candidate.id,
+    label: candidate.label,
+    score: Number.isFinite(candidate.score) ? candidate.score : 0,
   };
 }
 
@@ -116,7 +134,7 @@ export function buildRecordingSample({
     ambiguousHits: getIds(classification?.ambiguousHits || []),
     aoiStability: aoiStability ? {
       candidateAois: Array.isArray(aoiStability.candidateAois)
-        ? aoiStability.candidateAois.map((candidate) => ({ ...candidate }))
+        ? aoiStability.candidateAois.map(buildAoiStabilityCandidateSnapshot)
         : [],
       trustedForAoiAnalysis: Boolean(aoiStability.trustedForAoiAnalysis),
     } : null,

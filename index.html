@@ -1,14 +1,21 @@
 <!doctype html>
-<html lang="en">
+<html lang="vi">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>360 Webcam AOI Prototype</title>
+    <title>dynamic aoi</title>
     <script>
       if (window.location.hostname === '127.0.0.1') {
         window.location.replace(
           `http://localhost:${window.location.port}${window.location.pathname}${window.location.search}${window.location.hash}`,
         );
+      }
+      {
+        const params = new URLSearchParams(window.location.search);
+        const mode = String(params.get('mode') || '').split('?')[0];
+        document.documentElement.dataset.initialAppMode = ['admin', 'participant', 'validation'].includes(mode)
+          ? mode
+          : 'select';
       }
       window.__aoiBlockWebGazerMouseTraining = true;
       window.addEventListener(
@@ -36,58 +43,56 @@
   </head>
   <body>
     <main id="appShell" class="app-shell">
-      <section id="modeSelectScreen" class="mode-select-screen" aria-label="Choose workflow">
+      <section id="modeSelectScreen" class="mode-select-screen" aria-label="Chọn quy trình">
         <div class="mode-select-header">
-          <p class="eyebrow">Dynamic AOI Lab</p>
-          <h1>Choose workflow</h1>
+          <h1>Chọn quy trình</h1>
         </div>
         <div class="mode-choice-grid">
           <a id="chooseAdminModeLink" class="mode-choice" href="./?mode=admin">
-            <span class="section-label">Admin Mode</span>
-            <strong>Set up study</strong>
-            <span>Load videos, define AOIs, test calibration, review recordings, and export research data.</span>
+            <span class="section-label">Chế độ quản trị</span>
+            <strong>Thiết lập nghiên cứu</strong>
+            <span>Tải video, xác định AOI, kiểm tra hiệu chuẩn, xem lại bản ghi và xuất dữ liệu nghiên cứu.</span>
           </a>
           <a id="chooseParticipantModeLink" class="mode-choice" href="./?mode=participant">
-            <span class="section-label">Participant Mode</span>
-            <strong>Run participant session</strong>
-            <span>Enter participant details, calibrate webcam gaze, record the session, and export results.</span>
+            <span class="section-label">Chế độ người tham gia</span>
+            <strong>Dành cho người tham gia</strong>
+            <span>Nhập thông tin người tham gia, hiệu chuẩn ánh nhìn webcam, ghi phiên và xuất kết quả.</span>
           </a>
           <a id="chooseValidationModeLink" class="mode-choice" href="./?mode=validation">
-            <span class="section-label">Validation Test</span>
-            <strong>Eyedid accuracy flow</strong>
-            <span>Run only Eyedid calibration, a blank app screen, and the accuracy check.</span>
+            <span class="section-label">Kiểm tra xác thực</span>
+            <strong>Kiểm chứng độ chính xác</strong>
+            <span>Chạy hiệu chuẩn và kiểm tra độ chính xác</span>
           </a>
         </div>
       </section>
 
-      <section id="viewerSection" class="viewer-section" aria-label="360 video viewer">
+      <section id="viewerSection" class="viewer-section" aria-label="Trình xem video 360">
         <div class="viewer-toolbar">
           <div>
-            <p class="eyebrow">Dynamic AOI Lab</p>
-            <h1>360 gaze mapping test</h1>
+            <h1>Kiểm tra ánh xạ ánh nhìn 360</h1>
           </div>
           <div class="toolbar-actions">
-            <a id="adminModeLink" class="mode-link" href="./?mode=admin">Admin</a>
-            <a id="participantModeLink" class="mode-link" href="./?mode=participant">Participant</a>
-            <button id="playVideoButton" type="button">Play</button>
-            <button id="resetViewButton" type="button">Reset View</button>
+            <a id="adminModeLink" class="mode-link" href="./?mode=admin">Quản trị</a>
+            <button id="playVideoButton" type="button">Phát</button>
+            <button id="resetViewButton" type="button">Đặt lại góc nhìn</button>
           </div>
         </div>
 
-        <div id="viewer" class="viewer" tabindex="0" aria-label="Drag to rotate the 360 scene">
+        <div id="viewer" class="viewer" tabindex="0" aria-label="Kéo để xoay cảnh 360">
+          <canvas id="gazeHeatmapOverlay" class="gaze-heatmap-overlay" aria-hidden="true"></canvas>
           <svg id="aoiOverlay" class="aoi-overlay" aria-hidden="true"></svg>
           <div id="gazeDot" class="gaze-dot" aria-hidden="true"></div>
           <div id="viewerNotice" class="viewer-notice">
-            Select one of the study videos.
+            Chọn một video nghiên cứu.
           </div>
           <div id="calibrationOverlay" class="calibration-overlay" hidden>
             <div class="calibration-card">
-              <p class="eyebrow">Webcam calibration</p>
-              <strong id="calibrationProgress">Target 1 of 9</strong>
-              <span id="calibrationDescription">Look at the target, then click it.</span>
-              <button id="cancelCalibrationButton" type="button">Cancel</button>
+              <p class="eyebrow">Hiệu chuẩn webcam</p>
+              <strong id="calibrationProgress">Mục tiêu 1/9</strong>
+              <span id="calibrationDescription">Nhìn vào mục tiêu, rồi nhấp vào nó.</span>
+              <button id="cancelCalibrationButton" type="button">Hủy</button>
             </div>
-            <button id="calibrationTarget" class="calibration-target" type="button" aria-label="Calibration target"></button>
+            <button id="calibrationTarget" class="calibration-target" type="button" aria-label="Mục tiêu hiệu chuẩn"></button>
           </div>
         </div>
 
@@ -103,118 +108,97 @@
         ></video>
 
         <div class="timeline-strip">
-          <canvas id="miniMap" width="900" height="180" aria-label="Panorama AOI map"></canvas>
+          <canvas id="miniMap" width="900" height="180" aria-label="Bản đồ AOI toàn cảnh"></canvas>
         </div>
       </section>
 
-      <aside id="participantPanel" class="participant-panel" aria-label="Participant survey setup" hidden>
-        <nav id="participantFlowRail" class="participant-flow-rail" aria-label="Participant screen flow">
-          <span class="flow-step is-active" data-flow-step="setup">01 Setup</span>
-          <span class="flow-step" data-flow-step="calibration">02 Calibrate</span>
-          <span class="flow-step" data-flow-step="recording">03 Record</span>
-          <span class="flow-step" data-flow-step="export">04 Export</span>
+      <aside id="participantPanel" class="participant-panel" aria-label="Thiết lập khảo sát người tham gia" hidden>
+        <nav id="participantFlowRail" class="participant-flow-rail" aria-label="Luồng màn hình người tham gia">
+          <span class="flow-step is-active" data-flow-step="setup">01 Thiết lập</span>
+          <span class="flow-step" data-flow-step="calibration">02 Hiệu chuẩn</span>
+          <span class="flow-step" data-flow-step="recording">03 Ghi</span>
+          <span class="flow-step" data-flow-step="export">04 Xuất</span>
         </nav>
         <section class="panel-section participant-card">
-          <p class="section-label">Participant Mode</p>
-          <h2>Survey setup</h2>
-          <p class="participant-copy">
-            Enter participant details, then continue to calibration and recording. Research controls stay hidden during the session.
-          </p>
+          <p class="section-label">Chế độ người tham gia</p>
+          <h2>Thiết lập khảo sát</h2>
           <label class="field-stack">
-            <span>Participant ID</span>
+            <span>Video nghiên cứu</span>
+            <select id="participantStudyVideoSelect">
+              <option value="nguyen-hue-360-0500">Nguyen Hue 5:00-5:30 (360)</option>
+              <option value="nguyen-hue-360-0532">Nguyen Hue 5:32-6:02 (360)</option>
+              <option value="nguyen-hue-2d-0500">Nguyen Hue 5:00-5:30 (2D)</option>
+              <option value="nguyen-hue-2d-0532">Nguyen Hue 5:32-6:02 (2D)</option>
+              <option value="culture-thap-ba-360">Thap Ba 1:19-1:49 (360)</option>
+              <option value="culture-thap-ba-2d">Thap Ba 1:19-1:49 (2D)</option>
+              <option value="nature-tam-coc-360">Tam Coc 4:31-5:01 (360)</option>
+              <option value="nature-tam-coc-2d">Tam Coc 4:31-5:01 (2D)</option>
+            </select>
+          </label>
+          <label class="field-stack">
+            <span>Mã người tham gia</span>
             <input id="participantIdInput" type="text" autocomplete="off" placeholder="P001" />
           </label>
           <label class="field-stack">
-            <span>Name</span>
+            <span>Tên</span>
             <input id="participantNameInput" type="text" autocomplete="name" placeholder="Nguyen Van A" />
           </label>
           <label class="field-stack">
-            <span>Age</span>
+            <span>Tuổi</span>
             <input id="participantAgeInput" type="number" min="1" max="120" placeholder="22" />
           </label>
           <label class="checkbox-row">
             <input id="participantConsentInput" type="checkbox" />
-            <span>I consent to webcam gaze recording for this research session.</span>
+            <span>Tôi đồng ý cho ghi lại ánh nhìn qua webcam trong phiên nghiên cứu này.</span>
           </label>
-          <div id="participantGazeSetup" class="participant-gaze-setup" data-provider="webgazer">
-            <label class="field-stack">
-              <span>Eye tracker</span>
-              <select id="participantGazeProviderSelect">
-                <option value="webgazer">WebGazer</option>
-                <option value="seeso">Eyedid SeeSo</option>
-              </select>
-            </label>
-            <label class="field-stack participant-seeso-key">
-              <span>Eyedid key</span>
-              <input id="participantSeeSoLicenseKeyInput" type="password" autocomplete="off" placeholder="License key" />
-            </label>
-            <div class="participant-status participant-gaze-status">
-              <span>Tracker</span>
-              <strong id="participantGazeSetupStatus">WebGazer selected</strong>
-            </div>
-          </div>
-          <button id="participantStartButton" class="primary wide-action" type="button" disabled>Start Participant Session</button>
-          <div class="participant-status">
-            <span>Stage</span>
-            <strong id="participantStageLabel">Enter details</strong>
-          </div>
+          <button id="participantStartButton" class="primary wide-action" type="button" disabled>Bắt đầu phiên người tham gia</button>
         </section>
         <section id="participantSessionPanel" class="panel-section participant-session-panel" hidden>
-          <p class="section-label">Session Flow</p>
+          <p class="section-label">Luồng phiên</p>
           <div class="participant-actions">
-            <button id="participantCalibrateButton" type="button">Calibrate Webcam</button>
-            <button id="participantAccuracyButton" type="button">Check Accuracy</button>
-            <button id="participantRecordButton" class="primary" type="button">Start Recording</button>
-            <button id="participantExportButton" type="button">Export JSON</button>
-          </div>
-          <div class="participant-status">
-            <span>Session</span>
-            <strong id="participantSessionStatus">Waiting to start</strong>
+            <button id="participantCalibrateButton" type="button">Hiệu chuẩn webcam</button>
+            <button id="participantRecordButton" class="primary" type="button">Bắt đầu ghi</button>
+            <button id="participantExportButton" type="button">Xuất JSON</button>
           </div>
         </section>
       </aside>
 
-      <aside id="validationTestPanel" class="validation-test-panel" aria-label="Eyedid validation test" hidden>
+      <aside id="validationTestPanel" class="validation-test-panel" aria-label="Điều khiển kiểm tra xác thực" hidden>
         <section class="panel-section validation-test-card">
-          <p class="section-label">Validation Test</p>
-          <h2>Eyedid accuracy flow</h2>
-          <div class="validation-step-list" aria-label="Validation flow">
-            <span>01 Eyedid calibration</span>
-            <span>02 Blank app screen</span>
-            <span>03 Accuracy check</span>
+          <p class="section-label">Kiểm tra xác thực</p>
+          <h2>Kiểm tra độ chính xác</h2>
+          <div class="validation-step-list" aria-label="Luồng xác thực">
+            <span>1. Hiệu chuẩn bộ theo dõi</span>
+            <span>2. Yêu cầu người tham gia ngồi yên không được xoay đầu</span>
+            <span>3. Bắt đầu kiểm tra độ chính xác</span>
           </div>
-          <label class="field-stack">
-            <span>Eyedid key</span>
-            <input id="validationTestKeyInput" type="password" autocomplete="off" placeholder="License key" />
-          </label>
-          <div class="participant-status">
-            <span>Status</span>
-            <strong id="validationTestStatus">Enter Eyedid key</strong>
+          <div class="tracker-status-row">
+            <span>Trạng thái</span>
+            <strong id="validationTestStatus">Sẵn sàng hiệu chuẩn</strong>
           </div>
           <div class="participant-actions validation-test-actions">
-            <button id="validationTestCalibrateButton" class="primary" type="button">Open Eyedid Calibration</button>
-            <button id="validationTestBlankButton" type="button">Show Blank Screen</button>
-            <button id="validationTestAccuracyButton" type="button">Start Accuracy Check</button>
+            <button id="validationTestCalibrateButton" class="primary" type="button">Hiệu chuẩn bộ theo dõi</button>
+            <button id="validationTestAccuracyButton" type="button">Bắt đầu kiểm tra độ chính xác</button>
           </div>
         </section>
       </aside>
 
-      <aside id="controlPanel" class="control-panel" aria-label="Experiment controls">
-        <nav id="adminWorkflowRail" class="admin-workflow-rail" aria-label="Admin workflow">
-          <a class="admin-flow-step" href="#adminSetupPanel">01 Setup</a>
+      <aside id="controlPanel" class="control-panel" aria-label="Điều khiển thí nghiệm">
+        <nav id="adminWorkflowRail" class="admin-workflow-rail" aria-label="Quy trình quản trị">
+          <a class="admin-flow-step is-active" href="#adminSetupPanel" aria-current="step">01 Thiết lập</a>
           <a class="admin-flow-step" href="#manualAoiPanel">02 AOIs</a>
-          <a class="admin-flow-step" href="#adminCalibrationPanel">03 Calibrate</a>
-          <a class="admin-flow-step" href="#adminRecordingPanel">04 Record</a>
-          <a class="admin-flow-step" href="#adminAoiListPanel">05 Export</a>
+          <a class="admin-flow-step" href="#adminCalibrationPanel">03 Hiệu chuẩn</a>
+          <a class="admin-flow-step" href="#adminRecordingPanel">04 Ghi</a>
+          <a class="admin-flow-step" href="#adminAoiListPanel">05 Xuất</a>
         </nav>
 
         <section id="adminSetupPanel" class="panel-section admin-panel-section" data-step="01">
           <div class="panel-heading">
-            <p class="section-label">Setup</p>
-            <h2>Video source</h2>
+            <p class="section-label">Thiết lập</p>
+            <h2>Nguồn video</h2>
           </div>
           <label class="field-label">
-            <span>Study video</span>
+            <span>Video nghiên cứu</span>
             <select id="studyVideoSelect">
               <option value="nguyen-hue-360-0500">Nguyen Hue 5:00-5:30 (360)</option>
               <option value="nguyen-hue-360-0532">Nguyen Hue 5:32-6:02 (360)</option>
@@ -226,208 +210,183 @@
               <option value="nature-tam-coc-2d">Tam Coc 4:31-5:01 (2D)</option>
             </select>
           </label>
-          <div class="metadata-grid">
-            <label class="field-label compact-field">
-              <span>Projection</span>
-              <select id="projectionSelect">
-                <option value="equirectangular">360 equirectangular</option>
-                <option value="flat">2D flat</option>
-              </select>
-            </label>
-            <label class="field-label compact-field">
-              <span>Stereo</span>
-              <select id="stereoLayoutSelect">
-                <option value="mono">Mono</option>
-                <option value="side-by-side">Side by side</option>
-                <option value="top-bottom">Top bottom</option>
-              </select>
-            </label>
-          </div>
         </section>
+
+        <div class="source-metadata-controls" hidden>
+          <select id="projectionSelect" aria-label="Projection">
+            <option value="equirectangular">360 đẳng cự</option>
+            <option value="flat">2D phẳng</option>
+          </select>
+          <select id="stereoLayoutSelect" aria-label="Stereo">
+            <option value="mono">Đơn ảnh</option>
+            <option value="side-by-side">Song song</option>
+            <option value="top-bottom">Trên dưới</option>
+          </select>
+        </div>
 
         <section id="manualAoiPanel" class="panel-section admin-panel-section" data-step="02">
           <div class="panel-heading">
             <p class="section-label">AOIs</p>
-            <h2>Import or create</h2>
+            <h2>Nhập hoặc tạo</h2>
           </div>
           <label class="file-loader">
-            <span>Load AOI JSON</span>
+            <span>Tải AOI JSON</span>
             <input id="aoiFileInput" type="file" accept="application/json,.json" />
           </label>
           <div class="admin-inline-divider"></div>
-          <p class="section-label">Manual AOI</p>
+          <p class="section-label">AOI thủ công</p>
           <label class="field-label">
-            <span>Label</span>
-            <input id="manualAoiLabelInput" type="text" placeholder="New AOI" />
+            <span>Nhãn</span>
+            <input id="manualAoiLabelInput" type="text" placeholder="AOI mới" />
           </label>
           <div class="metadata-grid">
             <label class="field-label compact-field">
-              <span>Size</span>
+              <span>Kích thước</span>
               <input id="manualAoiSizeInput" type="number" min="4" max="80" value="24" />
             </label>
             <label class="field-label compact-field">
-              <span>Color</span>
+              <span>Màu</span>
               <input id="manualAoiColorInput" type="color" value="#fc7753" />
             </label>
           </div>
-          <button id="addManualAoiButton" class="wide-action" type="button">Add Center AOI</button>
+          <button id="addManualAoiButton" class="wide-action" type="button">Thêm AOI trung tâm</button>
           <div class="recording-actions">
-            <button id="drawPolygonAoiButton" type="button">Draw Polygon</button>
-            <button id="finishPolygonAoiButton" type="button" disabled>Finish</button>
-            <button id="cancelPolygonAoiButton" type="button" disabled>Cancel</button>
+            <button id="drawPolygonAoiButton" type="button">Vẽ đa giác</button>
+            <button id="finishPolygonAoiButton" type="button" disabled>Hoàn tất</button>
+            <button id="cancelPolygonAoiButton" type="button" disabled>Hủy</button>
           </div>
-          <p id="manualAoiStatus" class="fine-print">Click Draw Polygon, then click around the object edge. Double-click or press Finish to close.</p>
+          <p id="manualAoiStatus" class="fine-print">Nhấp Vẽ đa giác, rồi nhấp quanh mép đối tượng. Nhấp đúp hoặc bấm Hoàn tất để đóng.</p>
         </section>
 
         <section id="selectedAoiPanel" class="panel-section" hidden>
-          <p class="section-label">Selected AOI</p>
+          <p class="section-label">AOI đã chọn</p>
           <label class="field-label">
-            <span>Label</span>
+            <span>Nhãn</span>
             <input id="selectedAoiLabelInput" type="text" autocomplete="off" />
           </label>
           <div class="metadata-grid">
             <label class="field-label compact-field">
-              <span>Padding px</span>
+              <span>Đệm px</span>
               <input id="selectedAoiPaddingInput" type="number" min="0" step="1" value="0" />
             </label>
             <label class="field-label compact-field">
-              <span>Color</span>
+              <span>Màu</span>
               <input id="selectedAoiColorInput" type="color" value="#ffd166" />
             </label>
           </div>
           <div class="recording-actions selected-aoi-actions">
-            <button id="saveSelectedAoiButton" class="primary" type="button">Save AOI</button>
-            <button id="deleteSelectedAoiButton" class="danger-action" type="button">Delete</button>
-          </div>
-        </section>
-
-        <section id="cloudAoiPanel" class="panel-section admin-panel-section" data-step="02">
-          <div class="panel-heading">
-            <p class="section-label">Auto AOI</p>
-            <h2>Google Colab job</h2>
-          </div>
-          <label class="field-label">
-            <span>Prompts</span>
-            <textarea id="cloudAoiPromptsInput" rows="3">person
-screen
-sign
-product</textarea>
-          </label>
-          <label class="field-label compact-field">
-            <span>Sample seconds</span>
-            <input id="cloudAoiSampleIntervalInput" type="number" min="0.25" step="0.25" value="1" />
-          </label>
-          <label class="field-label compact-field">
-            <span>Max polygon points</span>
-            <input id="cloudAoiMaxPointsInput" type="number" min="12" max="240" value="80" />
-          </label>
-          <label class="field-label compact-field">
-            <span>Edge simplify</span>
-            <input id="cloudAoiSimplifyInput" type="number" min="0.001" max="0.02" step="0.001" value="0.003" />
-          </label>
-          <div class="recording-actions">
-            <button id="exportColabJobButton" type="button">Export Colab Job</button>
-            <label class="file-loader compact-loader">
-              <span>Import Colab AOIs</span>
-              <input id="cloudAoiResultInput" type="file" accept="application/json,.json" />
-            </label>
+            <button id="saveSelectedAoiButton" class="primary" type="button">Lưu AOI</button>
+            <button id="deleteSelectedAoiButton" class="danger-action" type="button">Xóa</button>
           </div>
         </section>
 
         <section id="adminCalibrationPanel" class="panel-section admin-panel-section" data-step="03">
           <div class="panel-heading">
-            <p class="section-label">Calibration</p>
-            <h2>Tracker quality</h2>
+            <p class="section-label">Hiệu chuẩn</p>
+            <h2>Chất lượng bộ theo dõi</h2>
           </div>
           <div class="segmented">
-            <button id="mouseModeButton" type="button">Mouse demo</button>
-            <button id="webcamModeButton" class="is-active" type="button">Webcam gaze</button>
+            <button id="mouseModeButton" type="button">Demo chuột</button>
+            <button id="webcamModeButton" class="is-active" type="button">Ánh nhìn webcam</button>
           </div>
           <label class="field-label compact-field">
-            <span>Gaze engine</span>
-            <select id="gazeProviderSelect">
-              <option value="webgazer">WebGazer</option>
-              <option value="seeso">Eyedid SeeSo</option>
-            </select>
-          </label>
-          <label class="field-label compact-field">
-            <span>Eyedid key</span>
-            <input id="seesoLicenseKeyInput" type="password" autocomplete="off" placeholder="License key" />
-          </label>
+            <span>Bộ máy ánh nhìn</span>
+              <select id="gazeProviderSelect">
+                <option value="webgazer">WebGazer</option>
+                <option value="seeso">Bộ theo dõi ánh nhìn lưu trữ</option>
+              </select>
+            </label>
           <div class="tracker-status-row">
-            <span>Tracker status</span>
-            <strong id="gazeEngineStatus">WebGazer selected</strong>
+            <span>Trạng thái bộ theo dõi</span>
+            <strong id="gazeEngineStatus">Đã chọn WebGazer</strong>
           </div>
           <label class="field-label compact-field">
-            <span>Calibration</span>
+            <span>Hiệu chuẩn</span>
             <select id="calibrationProfileSelect">
-              <option value="standard">Standard</option>
-              <option value="research-39">Research 39</option>
-              <option value="research-78">Research 78</option>
+              <option value="standard">Tiêu chuẩn</option>
+              <option value="research-39">Nghiên cứu 39</option>
+              <option value="research-78">Nghiên cứu 78</option>
             </select>
           </label>
           <label class="field-label compact-field">
-            <span>Validation policy</span>
+            <span>Chính sách xác thực</span>
             <select id="validationPolicySelect">
-              <option value="prototype">Prototype</option>
-              <option value="research">Research</option>
+              <option value="prototype">Nguyên mẫu</option>
+              <option value="research">Nghiên cứu</option>
             </select>
           </label>
           <div class="button-pair">
-            <button id="calibrateButton" class="wide-action" type="button">Calibrate webcam</button>
-            <button id="accuracyButton" class="wide-action" type="button">Check accuracy</button>
+            <button id="calibrateButton" class="wide-action" type="button">Hiệu chuẩn webcam</button>
+            <button id="accuracyButton" class="wide-action" type="button">Kiểm tra độ chính xác</button>
           </div>
           <div class="button-pair">
-            <button id="rawGazeDiagnosticButton" class="wide-action" type="button">Diagnose Raw Gaze</button>
+            <button id="rawGazeDiagnosticButton" class="wide-action" type="button">Chẩn đoán ánh nhìn thô</button>
           </div>
-          <p id="rawGazeDiagnosticStatus" class="fine-print">Raw gaze diagnostic not run.</p>
+          <p id="rawGazeDiagnosticStatus" class="fine-print">Chưa chạy chẩn đoán ánh nhìn thô.</p>
         </section>
 
         <section id="adminRecordingPanel" class="panel-section admin-panel-section" data-step="04">
           <div class="panel-heading">
-            <p class="section-label">Record</p>
-            <h2>Session output</h2>
+            <p class="section-label">Ghi</p>
+            <h2>Đầu ra phiên</h2>
           </div>
           <div class="recording-actions">
-            <button id="recordButton" class="primary" type="button">Start Recording</button>
-            <button id="reviewButton" type="button" disabled>Review Recording</button>
-            <button id="clearButton" type="button">Clear</button>
-            <button id="exportButton" type="button">Export JSON</button>
-            <button id="exportStatsCsvButton" type="button">Export Stats CSV</button>
+            <button id="recordButton" class="primary" type="button">Bắt đầu ghi</button>
+            <button id="reviewButton" type="button" disabled>Xem lại bản ghi</button>
+            <button id="clearButton" type="button">Xóa</button>
+            <button id="exportButton" type="button">Xuất JSON</button>
+            <button id="exportStatsCsvButton" type="button">Xuất CSV thống kê</button>
           </div>
-          <section id="aoiStatsPanel" class="aoi-stats-panel" aria-labelledby="aoiStatsHeading">
+          <section id="aoiStatsPanel" class="aoi-stats-panel" aria-labelledby="aoiStatsHeading" hidden>
             <div class="aoi-stats-header">
-              <h3 id="aoiStatsHeading">AOI stats</h3>
-              <button id="refreshStatsButton" type="button">Refresh</button>
+              <div>
+                    <p class="section-label">Kết quả chạy</p>
+                    <h3 id="aoiStatsHeading">Kết quả AOI</h3>
+              </div>
+              <div class="aoi-stats-header-actions">
+                <button id="exitAnalyticsButton" type="button">Quay lại điều khiển</button>
+                <button id="refreshStatsButton" type="button">Làm mới</button>
+              </div>
             </div>
-            <div class="aoi-stats-table-wrap">
-              <table id="aoiStatsTable" class="aoi-stats-table">
-                <thead>
-                  <tr>
-                    <th scope="col">AOI</th>
-                    <th scope="col">Dwell</th>
-                    <th scope="col">Fixations</th>
-                    <th scope="col">Avg fix</th>
-                    <th scope="col">TTFF</th>
-                    <th scope="col">View %</th>
-                  </tr>
-                </thead>
-                <tbody></tbody>
-              </table>
+            <div class="aoi-stats-actions" aria-label="Hành động kết quả phân tích">
+              <button id="analyticsClearButton" type="button">Xóa</button>
+              <button id="analyticsExportButton" type="button">Xuất JSON</button>
+              <button id="analyticsExportStatsCsvButton" type="button">Xuất CSV thống kê</button>
             </div>
-            <canvas id="heatmapCanvas" class="heatmap-preview" width="360" height="180" aria-label="Trusted panorama heatmap preview"></canvas>
+            <div id="aoiStatsSummary" class="aoi-stats-summary" aria-label="Tóm tắt phiên AOI"></div>
+            <div class="aoi-results-main">
+              <div id="aoiStatsCards" class="aoi-stats-cards" aria-label="Kết quả AOI đã xếp hạng"></div>
+            </div>
+            <details id="aoiStatsDetails" class="aoi-stats-details">
+              <summary>Bảng AOI chi tiết</summary>
+              <div class="aoi-stats-table-wrap">
+                <table id="aoiStatsTable" class="aoi-stats-table">
+                  <thead>
+                    <tr>
+                      <th scope="col">AOI</th>
+                      <th scope="col">Lưu lại</th>
+                      <th scope="col">Định thị</th>
+                      <th scope="col">TB định thị</th>
+                      <th scope="col">TTFF</th>
+                      <th scope="col">% xem</th>
+                    </tr>
+                  </thead>
+                  <tbody></tbody>
+                </table>
+              </div>
+            </details>
           </section>
           <label class="file-loader">
-            <span>Load recording JSON</span>
+            <span>Tải JSON bản ghi</span>
             <input id="recordingFileInput" type="file" accept="application/json,.json" />
           </label>
           <div class="status-grid">
             <div>
-              <span>Samples</span>
+              <span>Mẫu</span>
               <strong id="sampleCount">0</strong>
             </div>
             <div>
-              <span>Mode</span>
+              <span>Chế độ</span>
               <strong id="modeLabel">webcam</strong>
             </div>
             <div>
@@ -435,11 +394,11 @@ product</textarea>
               <strong id="webcamStatusLabel">idle</strong>
             </div>
             <div>
-              <span>Accuracy</span>
+              <span>Độ chính xác</span>
               <strong id="accuracyStatusLabel">untested</strong>
             </div>
             <div>
-              <span>AOI Source</span>
+              <span>Nguồn AOI</span>
               <strong id="aoiSourceLabel">default</strong>
             </div>
           </div>
@@ -447,16 +406,16 @@ product</textarea>
 
         <details id="adminReadoutPanel" class="panel-section admin-panel-section compact-admin-section" data-step="05" open>
           <summary>
-            <p class="section-label">Live Readout</p>
-            <h2>Gaze state</h2>
+            <p class="section-label">Đọc trực tiếp</p>
+            <h2>Trạng thái ánh nhìn</h2>
           </summary>
           <dl class="readout">
             <div>
-              <dt>Screen</dt>
+              <dt>Màn hình</dt>
               <dd id="screenReadout">--</dd>
             </div>
             <div>
-              <dt>Camera</dt>
+              <dt>Máy quay</dt>
               <dd id="cameraReadout">--</dd>
             </div>
             <div>
@@ -464,11 +423,11 @@ product</textarea>
               <dd id="panoramaReadout">--</dd>
             </div>
             <div>
-              <dt>AOI Hit</dt>
-              <dd id="hitReadout">none</dd>
+              <dt>Trúng AOI</dt>
+              <dd id="hitReadout">không có</dd>
             </div>
             <div>
-              <dt>Gaze Quality</dt>
+              <dt>Chất lượng ánh nhìn</dt>
               <dd id="gazeQualityReadout">--</dd>
             </div>
           </dl>
@@ -476,8 +435,8 @@ product</textarea>
 
         <details id="adminAoiListPanel" class="panel-section admin-panel-section compact-admin-section" data-step="05" open>
           <summary>
-            <p class="section-label">AOI List</p>
-            <h2>Current regions</h2>
+            <p class="section-label">Danh sách AOI</p>
+            <h2>Vùng hiện tại</h2>
           </summary>
           <ul id="aoiList" class="aoi-list"></ul>
         </details>

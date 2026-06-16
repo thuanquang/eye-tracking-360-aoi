@@ -104,6 +104,27 @@ button.is-active {
   display: none;
 }
 
+html[data-initial-app-mode="validation"] .app-shell,
+html[data-initial-app-mode="validation"] .app-shell.is-validation-test {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
+  padding: 0;
+}
+
+html[data-initial-app-mode="validation"] .viewer-toolbar,
+html[data-initial-app-mode="validation"] .timeline-strip,
+html[data-initial-app-mode="validation"] #controlPanel,
+html[data-initial-app-mode="validation"] #participantPanel,
+html[data-initial-app-mode="validation"] #modeSelectScreen {
+  display: none;
+}
+
+html[data-initial-app-mode="validation"] .viewer-section {
+  grid-template-rows: minmax(0, 1fr);
+  border: 0;
+  box-shadow: none;
+}
+
 .mode-select-header {
   max-width: 680px;
 }
@@ -185,6 +206,17 @@ button.is-active {
 .app-shell.is-mode-select #controlPanel,
 .app-shell.is-mode-select #participantPanel {
   display: none;
+}
+
+.app-shell.is-analytics-mode #adminWorkflowRail,
+.app-shell.is-analytics-mode #controlPanel > .panel-section:not(#adminRecordingPanel),
+.app-shell.is-analytics-mode #adminRecordingPanel > :not(#aoiStatsPanel) {
+  display: none;
+}
+
+.app-shell.is-analytics-mode #adminRecordingPanel {
+  display: grid;
+  gap: 12px;
 }
 
 .viewer-section,
@@ -287,10 +319,43 @@ h1 {
   cursor: grabbing;
 }
 
+.viewer.is-flat-video {
+  cursor: default;
+}
+
+.viewer.is-flat-video.is-dragging {
+  cursor: default;
+}
+
 .viewer canvas {
   display: block;
   width: 100%;
   height: 100%;
+}
+
+.viewer > canvas {
+  position: absolute;
+  inset: 0;
+}
+
+.viewer > canvas:not(.gaze-heatmap-overlay) {
+  z-index: 1;
+}
+
+.gaze-heatmap-overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 2;
+  opacity: 0;
+  pointer-events: none;
+  mix-blend-mode: screen;
+  transition: opacity 160ms ease;
+}
+
+.app-shell.is-analytics-mode .gaze-heatmap-overlay {
+  opacity: 0.78;
 }
 
 .aoi-overlay {
@@ -340,6 +405,7 @@ h1 {
 
 .viewer-notice {
   position: absolute;
+  z-index: 6;
   left: 18px;
   bottom: 18px;
   max-width: min(440px, calc(100% - 36px));
@@ -429,7 +495,8 @@ h1 {
   text-decoration: none;
 }
 
-.admin-flow-step:first-child {
+.admin-flow-step.is-active,
+.admin-flow-step[aria-current="step"] {
   color: #ffffff;
   background: var(--line-strong);
 }
@@ -562,12 +629,6 @@ h1 {
   box-shadow: 0 -10px 18px rgba(255, 255, 255, 0.88);
 }
 
-.participant-copy {
-  margin: 0 0 18px;
-  color: var(--muted);
-  line-height: 1.45;
-}
-
 .participant-gaze-setup {
   display: grid;
   gap: 10px;
@@ -575,10 +636,6 @@ h1 {
   padding: 12px;
   border: 1px solid var(--line);
   background: #f7f7f7;
-}
-
-.participant-gaze-setup[data-provider="webgazer"] .participant-seeso-key {
-  display: none;
 }
 
 .participant-gaze-status {
@@ -689,29 +746,6 @@ h1 {
   accent-color: var(--accent);
 }
 
-.participant-status {
-  margin-top: 14px;
-  min-height: 54px;
-  border: 1px solid var(--line);
-  border-radius: 0;
-  display: grid;
-  align-content: center;
-  gap: 3px;
-  padding: 10px 12px;
-  background: var(--field);
-}
-
-.participant-status span {
-  color: var(--muted);
-  font-size: 0.72rem;
-  text-transform: uppercase;
-  font-weight: 800;
-}
-
-.participant-status strong {
-  font-size: 0.95rem;
-}
-
 .participant-session-panel {
   background: #fafafa;
 }
@@ -755,8 +789,14 @@ h1 {
   grid-template-columns: minmax(0, 1fr) minmax(300px, 360px);
 }
 
+.app-shell.is-participant-mode #playVideoButton {
+  display: none;
+}
+
 .app-shell.is-validation-test {
-  grid-template-columns: minmax(0, 1fr) minmax(300px, 360px);
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
+  padding: 0;
 }
 
 .app-shell.is-participant-mode .timeline-strip,
@@ -774,11 +814,14 @@ h1 {
 
 .app-shell.is-validation-test .viewer-section {
   grid-template-rows: minmax(0, 1fr);
-  border-color: #d0d5dd;
+  border: 0;
   box-shadow: none;
 }
 
 .app-shell.is-validation-test .viewer {
+  width: 100%;
+  height: 100vh;
+  aspect-ratio: auto;
   background: #ffffff;
 }
 
@@ -797,10 +840,7 @@ h1 {
 }
 
 .app-shell.is-validation-test #viewerNotice {
-  color: #344054;
-  background: transparent;
-  border: 0;
-  box-shadow: none;
+  display: none;
 }
 
 .app-shell.is-participant-mode #participantPanel {
@@ -817,6 +857,16 @@ h1 {
 
 .app-shell.is-validation-test #validationTestPanel {
   display: block;
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 40;
+  width: min(360px, calc(100vw - 32px));
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 18px 44px rgba(16, 24, 40, 0.16);
 }
 
 .app-shell.is-admin-mode #validationTestPanel,
@@ -840,15 +890,43 @@ h1 {
 }
 
 .app-shell.is-participant-started {
-  grid-template-columns: minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 360px);
+  gap: 20px;
+  padding: 20px;
+}
+
+.app-shell.is-participant-started .viewer-section {
+  position: static;
+  grid-template-rows: auto minmax(0, 1fr);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow);
+}
+
+.app-shell.is-participant-started .viewer-toolbar {
+  position: static;
+  width: auto;
+  min-height: 82px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: #ffffff;
+  color: var(--ink);
+  box-shadow: none;
+  padding: 18px 20px;
+  backdrop-filter: none;
+}
+
+.app-shell.is-participant-started .viewer {
+  width: 100%;
+  height: 100%;
+  aspect-ratio: auto;
 }
 
 .app-shell.is-participant-started #participantPanel {
-  position: absolute;
-  right: 28px;
-  top: 92px;
-  width: min(330px, calc(100vw - 56px));
-  z-index: 8;
+  position: static;
+  width: auto;
+  min-width: 0;
+  max-height: calc(100vh - 40px);
+  overflow: auto;
   box-shadow: var(--shadow);
 }
 
@@ -978,23 +1056,29 @@ details.panel-section > summary:focus-visible {
 }
 
 .aoi-stats-panel {
-  margin-top: 12px;
+  margin-top: 14px;
   display: grid;
-  gap: 10px;
-  border-top: 1px solid var(--line);
-  padding-top: 12px;
+  gap: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  background: #ffffff;
+}
+
+.aoi-stats-panel[hidden] {
+  display: none;
 }
 
 .aoi-stats-header {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 10px;
 }
 
 .aoi-stats-header h3 {
-  margin: 0;
-  font-size: 0.95rem;
+  margin: 2px 0 0;
+  font-size: 1.05rem;
   line-height: 1.2;
 }
 
@@ -1002,6 +1086,186 @@ details.panel-section > summary:focus-visible {
   min-height: 34px;
   padding: 0 10px;
   font-size: 0.82rem;
+}
+
+.aoi-stats-header-actions,
+.aoi-stats-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 7px;
+}
+
+.aoi-stats-actions {
+  justify-content: flex-start;
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+}
+
+.aoi-stats-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.aoi-stats-summary-item {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-left: 3px solid #287a76;
+  border-radius: 6px;
+  padding: 9px 10px;
+  background: #f8fbfb;
+}
+
+.aoi-stats-summary-item span,
+.aoi-stat-primary span,
+.aoi-stat-card-metrics dt {
+  display: block;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.aoi-stats-summary-item strong,
+.aoi-stat-primary strong {
+  display: block;
+  margin-top: 4px;
+  min-width: 0;
+  color: var(--ink);
+  font-size: 1.12rem;
+  line-height: 1.1;
+  overflow-wrap: anywhere;
+}
+
+.aoi-results-main {
+  display: grid;
+  gap: 10px;
+}
+
+.aoi-stats-cards {
+  display: grid;
+  gap: 8px;
+}
+
+.aoi-stats-empty {
+  margin: 0;
+  border: 1px dashed var(--line-strong);
+  border-radius: 6px;
+  padding: 12px;
+  color: var(--muted);
+  background: var(--field);
+}
+
+.aoi-stats-result-note {
+  margin: 0;
+  border: 1px solid #d6dde6;
+  border-left: 3px solid #9a4b1f;
+  border-radius: 6px;
+  padding: 9px 10px;
+  color: var(--muted);
+  background: #fff9f3;
+  font-size: 0.82rem;
+  line-height: 1.35;
+}
+
+.aoi-stat-card {
+  display: grid;
+  gap: 9px;
+  border: 1px solid #d6dde6;
+  border-radius: 8px;
+  padding: 10px;
+  background: #fcfcfd;
+}
+
+.aoi-stat-card-header {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+}
+
+.aoi-stat-rank {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  color: #ffffff;
+  background: #253858;
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.aoi-stat-card h4 {
+  margin: 0;
+  min-width: 0;
+  font-size: 0.95rem;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.aoi-stat-primary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: baseline;
+}
+
+.aoi-stat-primary strong {
+  margin-top: 0;
+  color: #9a4b1f;
+  font-size: 1.25rem;
+}
+
+.aoi-stat-card-bar {
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e8edf2;
+}
+
+.aoi-stat-card-bar-fill {
+  width: var(--bar-width, 0%);
+  height: 100%;
+  border-radius: inherit;
+  background: #287a76;
+}
+
+.aoi-stat-card-metrics {
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px 10px;
+}
+
+.aoi-stat-card-metrics div {
+  min-width: 0;
+}
+
+.aoi-stat-card-metrics dd {
+  margin: 2px 0 0;
+  color: var(--ink);
+  font-size: 0.9rem;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.aoi-stats-details {
+  border-top: 1px solid var(--line);
+  padding-top: 8px;
+}
+
+.aoi-stats-details summary {
+  cursor: pointer;
+  color: var(--ink);
+  font-size: 0.86rem;
+  font-weight: 800;
+}
+
+.aoi-stats-details[open] summary {
+  margin-bottom: 8px;
 }
 
 .aoi-stats-table-wrap {
@@ -1054,15 +1318,6 @@ details.panel-section > summary:focus-visible {
   text-align: left;
   white-space: normal;
   overflow-wrap: anywhere;
-}
-
-.heatmap-preview {
-  display: block;
-  width: 100%;
-  aspect-ratio: 2 / 1;
-  height: auto;
-  border: 1px solid var(--line);
-  background: var(--field);
 }
 
 .readout {
@@ -1308,7 +1563,10 @@ details.panel-section > summary:focus-visible {
     aspect-ratio: auto;
   }
 
-  .app-shell.is-validation-test #validationTestPanel {
+.app-shell.is-validation-test #validationTestPanel {
+    right: 10px;
+    bottom: 10px;
+    width: calc(100vw - 20px);
     min-height: 0;
   }
 

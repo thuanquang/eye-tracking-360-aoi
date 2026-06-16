@@ -30,7 +30,6 @@ const APP_SELECTORS = [
   '#mouseModeButton',
   '#webcamModeButton',
   '#gazeProviderSelect',
-  '#seesoLicenseKeyInput',
   '#gazeEngineStatus',
   '#calibrateButton',
   '#accuracyButton',
@@ -56,12 +55,6 @@ const APP_SELECTORS = [
   '#selectedAoiColorInput',
   '#saveSelectedAoiButton',
   '#deleteSelectedAoiButton',
-  '#cloudAoiPromptsInput',
-  '#cloudAoiSampleIntervalInput',
-  '#cloudAoiMaxPointsInput',
-  '#cloudAoiSimplifyInput',
-  '#exportColabJobButton',
-  '#cloudAoiResultInput',
   '#recordingFileInput',
   '#recordButton',
   '#reviewButton',
@@ -69,9 +62,16 @@ const APP_SELECTORS = [
   '#exportButton',
   '#exportStatsCsvButton',
   '#aoiStatsPanel',
+  '#exitAnalyticsButton',
   '#refreshStatsButton',
+  '#analyticsClearButton',
+  '#analyticsExportButton',
+  '#analyticsExportStatsCsvButton',
+  '#aoiStatsSummary',
+  '#aoiStatsCards',
+  '#aoiStatsDetails',
   '#aoiStatsTable',
-  '#heatmapCanvas',
+  '#gazeHeatmapOverlay',
   '#sampleCount',
   '#modeLabel',
   '#webcamStatusLabel',
@@ -86,29 +86,21 @@ const APP_SELECTORS = [
   '#controlPanel',
   '#participantPanel',
   '#adminModeLink',
-  '#participantModeLink',
+  '#participantStudyVideoSelect',
   '#participantIdInput',
   '#participantNameInput',
   '#participantAgeInput',
   '#participantConsentInput',
-  '#participantGazeSetup',
-  '#participantGazeProviderSelect',
-  '#participantSeeSoLicenseKeyInput',
-  '#participantGazeSetupStatus',
   '#participantStartButton',
-  '#participantStageLabel',
   '#participantSessionPanel',
-  '#participantSessionStatus',
   '#participantCalibrateButton',
-  '#participantAccuracyButton',
   '#participantRecordButton',
   '#participantExportButton',
   '#participantFlowRail .flow-step',
+  '#adminWorkflowRail .admin-flow-step',
   '#validationTestPanel',
   '#validationTestStatus',
-  '#validationTestKeyInput',
   '#validationTestCalibrateButton',
-  '#validationTestBlankButton',
   '#validationTestAccuracyButton',
   '#calibrationOverlay',
   '#calibrationTarget',
@@ -128,7 +120,7 @@ test('getRequiredElement throws a useful error for missing selectors', () => {
 
   assert.throws(
     () => getRequiredElement(document, '#viewer'),
-    /Missing required DOM element: #viewer/,
+    /Thiếu phần tử DOM bắt buộc: #viewer/,
   );
 });
 
@@ -140,25 +132,35 @@ test('queryAppDom resolves core app selectors', () => {
   assert.equal(dom.viewer.selector, '#viewer');
   assert.equal(dom.sourceVideo.selector, '#sourceVideo');
   assert.equal(dom.studyVideoSelect.selector, '#studyVideoSelect');
+  assert.equal(dom.participantStudyVideoSelect.selector, '#participantStudyVideoSelect');
   assert.equal(dom.gazeProviderSelect.selector, '#gazeProviderSelect');
-  assert.equal(dom.seesoLicenseKeyInput.selector, '#seesoLicenseKeyInput');
   assert.equal(dom.gazeEngineStatus.selector, '#gazeEngineStatus');
-  assert.equal(dom.participantGazeSetup.selector, '#participantGazeSetup');
-  assert.equal(dom.participantGazeProviderSelect.selector, '#participantGazeProviderSelect');
-  assert.equal(dom.participantSeeSoLicenseKeyInput.selector, '#participantSeeSoLicenseKeyInput');
-  assert.equal(dom.participantGazeSetupStatus.selector, '#participantGazeSetupStatus');
   assert.equal(dom.calibrationProfileSelect.selector, '#calibrationProfileSelect');
   assert.equal(dom.validationPolicySelect.selector, '#validationPolicySelect');
   assert.equal(dom.validationTestPanel.selector, '#validationTestPanel');
-  assert.equal(dom.validationTestBlankButton.selector, '#validationTestBlankButton');
   assert.equal(dom.rawGazeDiagnosticButton.selector, '#rawGazeDiagnosticButton');
   assert.equal(dom.rawGazeDiagnosticStatus.selector, '#rawGazeDiagnosticStatus');
   assert.equal(dom.gazeQualityReadout.selector, '#gazeQualityReadout');
   assert.equal(dom.exportStatsCsvButton.selector, '#exportStatsCsvButton');
   assert.equal(dom.aoiStatsPanel.selector, '#aoiStatsPanel');
+  assert.equal(dom.exitAnalyticsButton.selector, '#exitAnalyticsButton');
   assert.equal(dom.refreshStatsButton.selector, '#refreshStatsButton');
+  assert.equal(dom.analyticsClearButton.selector, '#analyticsClearButton');
+  assert.equal(dom.analyticsExportButton.selector, '#analyticsExportButton');
+  assert.equal(dom.analyticsExportStatsCsvButton.selector, '#analyticsExportStatsCsvButton');
+  assert.equal(dom.aoiStatsSummary.selector, '#aoiStatsSummary');
+  assert.equal(dom.aoiStatsCards.selector, '#aoiStatsCards');
+  assert.equal(dom.aoiStatsDetails.selector, '#aoiStatsDetails');
   assert.equal(dom.aoiStatsTable.selector, '#aoiStatsTable');
-  assert.equal(dom.heatmapCanvas.selector, '#heatmapCanvas');
+  assert.equal(dom.gazeHeatmapOverlay.selector, '#gazeHeatmapOverlay');
+  assert.equal('heatmapCanvas' in dom, false);
+  assert.deepEqual(dom.adminFlowSteps.map((element) => element.selector), ['#adminWorkflowRail .admin-flow-step']);
+});
+
+test('queryAppDom does not require removed Colab auto-AOI controls', () => {
+  const document = createDocument(APP_SELECTORS);
+
+  assert.doesNotThrow(() => queryAppDom(document));
 });
 
 test('queryAppDom requires the AOI stats CSV export button', () => {
@@ -166,6 +168,6 @@ test('queryAppDom requires the AOI stats CSV export button', () => {
 
   assert.throws(
     () => queryAppDom(document),
-    /Missing required DOM element: #exportStatsCsvButton/,
+    /Thiếu phần tử DOM bắt buộc: #exportStatsCsvButton/,
   );
 });

@@ -51,6 +51,29 @@ test('builds recording samples with raw, corrected, AOI, and quality fields', ()
   assert.equal(sample.quality.gazeStreamQuality.effectiveHz, 50);
 });
 
+test('serializes recorded AOI snapshots as JSON-safe point data', () => {
+  const point = { yaw: 1.2345, pitch: -2.3456, runtimeHandle: null };
+  point.runtimeHandle = point;
+
+  const sample = buildRecordingSample({
+    timeSec: 1,
+    source: 'mouse',
+    gaze: { x: 10, y: 20 },
+    camera: { yaw: 0, pitch: 0, fov: 75 },
+    panorama: { yaw: 1, pitch: 2 },
+    activeAois: [{
+      id: 'dynamic-polygon',
+      label: 'Dynamic polygon',
+      color: '#00ffaa',
+      shape: 'polygon',
+      points: [point],
+    }],
+  });
+
+  assert.doesNotThrow(() => JSON.stringify(sample));
+  assert.deepEqual(sample.activeAois[0].points, [{ yaw: 1.2345, pitch: -2.3456 }]);
+});
+
 test('builds recording samples with stable AOI evidence', () => {
   const sample = buildRecordingSample({
     timeSec: 1,

@@ -101,12 +101,12 @@ test('exports uppercase reliability constants with stable string values', () => 
 test('describes overall processing efficiency as a transparent composite', () => {
   const description = getStatDefinition('overallProcessingEfficiency').description;
 
-  assert.match(description, /AOI coverage/);
-  assert.match(description, /trusted AOI dwell/);
-  assert.match(description, /fixation efficiency/);
-  assert.match(description, /formula/);
-  assert.match(description, /components/);
-  assert.doesNotMatch(description, /share of viewing time/);
+  assert.match(description, /độ bao phủ AOI/);
+  assert.match(description, /thời gian lưu lại AOI tin cậy/);
+  assert.match(description, /hiệu quả định thị/);
+  assert.match(description, /công thức/);
+  assert.match(description, /thành phần/);
+  assert.doesNotMatch(description, /tỷ lệ thời gian xem/);
 });
 
 test('groups stats by scope', () => {

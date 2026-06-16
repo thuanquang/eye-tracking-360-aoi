@@ -403,7 +403,7 @@ test('seeso provider explains missing SharedArrayBuffer runtime before starting'
 
   await assert.rejects(
     provider.start(),
-    /SharedArrayBuffer.*cross-origin isolated/,
+    /SharedArrayBuffer.*cross-origin/,
   );
 });
 
@@ -440,7 +440,7 @@ test('seeso provider cancels cleanly when stopped during initialization', async 
 
   await assert.rejects(
     startPromise,
-    /startup was cancelled/i,
+    /đã bị hủy/i,
   );
   assert.deepEqual(calls, [
     ['initialize'],
@@ -466,11 +466,11 @@ test('seeso provider translates generic initialization failures into actionable 
 
   await assert.rejects(
     provider.start(),
-    /ERROR_INIT.*SharedArrayBuffer.*cross-origin isolation/,
+    /ERROR_INIT.*SharedArrayBuffer.*cross-origin/,
   );
   assert.match(
     describeSeeSoInitializationError(3),
-    /license key is invalid/i,
+    /khóa bộ theo dõi.*không hợp lệ/i,
   );
 });
 
@@ -498,7 +498,7 @@ test('app wires SeeSo as an alternate webcam gaze provider', async () => {
   assert.match(appSource, /parseSeeSoCalibrationDataFromUrl/);
   assert.match(appSource, /buildSeeSoRedirectUrl/);
   assert.match(appSource, /gazeProviderSelect/);
-  assert.match(appSource, /seesoLicenseKeyInput/);
+  assert.match(appSource, /SEESO_EMBEDDED_LICENSE_KEY/);
   assert.match(appSource, /openCalibrationPage/);
 });
 
@@ -532,9 +532,9 @@ test('app exposes admin SeeSo readiness controls', async () => {
     : '';
 
   assert.match(appSource, /gazeEngineStatus/);
-  assert.match(adminSyncFunction, /Open Eyedid Calibration/);
-  assert.match(adminSyncFunction, /Recalibrate Eyedid/);
-  assert.match(adminSyncFunction, /Start Gaze \+ Check Accuracy/);
+  assert.match(adminSyncFunction, /Hiệu chuẩn bộ theo dõi/);
+  assert.match(adminSyncFunction, /Hiệu chuẩn lại bộ theo dõi/);
+  assert.match(adminSyncFunction, /Bắt đầu ánh nhìn \+ kiểm tra độ chính xác/);
   assert.match(adminSyncFunction, /accuracyButton\.disabled\s*=/);
   assert.match(adminSyncFunction, /recordButton\.disabled\s*=/);
 });

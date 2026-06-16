@@ -4,39 +4,39 @@ const DEFAULT_TRACKING_SUCCESS = 0;
 const SEESO_INITIALIZATION_ERRORS = new Map([
   [1, {
     name: 'ERROR_INIT',
-    message: 'The SDK runtime could not initialize. For Web, this is commonly caused by missing SharedArrayBuffer or missing cross-origin isolation headers.',
+    message: 'Runtime SDK không thể khởi tạo. Trên Web, nguyên nhân thường là thiếu SharedArrayBuffer hoặc thiếu header cách ly cross-origin.',
   }],
   [2, {
     name: 'ERROR_CAMERA_PERMISSION',
-    message: 'Camera permission was denied or the camera could not be opened.',
+    message: 'Quyền camera bị từ chối hoặc không thể mở camera.',
   }],
   [3, {
     name: 'AUTH_INVALID_KEY',
-    message: 'The Eyedid SeeSo license key is invalid.',
+    message: 'Khóa bộ theo dõi lưu trữ không hợp lệ.',
   }],
   [4, {
     name: 'AUTH_INVALID_ENV_USED_DEV_IN_PROD',
-    message: 'A development license key is being used in a production environment.',
+    message: 'Khóa bộ theo dõi phát triển đang được dùng trong môi trường production.',
   }],
   [5, {
     name: 'AUTH_INVALID_ENV_USED_PROD_IN_DEV',
-    message: 'A production license key is being used in a development environment.',
+    message: 'Khóa bộ theo dõi production đang được dùng trong môi trường phát triển.',
   }],
   [8, {
     name: 'AUTH_EXCEEDED_FREE_TIER',
-    message: 'The free usage limit for this license key has been exceeded.',
+    message: 'Đã vượt quá giới hạn miễn phí của khóa bộ theo dõi này.',
   }],
   [13, {
     name: 'AUTH_CANNOT_FIND_HOST',
-    message: 'The SDK could not reach the Eyedid authentication host. Check network access.',
+    message: 'SDK không thể kết nối máy chủ xác thực bộ theo dõi. Hãy kiểm tra mạng.',
   }],
   [15, {
     name: 'AUTH_INVALID_KEY_FORMAT',
-    message: 'The license key format is invalid.',
+    message: 'Định dạng khóa bộ theo dõi không hợp lệ.',
   }],
   [16, {
     name: 'AUTH_EXPIRED_KEY',
-    message: 'The license key has expired.',
+    message: 'Khóa bộ theo dõi đã hết hạn.',
   }],
 ]);
 
@@ -77,9 +77,9 @@ export function describeSeeSoInitializationError(code) {
   const numericCode = Number(code);
   const knownError = SEESO_INITIALIZATION_ERRORS.get(numericCode);
   const label = knownError ? `${knownError.name} ${numericCode}` : String(code);
-  const guidance = knownError?.message ?? 'The SDK returned an unknown initialization error.';
+  const guidance = knownError?.message ?? 'SDK trả về lỗi khởi tạo không xác định.';
 
-  return `Eyedid SeeSo initialization failed (${label}). ${guidance}`;
+  return `Khởi tạo bộ theo dõi ánh nhìn lưu trữ thất bại (${label}). ${guidance}`;
 }
 
 async function loadSeeSoSdk({
@@ -90,7 +90,7 @@ async function loadSeeSoSdk({
   const SeeSo = module.default ?? module.SeeSo ?? module.Seeso;
 
   if (typeof SeeSo !== 'function') {
-    throw new Error('Eyedid SeeSo SDK module did not export a tracker class.');
+    throw new Error('Module SDK bộ theo dõi ánh nhìn lưu trữ không xuất lớp theo dõi.');
   }
 
   return {
@@ -191,7 +191,7 @@ export function createSeeSoProvider({
 
   async function assertLicenseKey() {
     if (!String(licenseKey || '').trim()) {
-      throw new Error('Eyedid SeeSo license key is required.');
+      throw new Error('Cần có khóa bộ theo dõi ánh nhìn lưu trữ.');
     }
   }
 
@@ -202,7 +202,7 @@ export function createSeeSoProvider({
 
     if (!hasSharedArrayBuffer(windowRef) || windowRef?.crossOriginIsolated === false) {
       throw new Error(
-        'Eyedid SeeSo requires SharedArrayBuffer on a cross-origin isolated page. Restart with `npm run serve` and open http://localhost:5179 so COOP/COEP headers are present.',
+        'Theo dõi ánh nhìn lưu trữ cần SharedArrayBuffer trên trang đã cách ly cross-origin. Hãy khởi động lại bằng `npm run serve` và mở http://localhost:5179 để có header COOP/COEP.',
       );
     }
   }
@@ -227,7 +227,7 @@ export function createSeeSoProvider({
     }
 
     cancelStartupIfNeeded(nextTracker, nextStream);
-    throw new Error('Eyedid SeeSo startup was cancelled.');
+    throw new Error('Khởi động bộ theo dõi ánh nhìn lưu trữ đã bị hủy.');
   }
 
   function getDefaultCameraX() {
@@ -308,7 +308,7 @@ export function createSeeSoProvider({
       }
 
       if (nextTracker.startTracking?.(stream) === false) {
-        throw new Error('Eyedid SeeSo tracking could not start.');
+        throw new Error('Không thể bắt đầu theo dõi ánh nhìn lưu trữ.');
       }
       assertCurrentStart(token, nextTracker);
 

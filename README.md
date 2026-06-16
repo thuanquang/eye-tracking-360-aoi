@@ -11,7 +11,7 @@ npm install
 npm run serve
 ```
 
-Open `http://localhost:5179`. Use `localhost`, not `127.0.0.1`, because WebGazer needs a secure context or localhost camera access.
+Open `http://localhost:5179` to choose a workflow. Use `localhost`, not `127.0.0.1`, because WebGazer needs a secure context or localhost camera access.
 
 Use `http://localhost:5179/?mode=admin` for the researcher/admin view. This is the full setup and debugging interface: load video, load AOIs, calibrate, record, review, and export.
 
@@ -79,9 +79,9 @@ The Colab notebook uses Florence-2 object detection, SAM 2 masks, and OpenCV con
 5. Choose `Webcam gaze`.
 6. Click `Calibrate webcam`.
 7. For every target, move your eyes first, keep your head still, then click once and keep looking at the target until it advances.
-8. Click `Check accuracy` and do the same thing for every target.
-9. Record only if the status says `validated ...px`.
-10. If it says poor, untested, or recheck needed, recalibrate before recording.
+8. Click `Check accuracy` and do the same thing for every target when you need trusted webcam accuracy.
+9. You can start or restart recording without a passing accuracy check.
+10. If accuracy says poor, untested, or recheck needed, recalibrate before treating webcam AOI metrics as trusted.
 
 During testing, judge the MVP using the validation numbers, not whether the cursor feels perfect. Under about `90px` mean error is good for this webcam POC; `90-180px` is usable for larger AOIs and dwell-time analysis. The app also checks p90 error, capture dispersion, and worst-target error, so one badly tracked or shaky region can force a recalibration even when the mean looks okay.
 
@@ -96,7 +96,7 @@ For the best shot at accuracy:
 - Make AOIs larger than the validation error radius when possible.
 - Prefer `likelyAoiDwellSec` over exact hit counts when webcam accuracy is only usable.
 - Re-run `Check accuracy` whenever the chair, camera, browser size, lighting, or head position changes.
-- If the browser loses focus or the tab is hidden after validation, the app invalidates webcam accuracy and asks for a new check.
+- If the browser loses focus or the tab is hidden after validation, the app invalidates webcam accuracy and marks later exports as unvalidated until a new check passes.
 - Validated webcam accuracy expires after about 5 minutes; run `Check accuracy` again for longer sessions.
 - Treat any high capture p90 or worst-target number as a setup problem: adjust lighting/camera/face position and recalibrate.
 
@@ -153,6 +153,6 @@ Review mode replays the recorded tracker from the exported panorama yaw/pitch, r
 
 ## Practical Limits
 
-This is not hardware eye tracking. WebGazer webcam accuracy depends heavily on lighting, face angle, glasses, webcam quality, and how still you keep your head. The app blocks or invalidates obviously unreliable recording, but real accuracy still has to be judged from the validation pixel error and the exported uncertainty fields.
+This is not hardware eye tracking. WebGazer webcam accuracy depends heavily on lighting, face angle, glasses, webcam quality, and how still you keep your head. The app allows recording without a passing accuracy check, so real accuracy still has to be judged from the validation pixel error and the exported uncertainty fields.
 
 For small AOIs, webcam gaze may only be useful as `possible` or `ambiguous` attention evidence. Larger AOIs and dwell-time analysis are much more reliable for this POC.

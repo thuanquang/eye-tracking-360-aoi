@@ -45,7 +45,6 @@ test('admin control panels follow the visible workflow order', () => {
   const orderedPanelIds = [
     'adminSetupPanel',
     'manualAoiPanel',
-    'cloudAoiPanel',
     'adminCalibrationPanel',
     'adminRecordingPanel',
     'adminReadoutPanel',
@@ -62,6 +61,124 @@ test('admin control panels follow the visible workflow order', () => {
     positions,
     [...positions].sort((a, b) => a - b),
     'Admin panels should scan in setup, AOI, calibration, record, export/readout order.',
+  );
+});
+
+test('admin view removes Google Colab auto-AOI controls', () => {
+  assert.equal(html.includes('id="cloudAoiPanel"'), false);
+  assert.equal(html.includes('Google Colab job'), false);
+  assert.equal(html.includes('Export Colab Job'), false);
+});
+
+test('admin setup exposes only the study video choice', () => {
+  const setupSection = /<section id="adminSetupPanel"[\s\S]*?<\/section>/.exec(html)?.[0] || '';
+
+  assert.match(setupSection, /id="studyVideoSelect"/);
+  assert.equal(
+    setupSection.includes('id="projectionSelect"'),
+    false,
+    'Projection should not appear in the first admin setup step.',
+  );
+  assert.equal(
+    setupSection.includes('id="stereoLayoutSelect"'),
+    false,
+    'Stereo should not appear in the first admin setup step.',
+  );
+  assert.match(
+    html,
+    /<div class="source-metadata-controls" hidden>[\s\S]*id="projectionSelect"[\s\S]*id="stereoLayoutSelect"[\s\S]*<\/div>/,
+    'Projection and stereo should remain as hidden backing controls for study video metadata.',
+  );
+});
+
+test('admin workflow nav exposes a selectable active step style', () => {
+  assert.match(
+    html,
+    /<a class="admin-flow-step is-active" href="#adminSetupPanel" aria-current="step">01 [^<]+<\/a>/,
+    'The first admin workflow step should render selected by default.',
+  );
+  assert.match(
+    css,
+    /\.admin-flow-step\.is-active,\s*\.admin-flow-step\[aria-current="step"\]\s*\{[\s\S]*?background:\s*var\(--line-strong\)/,
+    'The selected admin workflow step should have a distinct active color.',
+  );
+});
+
+test('AOI results prioritize summary and ranked cards before the detail table', () => {
+  const resultIds = [
+    'aoiStatsSummary',
+    'aoiStatsCards',
+    'aoiStatsDetails',
+    'aoiStatsTable',
+  ];
+  const positions = resultIds.map((id) => html.indexOf(`id="${id}"`));
+
+  positions.forEach((position, index) => {
+    assert.notEqual(position, -1, `${resultIds[index]} should exist in the AOI results markup.`);
+  });
+  assert.deepEqual(
+    positions,
+    [...positions].sort((a, b) => a - b),
+    'AOI results should scan from summary, to ranked AOI cards, to the detailed table.',
+  );
+  assert.match(
+    css,
+    /\.aoi-stats-cards\s*\{[\s\S]*?display:\s*grid/,
+    'AOI results should use a card list instead of making the table the primary read.',
+  );
+  assert.match(
+    css,
+    /\.aoi-stat-card-bar-fill\s*\{[\s\S]*?width:\s*var\(--bar-width,\s*0%\)/,
+    'AOI cards should include proportional bars for quick comparison.',
+  );
+});
+
+test('AOI analytics mode uses player heatmap instead of sidebar preview', () => {
+  const viewerPosition = html.indexOf('id="viewer"');
+  const heatmapPosition = html.indexOf('id="gazeHeatmapOverlay"');
+  const aoiOverlayPosition = html.indexOf('id="aoiOverlay"');
+
+  assert.notEqual(viewerPosition, -1, 'The viewer should exist in the page markup.');
+  assert.notEqual(heatmapPosition, -1, 'The gaze heatmap overlay should exist in the viewer.');
+  assert.notEqual(aoiOverlayPosition, -1, 'The AOI overlay should exist in the viewer.');
+  assert.ok(
+    viewerPosition < heatmapPosition && heatmapPosition < aoiOverlayPosition,
+    'The heatmap canvas should be layered inside the player before the AOI overlay.',
+  );
+  assert.equal(html.includes('id="heatmapCanvas"'), false);
+  assert.equal(html.includes('class="aoi-heatmap-panel"'), false);
+  assert.match(
+    css,
+    /\.gaze-heatmap-overlay\s*\{[\s\S]*?position:\s*absolute/,
+    'The gaze heatmap should be an absolute player overlay.',
+  );
+  assert.match(
+    css,
+    /\.app-shell\.is-analytics-mode\s+\.gaze-heatmap-overlay\s*\{[\s\S]*?opacity:/,
+    'Analytics mode should reveal the player heatmap overlay.',
+  );
+});
+
+test('analytics mode clears the admin sidebar to the AOI results panel', () => {
+  assert.match(
+    html,
+    /id="exitAnalyticsButton"/,
+    'Analytics mode should provide a way back to normal controls.',
+  );
+  assert.match(
+    css,
+    /\.app-shell\.is-analytics-mode[\s\S]*?#adminWorkflowRail[\s\S]*?display:\s*none/,
+    'Analytics mode should hide the admin workflow rail.',
+  );
+  assert.match(
+    css,
+    /\.app-shell\.is-analytics-mode[\s\S]*?#controlPanel\s*>\s*\.panel-section:not\(#adminRecordingPanel\)[\s\S]*?display:\s*none/,
+    'Analytics mode should hide non-result admin panels.',
+  );
+  assert.match(
+    css,
+    /\.app-shell\.is-analytics-mode[\s\S]*?#adminRecordingPanel\s*>\s*:not\(#aoiStatsPanel\)[\s\S]*?display:\s*none/,
+    'Analytics mode should leave only the stats panel in the recording section.',
   );
 });
 
@@ -90,6 +207,22 @@ test('participant and validation modes keep primary layouts usable on mobile', (
     'Participant setup should keep the start action visible while the form scrolls.',
   );
 
+  assert.match(
+    css,
+    /\.app-shell\.is-participant-mode\s+#playVideoButton\s*\{[\s\S]*?display:\s*none/,
+    'Participant mode should remove the separate video play control.',
+  );
+  assert.match(
+    css,
+    /\.app-shell\.is-participant-started\s+\.viewer-section\s*\{[\s\S]*?border:\s*0/,
+    'Participant sessions should make the video stage feel fullscreen instead of framed.',
+  );
+  assert.match(
+    css,
+    /\.app-shell\.is-participant-started\s+\.viewer\s*\{[\s\S]*?height:\s*100vh/,
+    'Participant sessions should size the viewer to the full viewport height.',
+  );
+
   const mobileRules = readMediaRule('max-width:\\s*620px');
   assert.match(
     mobileRules,
@@ -100,5 +233,78 @@ test('participant and validation modes keep primary layouts usable on mobile', (
     mobileRules,
     /\.app-shell\.is-validation-test\s+\.viewer\s*\{[\s\S]*?aspect-ratio:\s*auto/,
     'Mobile validation mode should not let the 16:9 viewer force horizontal overflow.',
+  );
+});
+
+test('validation mode is hidden from admin UI before app JavaScript hydrates', () => {
+  assert.match(
+    html,
+    /document\.documentElement\.dataset\.initialAppMode/,
+    'The page should mark the requested mode in the head before the app controller loads.',
+  );
+  assert.match(
+    css,
+    /html\[data-initial-app-mode="validation"\][\s\S]*?#controlPanel[\s\S]*?display:\s*none/,
+    'Validation mode should hide admin controls from first paint to prevent transition flashes.',
+  );
+  assert.match(
+    css,
+    /html\[data-initial-app-mode="validation"\][\s\S]*?\.viewer-section[\s\S]*?grid-template-rows:\s*minmax\(0,\s*1fr\)/,
+    'Validation mode should apply the blank viewer layout from first paint.',
+  );
+});
+
+test('tracker branding and key inputs are not participant-facing', () => {
+  const appHtml = html.toLowerCase();
+  assert.equal(appHtml.includes('eyedid'), false);
+  assert.equal(appHtml.includes('license key'), false);
+  assert.equal(appHtml.includes('participantgazesetup'), false);
+  assert.equal(appHtml.includes('participantgazeproviderselect'), false);
+  assert.equal(appHtml.includes('participantgazesetupstatus'), false);
+  assert.equal(appHtml.includes('seesolicensekeyinput'), false);
+  assert.equal(appHtml.includes('validationtestkeyinput'), false);
+  assert.equal(appHtml.includes('participantseesolicensekeyinput'), false);
+});
+
+test('participant setup does not show tracker or stage status boxes', () => {
+  const appHtml = html.toLowerCase();
+  assert.equal(appHtml.includes('eye tracker'), false);
+  assert.equal(appHtml.includes('participantstagelabel'), false);
+  assert.equal(appHtml.includes('<span>stage</span>'), false);
+});
+
+test('participant setup is concise and exposes explicit video choice', () => {
+  assert.equal(
+    html.includes('class="participant-copy"'),
+    false,
+    'Participant setup should not show explanatory subtitle copy.',
+  );
+  assert.match(
+    html,
+    /id="participantStudyVideoSelect"/,
+    'Participant setup should include a visible study video dropdown.',
+  );
+  assert.equal(
+    html.includes('id="participantSessionStatus"'),
+    false,
+    'Participant session controls should not include the extra status card.',
+  );
+  assert.equal(
+    html.includes('id="participantModeLink"'),
+    false,
+    'The viewer toolbar should not include a participant mode button.',
+  );
+  assert.match(
+    html,
+    /Tôi đồng ý cho ghi lại ánh nhìn qua webcam trong phiên nghiên cứu này\./,
+    'Consent copy should use the requested webcam gaze wording.',
+  );
+});
+
+test('flat video viewer styling removes drag affordance', () => {
+  assert.match(
+    css,
+    /\.viewer\.is-flat-video\s*\{[\s\S]*?cursor:\s*default/,
+    'Flat 2D videos should not present a draggable viewer cursor.',
   );
 });

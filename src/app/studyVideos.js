@@ -85,6 +85,14 @@ export function getDefaultStudyVideo() {
   return { ...STUDY_VIDEOS[0] };
 }
 
+export function getRandomStudyVideo(random = Math.random) {
+  const index = Math.min(
+    STUDY_VIDEOS.length - 1,
+    Math.max(0, Math.floor(random() * STUDY_VIDEOS.length)),
+  );
+  return { ...STUDY_VIDEOS[index] };
+}
+
 export function findStudyVideoById(id) {
   const video = STUDY_VIDEOS.find((candidate) => candidate.id === id);
   return video ? { ...video } : null;
@@ -119,22 +127,22 @@ export function videoInfoFromStudyVideo(video) {
 
 export function validateAoiVideoCompatibility({ selectedVideo, metadataVideo }) {
   if (!metadataVideo || typeof metadataVideo !== 'object') {
-    throw new Error('AOI JSON must include video metadata for the selected study video.');
+    throw new Error('AOI JSON phải bao gồm metadata video cho video nghiên cứu đã chọn.');
   }
 
   if (metadataVideo.name !== selectedVideo.name) {
-    throw new Error(`AOI JSON video "${metadataVideo.name || 'unknown'}" does not match selected video "${selectedVideo.name}".`);
+    throw new Error(`Video trong AOI JSON "${metadataVideo.name || 'không rõ'}" không khớp với video đã chọn "${selectedVideo.name}".`);
   }
 
   if (metadataVideo.projection && metadataVideo.projection !== selectedVideo.projection) {
-    throw new Error(`AOI JSON projection "${metadataVideo.projection}" does not match selected video projection "${selectedVideo.projection}".`);
+    throw new Error(`Phép chiếu trong AOI JSON "${metadataVideo.projection}" không khớp với phép chiếu video đã chọn "${selectedVideo.projection}".`);
   }
 
   if (metadataVideo.stereoLayout && metadataVideo.stereoLayout !== selectedVideo.stereoLayout) {
-    throw new Error(`AOI JSON stereo layout "${metadataVideo.stereoLayout}" does not match selected video stereo layout "${selectedVideo.stereoLayout}".`);
+    throw new Error(`Bố cục stereo trong AOI JSON "${metadataVideo.stereoLayout}" không khớp với bố cục stereo video đã chọn "${selectedVideo.stereoLayout}".`);
   }
 
   if (selectedVideo.stereoEye && metadataVideo.stereoEye !== selectedVideo.stereoEye) {
-    throw new Error(`AOI JSON stereo eye "${metadataVideo.stereoEye || 'unknown'}" does not match selected video stereo eye "${selectedVideo.stereoEye}".`);
+    throw new Error(`Mắt stereo trong AOI JSON "${metadataVideo.stereoEye || 'không rõ'}" không khớp với mắt stereo video đã chọn "${selectedVideo.stereoEye}".`);
   }
 }
