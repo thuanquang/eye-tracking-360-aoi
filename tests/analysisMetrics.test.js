@@ -48,6 +48,106 @@ test('uses screen-coordinate dispersion fixations for AOI fixation metrics', () 
   assert.equal(metrics.session.averageFixationDurationMs, 200);
 });
 
+test('reports first fixation duration and revisit count per AOI', () => {
+  const aois = [
+    { id: 'logo', label: 'Logo' },
+    { id: 'product', label: 'Product' },
+  ];
+  const samples = [
+    { t: 0.00, screen: { x: 100, y: 100 }, hits: ['logo'], likelyHits: ['logo'], possibleHits: [], ambiguousHits: [], activeAois: aois },
+    { t: 0.05, screen: { x: 102, y: 101 }, hits: ['logo'], likelyHits: ['logo'], possibleHits: [], ambiguousHits: [], activeAois: aois },
+    { t: 0.10, screen: { x: 400, y: 300 }, hits: ['product'], likelyHits: ['product'], possibleHits: [], ambiguousHits: [], activeAois: aois },
+    { t: 0.15, screen: { x: 402, y: 302 }, hits: ['product'], likelyHits: ['product'], possibleHits: [], ambiguousHits: [], activeAois: aois },
+    { t: 0.20, screen: { x: 104, y: 100 }, hits: ['logo'], likelyHits: ['logo'], possibleHits: [], ambiguousHits: [], activeAois: aois },
+    { t: 0.25, screen: { x: 103, y: 99 }, hits: ['logo'], likelyHits: ['logo'], possibleHits: [], ambiguousHits: [], activeAois: aois },
+  ];
+
+  const metrics = buildNamedAoiMetrics(samples, aois);
+
+  assert.equal(metrics.perAoi.logo.fixationCount, 2);
+  assert.equal(metrics.perAoi.logo.firstFixationDurationMs, 100);
+  assert.equal(metrics.perAoi.logo.revisitCount, 1);
+  assert.equal(metrics.perAoi.product.firstFixationDurationMs, 100);
+  assert.equal(Array.isArray(metrics.fixations), true);
+  assert.equal(metrics.fixations.length, 3);
+  assert.deepEqual(metrics.fixations[0], {
+    aoiId: 'logo',
+    startSec: 0,
+    endSec: 0.1,
+    durationMs: 100,
+    sampleCount: 2,
+    centroid: { x: 101, y: 100.5 },
+  });
+  assert.equal(Object.hasOwn(metrics.fixations[0], 'dispersionPx'), false);
+});
+
+test('reports experimental saccade durations between fixation windows', () => {
+  const aois = [
+    { id: 'left', label: 'Left' },
+    { id: 'right', label: 'Right' },
+  ];
+  const samples = [
+    { t: 0.00, screen: { x: 100, y: 100 }, hits: ['left'], likelyHits: ['left'], possibleHits: [], ambiguousHits: [], activeAois: aois },
+    { t: 0.05, screen: { x: 102, y: 100 }, hits: ['left'], likelyHits: ['left'], possibleHits: [], ambiguousHits: [], activeAois: aois },
+    { t: 0.20, screen: { x: 500, y: 300 }, hits: ['right'], likelyHits: ['right'], possibleHits: [], ambiguousHits: [], activeAois: aois },
+    { t: 0.25, screen: { x: 502, y: 301 }, hits: ['right'], likelyHits: ['right'], possibleHits: [], ambiguousHits: [], activeAois: aois },
+  ];
+
+  const metrics = buildNamedAoiMetrics(samples, aois);
+
+  assert.equal(metrics.session.saccadeCount, 1);
+  assert.equal(metrics.session.averageSaccadeDurationMs, 100);
+  assert.deepEqual(metrics.transitions, [{
+    fromAoiId: 'left',
+    toAoiId: 'right',
+    startSec: 0.1,
+    endSec: 0.2,
+    durationMs: 100,
+  }]);
+  assert.equal(metrics.perAoi.left.totalFixationDurationMs, 200);
+  assert.equal(metrics.fixations[0].endSec, 0.2);
+  assert.equal(metrics.fixations[0].durationMs, 200);
+});
+
+test('does not count a revisit when an AOI repeats after an unmapped gap', () => {
+  const aois = [{ id: 'logo', label: 'Logo' }];
+  const samples = [
+    { t: 0.00, hits: ['logo'], likelyHits: ['logo'], possibleHits: [], ambiguousHits: [], activeAois: aois },
+    { t: 0.05, hits: ['logo'], likelyHits: ['logo'], possibleHits: [], ambiguousHits: [], activeAois: aois },
+    { t: 0.10, hits: [], likelyHits: [], possibleHits: [], ambiguousHits: [], activeAois: aois },
+    { t: 0.20, hits: ['logo'], likelyHits: ['logo'], possibleHits: [], ambiguousHits: [], activeAois: aois },
+    { t: 0.25, hits: ['logo'], likelyHits: ['logo'], possibleHits: [], ambiguousHits: [], activeAois: aois },
+  ];
+
+  const metrics = buildNamedAoiMetrics(samples, aois);
+
+  assert.equal(metrics.perAoi.logo.fixationCount, 2);
+  assert.equal(metrics.perAoi.logo.revisitCount, 0);
+  assert.equal(metrics.session.saccadeCount, 0);
+  assert.equal(metrics.session.averageSaccadeDurationMs, null);
+  assert.deepEqual(metrics.transitions, []);
+});
+
+test('counts a revisit when an AOI repeats after another AOI fixation', () => {
+  const aois = [
+    { id: 'logo', label: 'Logo' },
+    { id: 'product', label: 'Product' },
+  ];
+  const samples = [
+    { t: 0.00, hits: ['logo'], likelyHits: ['logo'], possibleHits: [], ambiguousHits: [], activeAois: aois },
+    { t: 0.05, hits: ['logo'], likelyHits: ['logo'], possibleHits: [], ambiguousHits: [], activeAois: aois },
+    { t: 0.10, hits: ['product'], likelyHits: ['product'], possibleHits: [], ambiguousHits: [], activeAois: aois },
+    { t: 0.15, hits: ['product'], likelyHits: ['product'], possibleHits: [], ambiguousHits: [], activeAois: aois },
+    { t: 0.20, hits: ['logo'], likelyHits: ['logo'], possibleHits: [], ambiguousHits: [], activeAois: aois },
+    { t: 0.25, hits: ['logo'], likelyHits: ['logo'], possibleHits: [], ambiguousHits: [], activeAois: aois },
+  ];
+
+  const metrics = buildNamedAoiMetrics(samples, aois);
+
+  assert.equal(metrics.perAoi.logo.fixationCount, 2);
+  assert.equal(metrics.perAoi.logo.revisitCount, 1);
+});
+
 test('counts final screen sample duration toward fixation threshold', () => {
   const aois = [{ id: 'front', label: 'Front' }];
   const samples = [
@@ -208,4 +308,114 @@ test('uses the recording cadence for single-sample metric duration fallback', ()
   ], [{ id: 'front', label: 'Front' }]);
 
   assert.equal(metrics.session.totalDurationSec, Number(((1000 / 30) / 1000).toFixed(3)));
+});
+
+test('reports transparent processing efficiency components', () => {
+  const aois = [
+    { id: 'a', label: 'A' },
+    { id: 'b', label: 'B' },
+  ];
+  const samples = [
+    { t: 0.0, hits: ['a'], stableHits: ['a'], likelyHits: ['a'], possibleHits: [], ambiguousHits: [], quality: { trustedForAoiAnalysis: true }, activeAois: aois },
+    { t: 0.1, hits: ['a'], stableHits: ['a'], likelyHits: ['a'], possibleHits: [], ambiguousHits: [], quality: { trustedForAoiAnalysis: true }, activeAois: aois },
+    { t: 0.2, hits: ['b'], stableHits: ['b'], likelyHits: ['b'], possibleHits: [], ambiguousHits: [], quality: { trustedForAoiAnalysis: true }, activeAois: aois },
+    { t: 0.3, hits: [], stableHits: [], likelyHits: [], possibleHits: [], ambiguousHits: [], quality: { trustedForAoiAnalysis: false }, activeAois: aois },
+  ];
+
+  const metrics = buildNamedAoiMetrics(samples, aois, { sampleIntervalMs: 100 });
+
+  assert.equal(typeof metrics.session.processingEfficiencyComponents, 'object');
+  assert.equal(metrics.session.processingEfficiencyComponents.aoiCoveragePercent, 100);
+  assert.equal(metrics.session.processingEfficiencyComponents.trustedAoiDwellPercent, 75);
+  assert.equal(metrics.session.processingEfficiencyComponents.fixationEfficiencyPercent, 20);
+  assert.equal(
+    metrics.session.processingEfficiencyFormula,
+    '0.4*aoiCoveragePercent + 0.4*trustedAoiDwellPercent + 0.2*fixationEfficiencyPercent',
+  );
+  assert.equal(metrics.session.overallProcessingEfficiency, 74);
+});
+
+test('reports unique AOIs fixated and trusted likely AOI samples', () => {
+  const aois = [
+    { id: 'a', label: 'A' },
+    { id: 'b', label: 'B' },
+  ];
+  const metrics = buildNamedAoiMetrics([
+    {
+      t: 0.0,
+      hits: ['a'],
+      stableHits: [],
+      likelyHits: ['a'],
+      possibleHits: [],
+      ambiguousHits: [],
+      quality: { trustedForAoiAnalysis: true },
+      activeAois: aois,
+    },
+    {
+      t: 0.1,
+      hits: [],
+      stableHits: [],
+      likelyHits: ['a'],
+      possibleHits: ['b'],
+      ambiguousHits: [],
+      quality: { trustedForAoiAnalysis: true },
+      activeAois: aois,
+    },
+    {
+      t: 0.2,
+      hits: ['b'],
+      stableHits: [],
+      likelyHits: ['b'],
+      possibleHits: [],
+      ambiguousHits: [],
+      quality: { trustedForAoiAnalysis: false },
+      activeAois: aois,
+    },
+  ], aois, { sampleIntervalMs: 100 });
+
+  assert.deepEqual(metrics.session.uniqueAoisFixated, ['a', 'b']);
+  assert.equal(metrics.session.averageNumberOfAoisFixated, 2);
+  assert.equal(metrics.perAoi.a.trustedSampleCount, 2);
+  assert.equal(metrics.perAoi.b.trustedSampleCount, 0);
+});
+
+test('uses likely dwell for processing efficiency when stable dwell is absent', () => {
+  const aois = [{ id: 'a', label: 'A' }];
+  const samples = [
+    { t: 0.0, hits: ['a'], stableHits: [], likelyHits: ['a'], possibleHits: [], ambiguousHits: [], activeAois: aois },
+    { t: 0.1, hits: ['a'], stableHits: [], likelyHits: ['a'], possibleHits: [], ambiguousHits: [], activeAois: aois },
+  ];
+
+  const metrics = buildNamedAoiMetrics(samples, aois, { sampleIntervalMs: 100 });
+
+  assert.equal(metrics.session.processingEfficiencyComponents.trustedAoiDwellPercent, 100);
+});
+
+test('uses stable dwell for processing efficiency when stable dwell exists', () => {
+  const aois = [{ id: 'a', label: 'A' }];
+  const samples = [
+    { t: 0.0, hits: ['a'], stableHits: ['a'], likelyHits: ['a'], possibleHits: [], ambiguousHits: [], activeAois: aois },
+    { t: 0.1, hits: ['a'], stableHits: [], likelyHits: ['a'], possibleHits: [], ambiguousHits: [], activeAois: aois },
+    { t: 0.2, hits: ['a'], stableHits: [], likelyHits: ['a'], possibleHits: [], ambiguousHits: [], activeAois: aois },
+    { t: 0.3, hits: ['a'], stableHits: [], likelyHits: ['a'], possibleHits: [], ambiguousHits: [], activeAois: aois },
+  ];
+
+  const metrics = buildNamedAoiMetrics(samples, aois, { sampleIntervalMs: 100 });
+
+  assert.equal(metrics.session.processingEfficiencyComponents.trustedAoiDwellPercent, 25);
+});
+
+test('reports bounded processing efficiency components without samples or fixations', () => {
+  const metrics = buildNamedAoiMetrics([], [{ id: 'a', label: 'A' }], { sampleIntervalMs: 100 });
+
+  assert.deepEqual(metrics.session.processingEfficiencyComponents, {
+    aoiCoveragePercent: 0,
+    trustedAoiDwellPercent: 0,
+    fixationEfficiencyPercent: 0,
+  });
+  assert.equal(
+    metrics.session.processingEfficiencyFormula,
+    '0.4*aoiCoveragePercent + 0.4*trustedAoiDwellPercent + 0.2*fixationEfficiencyPercent',
+  );
+  assert.equal(metrics.session.overallProcessingEfficiency, 0);
 });

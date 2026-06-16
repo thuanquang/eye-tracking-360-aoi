@@ -72,8 +72,28 @@ test('builds recording samples with stable AOI evidence', () => {
 
 test('builds summary counts and duration from samples', () => {
   const summary = buildExportSummary([
-    { t: 0, source: 'mouse', hits: ['logo'], likelyHits: ['logo'], possibleHits: [], ambiguousHits: [], quality: { trustedForAoiAnalysis: true } },
-    { t: RECORDING_SAMPLE_INTERVAL_MS / 1000, source: 'mouse', hits: ['logo'], likelyHits: [], possibleHits: ['logo'], ambiguousHits: ['logo'], quality: { trustedForAoiAnalysis: true } },
+    {
+      t: 0,
+      source: 'mouse',
+      screen: { x: 20, y: 30 },
+      panorama: { yaw: -10, pitch: 5 },
+      hits: ['logo'],
+      likelyHits: ['logo'],
+      possibleHits: [],
+      ambiguousHits: [],
+      quality: { trustedForAoiAnalysis: true },
+    },
+    {
+      t: RECORDING_SAMPLE_INTERVAL_MS / 1000,
+      source: 'mouse',
+      screen: { x: 40, y: 60 },
+      panorama: { yaw: 15, pitch: -5 },
+      hits: ['logo'],
+      likelyHits: [],
+      possibleHits: ['logo'],
+      ambiguousHits: ['logo'],
+      quality: { trustedForAoiAnalysis: true },
+    },
   ], {
     accuracyValidated: false,
     correctedAccuracySummary: null,
@@ -95,11 +115,35 @@ test('builds summary counts and duration from samples', () => {
         { atMs: 40, accepted: true },
       ],
     },
+  }, RECORDING_SAMPLE_INTERVAL_MS, {
+    screenHeatmapDimensions: { width: 100, height: 80 },
   });
 
   assert.equal(summary.totalSamples, 2);
   assert.equal(summary.durationSec, 0.067);
   assert.equal(summary.recordingSampleIntervalMs, RECORDING_SAMPLE_INTERVAL_MS);
+  assert.equal(summary.heatmaps.screen.type, 'screen');
+  assert.equal(summary.heatmaps.screen.width, 100);
+  assert.equal(summary.heatmaps.screen.height, 80);
+  assert.equal(summary.heatmaps.screen.dimensionSource, 'provided');
+  assert.equal(summary.heatmaps.screen.trustedOnly, true);
+  assert.equal(summary.heatmaps.variants.trusted.screen.type, 'screen');
+  assert.equal(summary.heatmaps.variants.trusted.panorama.type, 'panorama');
+  assert.equal(summary.heatmaps.variants.likely.screen.totalWeightSec, 0.067);
+  assert.equal(summary.heatmaps.variants.likely.panorama.totalWeightSec, 0.067);
+  assert.equal(summary.heatmaps.variants.possible.screen.totalWeightSec, 0.067);
+  assert.equal(summary.heatmaps.variants.possible.panorama.totalWeightSec, 0.067);
+  assert.deepEqual(summary.heatmaps.screen.bins[0], {
+    column: 9,
+    row: 10,
+    weightSec: 0.033,
+    sampleCount: 1,
+  });
+  assert.equal(summary.heatmaps.panorama.type, 'panorama');
+  assert.deepEqual(summary.heatmaps.panorama.yawRange, [-180, 180]);
+  assert.deepEqual(summary.heatmaps.panorama.pitchRange, [-90, 90]);
+  assert.equal(Array.isArray(summary.heatmaps.panorama.bins), true);
+  assert.equal(Array.isArray(summary.heatmaps.screen.bins), true);
   assert.deepEqual(summary.selectedCalibrationProfile, RESEARCH_39_PROFILE);
   assert.equal(summary.calibrationProfile, null);
   assert.equal(summary.calibrationProfileUsed, null);
@@ -143,6 +187,46 @@ test('builds summary counts and duration from samples', () => {
     'Validation quality should summarize validation stats, not recording stats.',
   );
   assert.equal(summary.gazeStreamQuality.droppedReasons.stale, 1);
+});
+
+test('falls back to inferred or no screen heatmap dimensions when export dimensions are omitted', () => {
+  const inferredSummary = buildExportSummary([
+    {
+      t: 0,
+      source: 'mouse',
+      screen: { x: 5, y: 7 },
+      panorama: { yaw: 0, pitch: 0 },
+      hits: [],
+      likelyHits: [],
+      possibleHits: [],
+      ambiguousHits: [],
+      quality: { trustedForAoiAnalysis: true },
+    },
+    {
+      t: 0.1,
+      source: 'mouse',
+      screen: { x: 999, y: 999 },
+      panorama: { yaw: 45, pitch: 10 },
+      hits: [],
+      likelyHits: [],
+      possibleHits: [],
+      ambiguousHits: [],
+      quality: { trustedForAoiAnalysis: false },
+    },
+  ], {}, 100);
+  const emptySummary = buildExportSummary([], {}, 100);
+
+  assert.equal(inferredSummary.heatmaps.screen.dimensionSource, 'inferred');
+  assert.equal(inferredSummary.heatmaps.screen.width, 6);
+  assert.equal(inferredSummary.heatmaps.screen.height, 8);
+  assert.equal(inferredSummary.heatmaps.screen.trustedOnly, true);
+  assert.deepEqual(inferredSummary.heatmaps.screen.bins, [
+    { column: 40, row: 23, weightSec: 0.1, sampleCount: 1 },
+  ]);
+  assert.equal(emptySummary.heatmaps.screen.dimensionSource, 'none');
+  assert.equal(emptySummary.heatmaps.screen.width, null);
+  assert.equal(emptySummary.heatmaps.screen.height, null);
+  assert.deepEqual(emptySummary.heatmaps.screen.bins, []);
 });
 
 test('exports raw gaze diagnostic and stable AOI metadata', () => {
@@ -259,7 +343,21 @@ test('builds export payload with state-derived accuracy and samples', () => {
     project: { version: 1 },
     video: { name: 'demo.mp4' },
     summary: { totalSamples: 1, recordingSampleIntervalMs: 1000 / 30, durationSec: 0.033 },
-    namedAoiMetrics: { Front: { samples: 1 } },
+    namedAoiMetrics: {
+      session: {
+        averageNumberOfAoisFixated: 1,
+        overallProcessingEfficiency: 64,
+      },
+      perAoi: {
+        front: {
+          id: 'front',
+          label: 'Front',
+          fixationCount: 1,
+          totalFixationDurationMs: 120,
+          timeToFirstFixationMs: 80,
+        },
+      },
+    },
     aoiSource: 'manual',
     aois: [{ id: 'front' }],
     state: {
@@ -327,6 +425,15 @@ test('builds export payload with state-derived accuracy and samples', () => {
   assert.equal(payload.benchmark.faceStabilityInvalidationCount, 0);
   assert.equal(payload.benchmark.samples, undefined);
   assert.deepEqual(payload.samples, [{ t: 0 }]);
+  assert.equal(typeof payload.statReport, 'object');
+  assert.equal(payload.statReport.exportedAt, '2026-06-11T00:00:00.000Z');
+  assert.equal(Array.isArray(payload.statReport.perAoiRows), true);
+  assert.equal(payload.statReport.perAoiRows.length, 1);
+  assert.equal(payload.statReport.perAoiRows[0].aoiId, 'front');
+  assert.ok(payload.statReport.perAoiRows[0].stats.some((stat) => stat.id === 'fixationCount'));
+  assert.ok(payload.statReport.sessionStats.some((stat) => stat.id === 'overallProcessingEfficiency'));
+  assert.equal(Array.isArray(payload.statReport.caveats), true);
+  assert.ok(payload.statReport.caveats.length > 0);
 });
 
 test('clones compact benchmark metadata without sample or nested quality references', () => {

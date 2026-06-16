@@ -977,6 +977,94 @@ details.panel-section > summary:focus-visible {
   font-size: 1.2rem;
 }
 
+.aoi-stats-panel {
+  margin-top: 12px;
+  display: grid;
+  gap: 10px;
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+}
+
+.aoi-stats-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.aoi-stats-header h3 {
+  margin: 0;
+  font-size: 0.95rem;
+  line-height: 1.2;
+}
+
+.aoi-stats-header button {
+  min-height: 34px;
+  padding: 0 10px;
+  font-size: 0.82rem;
+}
+
+.aoi-stats-table-wrap {
+  max-width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  background: var(--field);
+}
+
+.aoi-stats-table {
+  width: 100%;
+  min-width: 560px;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: 0.78rem;
+}
+
+.aoi-stats-table th,
+.aoi-stats-table td {
+  padding: 7px 8px;
+  border-bottom: 1px solid var(--line);
+  text-align: right;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.aoi-stats-table th {
+  color: var(--muted);
+  font-weight: 700;
+  background: #ffffff;
+}
+
+.aoi-stats-table th:first-child,
+.aoi-stats-table td:first-child {
+  width: 34%;
+  text-align: left;
+}
+
+.aoi-stats-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.aoi-stats-table .aoi-name-cell {
+  font-weight: 600;
+}
+
+.aoi-stats-table .empty-table-cell {
+  color: var(--muted);
+  text-align: left;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.heatmap-preview {
+  display: block;
+  width: 100%;
+  aspect-ratio: 2 / 1;
+  height: auto;
+  border: 1px solid var(--line);
+  background: var(--field);
+}
+
 .readout {
   margin: 0;
   display: grid;

@@ -125,6 +125,7 @@ Exported JSON contains:
 - `summary.likelyAoiDwellSec`: estimated seconds in AOIs where the validated webcam error still fits inside the AOI.
 - `summary.ambiguousSampleCount`: samples near an AOI boundary or inside the gaze uncertainty radius.
 - `summary.trustedSampleCount`: samples trusted for AOI analysis.
+- `summary.heatmaps`: trusted screen/panorama heatmaps plus trusted, likely, and possible confidence variants for heatmap rendering.
 - `benchmark` and `summary.benchmark`: compact report metadata including participant id/device when available, accuracy summary, gaze and validation stream quality, calibration profile, validation policy result/failures, recording sample interval, duration, face quality availability, and face stability invalidation count.
 - `accuracy`: independent validation result after correction, including mean, median, p90, worst-target pixel error, and target-capture dispersion.
 - `accuracyValidated`: whether webcam data was trusted for recording.
@@ -132,9 +133,11 @@ Exported JSON contains:
 
 `namedAoiMetrics.perAoi` is keyed by AOI id and keeps the human AOI label from the AOI JSON. Each AOI includes hit counts, likely/possible/ambiguous counts, dwell seconds, first hit time, fixation count, average fixation duration, time to first fixation, and percentage of viewing time. When exported samples include finite `screen.x/y` coordinates, fixation metrics use explicit dispersion-based detection and then map each fixation window back to its primary AOI. Legacy or no-screen recordings fall back to the earlier consecutive-AOI approximation.
 
-`namedAoiMetrics.session` includes total samples, total duration, total AOI-mapped fixations, average fixation duration, average number of AOIs fixated, AOI coverage percent, and an MVP-level overall processing efficiency score based on time spent in AOIs. Dispersion-based fixation metrics are still bounded by webcam accuracy and should be validated in a pilot before being treated as final research measures; fallback fixation metrics are approximations for older exports.
+`namedAoiMetrics.session` includes total samples, total duration, total AOI-mapped fixations, average fixation duration, unique AOI ids fixated, average number of AOIs fixated, AOI coverage percent, overall processing efficiency fields, and exploratory `averageSaccadeDurationMs` values summarized from `namedAoiMetrics.transitions`. `overallProcessingEfficiency` is a transparent MVP composite, not a validated cognitive score. Report its formula and components with any result table. Transitions are webcam-derived fixation-gap estimates for scanpath debugging and pilot comparison; they are not validated saccade physiology. Dispersion-based fixation metrics are still bounded by webcam accuracy and should be validated in a pilot before being treated as final research measures; fallback fixation metrics are approximations for older exports.
 
 For the MVP demo, prefer `likelyAoiDwellSec` when webcam accuracy is noisy. Use exact `aoiDwellSec` for mouse-mode sanity checks or very good webcam validation.
+
+The recommended stakeholder output is `statReport.perAoiRows` for table display, `namedAoiMetrics` for raw machine-readable metrics, `summary.heatmaps` for heatmap rendering, and the AOI stats CSV for spreadsheet analysis. See `docs/aoi-stat-definitions.md` for which metrics should be primary, secondary, or exploratory.
 
 ## Reviewing A Past Recording
 

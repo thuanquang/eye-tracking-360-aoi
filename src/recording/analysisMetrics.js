@@ -13,6 +13,30 @@ function roundNumber(value, digits = 3) {
   return Number(value.toFixed(digits));
 }
 
+function clampPercent(value) {
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
+
+  return roundNumber(Math.min(100, Math.max(0, value)), 2);
+}
+
+function buildProcessingEfficiency({ aoiCoveragePercent, trustedAoiDwellPercent, fixationEfficiencyPercent }) {
+  const formula = '0.4*aoiCoveragePercent + 0.4*trustedAoiDwellPercent + 0.2*fixationEfficiencyPercent';
+  const components = {
+    aoiCoveragePercent: clampPercent(aoiCoveragePercent),
+    trustedAoiDwellPercent: clampPercent(trustedAoiDwellPercent),
+    fixationEfficiencyPercent: clampPercent(fixationEfficiencyPercent),
+  };
+  const score = clampPercent(
+    (0.4 * components.aoiCoveragePercent)
+      + (0.4 * components.trustedAoiDwellPercent)
+      + (0.2 * components.fixationEfficiencyPercent),
+  );
+
+  return { score, components, formula };
+}
+
 function uniqueValues(values) {
   return [...new Set(values.filter((value) => typeof value === 'string' && value.length > 0))];
 }
@@ -46,6 +70,14 @@ export function getSampleDurations(samples, fallbackSec = DEFAULT_SAMPLE_INTERVA
     const duration = next ? next.t - sample.t : fallback;
     return Number.isFinite(duration) && duration > 0 && duration < 5 ? duration : fallback;
   });
+}
+
+function getTypicalSampleIntervalSec(samples, fallbackSec = DEFAULT_SAMPLE_INTERVAL_SEC) {
+  const intervals = samples.slice(0, -1)
+    .map((sample, index) => samples[index + 1].t - sample.t)
+    .filter((duration) => Number.isFinite(duration) && duration > 0 && duration < 5);
+
+  return intervals.length ? median(intervals) : fallbackSec;
 }
 
 function buildAoiCatalog(samples, aois) {
@@ -91,6 +123,8 @@ function createAoiMetric(aoi) {
     fixationCount: 0,
     averageFixationDurationMs: 0,
     totalFixationDurationMs: 0,
+    firstFixationDurationMs: null,
+    revisitCount: 0,
     percentageOfViewingTime: 0,
   };
 }
@@ -237,6 +271,69 @@ function mergeFixations(screenFixations, legacyFixations) {
       || a.aoiId.localeCompare(b.aoiId));
 }
 
+function sanitizeFixation(fixation) {
+  const sanitized = {
+    aoiId: fixation.aoiId,
+    startSec: roundNumber(fixation.startSec),
+    endSec: roundNumber(fixationCoverageEndSec(fixation)),
+    durationMs: Math.round(fixationDurationMs(fixation)),
+    sampleCount: fixation.sampleCount,
+  };
+
+  if (Number.isFinite(fixation?.centroid?.x) && Number.isFinite(fixation?.centroid?.y)) {
+    sanitized.centroid = {
+      x: roundNumber(fixation.centroid.x),
+      y: roundNumber(fixation.centroid.y),
+    };
+  }
+
+  return sanitized;
+}
+
+function isScreenDerivedFixation(fixation) {
+  return Number.isFinite(fixation?.centroid?.x) && Number.isFinite(fixation?.centroid?.y);
+}
+
+function transitionCoverageEndSec(fixation, typicalIntervalSec) {
+  const coverageEndSec = fixationCoverageEndSec(fixation);
+
+  if (!isScreenDerivedFixation(fixation) || !Number.isFinite(typicalIntervalSec) || typicalIntervalSec <= 0) {
+    return coverageEndSec;
+  }
+
+  const sampleCount = Number.isFinite(fixation.sampleCount) && fixation.sampleCount > 0
+    ? fixation.sampleCount
+    : 1;
+  const sampledWindowEndSec = fixation.startSec + (sampleCount * typicalIntervalSec);
+
+  return Math.min(coverageEndSec, Math.max(fixation.endSec, sampledWindowEndSec));
+}
+
+function buildAoiTransitions(fixations, typicalIntervalSec = DEFAULT_SAMPLE_INTERVAL_SEC) {
+  const transitions = [];
+
+  for (let index = 1; index < fixations.length; index += 1) {
+    const previous = fixations[index - 1];
+    const current = fixations[index];
+
+    if (!previous.aoiId || !current.aoiId || previous.aoiId === current.aoiId) {
+      continue;
+    }
+
+    const previousEndSec = transitionCoverageEndSec(previous, typicalIntervalSec);
+
+    transitions.push({
+      fromAoiId: previous.aoiId,
+      toAoiId: current.aoiId,
+      startSec: roundNumber(previousEndSec),
+      endSec: roundNumber(current.startSec),
+      durationMs: Math.max(0, Math.round((current.startSec - previousEndSec) * 1000)),
+    });
+  }
+
+  return transitions;
+}
+
 export function buildNamedAoiMetrics(samples = [], aois = [], { sampleIntervalMs = DEFAULT_RECORDING_SAMPLE_INTERVAL_MS } = {}) {
   const safeSamples = samples
     .filter((sample) => Number.isFinite(sample?.t))
@@ -285,9 +382,6 @@ export function buildNamedAoiMetrics(samples = [], aois = [], { sampleIntervalMs
       }
       perAoi[id].stableHitCount += 1;
       perAoi[id].stableDwellSec += duration;
-      if (trusted) {
-        perAoi[id].trustedSampleCount += 1;
-      }
     });
 
     possibleHits.forEach((id) => {
@@ -304,11 +398,21 @@ export function buildNamedAoiMetrics(samples = [], aois = [], { sampleIntervalMs
       }
       perAoi[id].ambiguousSampleCount += 1;
     });
+
+    if (trusted) {
+      uniqueValues([...hits, ...likelyHits, ...stableHits]).forEach((id) => {
+        if (!perAoi[id]) {
+          perAoi[id] = createAoiMetric({ id, label: id });
+        }
+        perAoi[id].trustedSampleCount += 1;
+      });
+    }
   });
 
   const screenFixations = detectScreenAoiFixations(safeSamples, durations);
   const legacyFixations = detectAoiFixations(safeSamples, durations);
   const fixations = mergeFixations(screenFixations, legacyFixations);
+  let previousFixationAoiId = null;
 
   fixations.forEach((fixation) => {
     if (!perAoi[fixation.aoiId]) {
@@ -316,10 +420,17 @@ export function buildNamedAoiMetrics(samples = [], aois = [], { sampleIntervalMs
     }
 
     const metric = perAoi[fixation.aoiId];
+    const durationMs = fixationDurationMs(fixation);
     metric.fixationCount += 1;
-    metric.totalFixationDurationMs += fixationDurationMs(fixation);
+    metric.totalFixationDurationMs += durationMs;
+    if (metric.firstFixationDurationMs === null) {
+      metric.firstFixationDurationMs = Math.round(durationMs);
+    } else if (previousFixationAoiId !== fixation.aoiId) {
+      metric.revisitCount += 1;
+    }
     metric.timeToFirstFixationMs = metric.timeToFirstFixationMs
       ?? Math.round(fixation.startSec * 1000);
+    previousFixationAoiId = fixation.aoiId;
   });
 
   Object.values(perAoi).forEach((metric) => {
@@ -339,9 +450,19 @@ export function buildNamedAoiMetrics(samples = [], aois = [], { sampleIntervalMs
 
   const fixationDurationsMs = fixations.map(fixationDurationMs);
   const fixatedAoiIds = uniqueValues(fixations.map((fixation) => fixation.aoiId));
+  const transitions = buildAoiTransitions(fixations, getTypicalSampleIntervalSec(safeSamples, fallbackSec));
   const aoiCount = Object.keys(perAoi).length;
-  const totalDwellSec = Object.values(perAoi)
-    .reduce((sum, metric) => sum + (metric.totalDwellSec || 0), 0);
+  const aoiCoveragePercent = aoiCount ? (fixatedAoiIds.length / aoiCount) * 100 : 0;
+  const totalStableDwellSec = Object.values(perAoi)
+    .reduce((sum, metric) => sum + (metric.stableDwellSec || 0), 0);
+  const totalLikelyDwellSec = Object.values(perAoi)
+    .reduce((sum, metric) => sum + (metric.likelyDwellSec || 0), 0);
+  const trustedAoiDwellSec = totalStableDwellSec > 0 ? totalStableDwellSec : totalLikelyDwellSec;
+  const processingEfficiency = buildProcessingEfficiency({
+    aoiCoveragePercent,
+    trustedAoiDwellPercent: totalDurationSec > 0 ? (trustedAoiDwellSec / totalDurationSec) * 100 : 0,
+    fixationEfficiencyPercent: Math.min(100, (fixations.length / Math.max(1, fixatedAoiIds.length)) * 20),
+  });
 
   return {
     session: {
@@ -351,12 +472,19 @@ export function buildNamedAoiMetrics(samples = [], aois = [], { sampleIntervalMs
       averageFixationDurationMs: fixationDurationsMs.length
         ? Math.round(fixationDurationsMs.reduce((sum, duration) => sum + duration, 0) / fixationDurationsMs.length)
         : 0,
+      saccadeCount: transitions.length,
+      averageSaccadeDurationMs: transitions.length
+        ? Math.round(transitions.reduce((sum, transition) => sum + transition.durationMs, 0) / transitions.length)
+        : null,
+      uniqueAoisFixated: fixatedAoiIds,
       averageNumberOfAoisFixated: fixatedAoiIds.length,
-      aoiCoveragePercent: aoiCount ? roundNumber((fixatedAoiIds.length / aoiCount) * 100, 2) : 0,
-      overallProcessingEfficiency: totalDurationSec > 0
-        ? roundNumber((totalDwellSec / totalDurationSec) * 100, 2)
-        : 0,
+      aoiCoveragePercent: processingEfficiency.components.aoiCoveragePercent,
+      overallProcessingEfficiency: processingEfficiency.score,
+      processingEfficiencyComponents: processingEfficiency.components,
+      processingEfficiencyFormula: processingEfficiency.formula,
     },
     perAoi,
+    fixations: fixations.map(sanitizeFixation),
+    transitions,
   };
 }

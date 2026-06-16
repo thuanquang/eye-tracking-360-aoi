@@ -393,7 +393,30 @@ product</textarea>
             <button id="reviewButton" type="button" disabled>Review Recording</button>
             <button id="clearButton" type="button">Clear</button>
             <button id="exportButton" type="button">Export JSON</button>
+            <button id="exportStatsCsvButton" type="button">Export Stats CSV</button>
           </div>
+          <section id="aoiStatsPanel" class="aoi-stats-panel" aria-labelledby="aoiStatsHeading">
+            <div class="aoi-stats-header">
+              <h3 id="aoiStatsHeading">AOI stats</h3>
+              <button id="refreshStatsButton" type="button">Refresh</button>
+            </div>
+            <div class="aoi-stats-table-wrap">
+              <table id="aoiStatsTable" class="aoi-stats-table">
+                <thead>
+                  <tr>
+                    <th scope="col">AOI</th>
+                    <th scope="col">Dwell</th>
+                    <th scope="col">Fixations</th>
+                    <th scope="col">Avg fix</th>
+                    <th scope="col">TTFF</th>
+                    <th scope="col">View %</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+            <canvas id="heatmapCanvas" class="heatmap-preview" width="360" height="180" aria-label="Trusted panorama heatmap preview"></canvas>
+          </section>
           <label class="file-loader">
             <span>Load recording JSON</span>
             <input id="recordingFileInput" type="file" accept="application/json,.json" />

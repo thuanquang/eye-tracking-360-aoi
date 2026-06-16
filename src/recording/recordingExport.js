@@ -1,5 +1,7 @@
 import { summarizeGazeStreamQuality } from '../gaze/qualityMonitor.js';
+import { buildPanoramaHeatmap, buildScreenHeatmap } from './heatmapMetrics.js';
 import { DEFAULT_RECORDING_SAMPLE_INTERVAL_MS } from './sampleScheduler.js';
+import { buildStatReport } from './statReport.js';
 
 function buildCalibrationProfileMetadata(profile) {
   if (!profile || typeof profile !== 'object' || !profile.id) {
@@ -176,7 +178,40 @@ function sumDwellSeconds(samples, getValues, sampleIntervalMs) {
   }, {});
 }
 
-export function buildExportSummary(samples, stateLike, sampleIntervalMs = DEFAULT_RECORDING_SAMPLE_INTERVAL_MS) {
+function hasSampleIds(values) {
+  return Array.isArray(values) && values.length > 0;
+}
+
+function hasLikelyAoiEvidence(sample) {
+  return hasSampleIds(sample?.likelyHits) || hasSampleIds(sample?.hits);
+}
+
+function hasPossibleAoiEvidence(sample) {
+  return hasSampleIds(sample?.possibleHits) || hasLikelyAoiEvidence(sample);
+}
+
+function buildHeatmapPair(samples, recordingSampleIntervalMs, screenHeatmapDimensions, sampleFilter = null) {
+  return {
+    screen: buildScreenHeatmap(samples, {
+      ...screenHeatmapDimensions,
+      sampleIntervalMs: recordingSampleIntervalMs,
+      trustedOnly: true,
+      sampleFilter,
+    }),
+    panorama: buildPanoramaHeatmap(samples, {
+      sampleIntervalMs: recordingSampleIntervalMs,
+      trustedOnly: true,
+      sampleFilter,
+    }),
+  };
+}
+
+export function buildExportSummary(
+  samples,
+  stateLike,
+  sampleIntervalMs = DEFAULT_RECORDING_SAMPLE_INTERVAL_MS,
+  { screenHeatmapDimensions = null } = {},
+) {
   const recordingSampleIntervalMs = Number.isFinite(sampleIntervalMs) && sampleIntervalMs > 0
     ? sampleIntervalMs
     : DEFAULT_RECORDING_SAMPLE_INTERVAL_MS;
@@ -195,6 +230,23 @@ export function buildExportSummary(samples, stateLike, sampleIntervalMs = DEFAUL
   const faceQualityInvalidations = cloneFaceQualityInvalidations(stateLike.faceQualityInvalidations);
   const rawGazeDiagnostic = cloneRawGazeDiagnostic(stateLike.rawGazeDiagnostic);
   const aoiStability = cloneAoiStability(stateLike.aoiStability);
+  const trustedHeatmaps = buildHeatmapPair(
+    samples,
+    recordingSampleIntervalMs,
+    screenHeatmapDimensions,
+  );
+  const likelyHeatmaps = buildHeatmapPair(
+    samples,
+    recordingSampleIntervalMs,
+    screenHeatmapDimensions,
+    hasLikelyAoiEvidence,
+  );
+  const possibleHeatmaps = buildHeatmapPair(
+    samples,
+    recordingSampleIntervalMs,
+    screenHeatmapDimensions,
+    hasPossibleAoiEvidence,
+  );
 
   const benchmark = buildBenchmarkMetadata({
     participant: stateLike.participant ?? null,
@@ -220,6 +272,15 @@ export function buildExportSummary(samples, stateLike, sampleIntervalMs = DEFAUL
     totalSamples: samples.length,
     recordingSampleIntervalMs,
     durationSec: Number(durationSec.toFixed(3)),
+    heatmaps: {
+      screen: trustedHeatmaps.screen,
+      panorama: trustedHeatmaps.panorama,
+      variants: {
+        trusted: trustedHeatmaps,
+        likely: likelyHeatmaps,
+        possible: possibleHeatmaps,
+      },
+    },
     sources: countValues(samples, (sample) => [sample.source]),
     aoiHitCounts: countValues(samples, (sample) => sample.hits || []),
     likelyAoiHitCounts: countValues(samples, (sample) => sample.likelyHits || []),
@@ -425,6 +486,7 @@ export function buildExportPayload({
     video,
     summary,
     namedAoiMetrics,
+    statReport: buildStatReport({ namedAoiMetrics, summary, exportedAt }),
     aoiSource,
     aois,
     selectedCalibrationProfile,
