@@ -77,6 +77,17 @@
 
         <div id="viewer" class="viewer" tabindex="0" aria-label="Kéo để xoay cảnh 360">
           <canvas id="gazeHeatmapOverlay" class="gaze-heatmap-overlay" aria-hidden="true"></canvas>
+          <div id="heatmapRuler" class="heatmap-ruler" role="img" aria-label="Heatmap intensity scale" hidden>
+            <div class="heatmap-ruler-topline">
+              <span>Heatmap</span>
+              <strong>Cao</strong>
+            </div>
+            <div class="heatmap-ruler-bar" aria-hidden="true"></div>
+            <div class="heatmap-ruler-values">
+              <span id="heatmapRulerMin">--</span>
+              <span id="heatmapRulerMax">--</span>
+            </div>
+          </div>
           <svg id="aoiOverlay" class="aoi-overlay" aria-hidden="true"></svg>
           <div id="gazeDot" class="gaze-dot" aria-hidden="true"></div>
           <div id="viewerNotice" class="viewer-notice">

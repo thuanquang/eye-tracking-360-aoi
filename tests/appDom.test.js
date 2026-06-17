@@ -74,6 +74,9 @@ const APP_SELECTORS = [
   '#aoiStatsDetails',
   '#aoiStatsTable',
   '#gazeHeatmapOverlay',
+  '#heatmapRuler',
+  '#heatmapRulerMin',
+  '#heatmapRulerMax',
   '#sampleCount',
   '#modeLabel',
   '#webcamStatusLabel',
@@ -180,6 +183,9 @@ test('queryAppDom resolves core app selectors', () => {
   assert.equal(dom.aoiStatsDetails.selector, '#aoiStatsDetails');
   assert.equal(dom.aoiStatsTable.selector, '#aoiStatsTable');
   assert.equal(dom.gazeHeatmapOverlay.selector, '#gazeHeatmapOverlay');
+  assert.equal(dom.heatmapRuler.selector, '#heatmapRuler');
+  assert.equal(dom.heatmapRulerMin.selector, '#heatmapRulerMin');
+  assert.equal(dom.heatmapRulerMax.selector, '#heatmapRulerMax');
   assert.equal('heatmapCanvas' in dom, false);
   assert.deepEqual(dom.adminFlowSteps.map((element) => element.selector), ['#adminWorkflowRail .admin-flow-step']);
 });

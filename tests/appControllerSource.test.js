@@ -171,6 +171,34 @@ test('player heatmap uses a high-contrast hotspot palette', () => {
   );
 });
 
+test('player heatmap updates a dynamic intensity ruler', () => {
+  assert.match(
+    controllerSource,
+    /function\s+updateHeatmapRuler\(\s*range\s*=\s*null\s*\)/,
+    'The controller should update one heatmap ruler helper from overlay state.',
+  );
+  assert.match(
+    controllerSource,
+    /heatmapRuler\.hidden\s*=\s*analyticsMode\s*===\s*null\s*\|\|\s*!range/,
+    'The ruler should be hidden outside analytics mode or when no heatmap points draw.',
+  );
+  assert.match(
+    controllerSource,
+    /heatmapRulerMin\.textContent\s*=\s*formatHeatmapWeightMs\(range\.minWeightMs\)/,
+    'The ruler minimum label should be based on the currently drawn heatmap weights.',
+  );
+  assert.match(
+    controllerSource,
+    /heatmapRulerMax\.textContent\s*=\s*formatHeatmapWeightMs\(range\.maxWeightMs\)/,
+    'The ruler maximum label should be based on the currently drawn heatmap weights.',
+  );
+  assert.match(
+    controllerSource,
+    /updateHeatmapRuler\(\{\s*minWeightMs,\s*maxWeightMs,\s*pointCount:\s*drawnPoints\.length\s*\}\)/,
+    'Drawing the heatmap should publish the active intensity range to the ruler.',
+  );
+});
+
 test('participant export submits to deployment endpoint before falling back to download', () => {
   assert.match(
     controllerSource,

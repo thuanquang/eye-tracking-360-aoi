@@ -136,14 +136,16 @@ test('AOI results prioritize summary and ranked cards before the detail table', 
 test('AOI analytics mode uses player heatmap instead of sidebar preview', () => {
   const viewerPosition = html.indexOf('id="viewer"');
   const heatmapPosition = html.indexOf('id="gazeHeatmapOverlay"');
+  const heatmapRulerPosition = html.indexOf('id="heatmapRuler"');
   const aoiOverlayPosition = html.indexOf('id="aoiOverlay"');
 
   assert.notEqual(viewerPosition, -1, 'The viewer should exist in the page markup.');
   assert.notEqual(heatmapPosition, -1, 'The gaze heatmap overlay should exist in the viewer.');
+  assert.notEqual(heatmapRulerPosition, -1, 'The gaze heatmap ruler should exist in the viewer.');
   assert.notEqual(aoiOverlayPosition, -1, 'The AOI overlay should exist in the viewer.');
   assert.ok(
-    viewerPosition < heatmapPosition && heatmapPosition < aoiOverlayPosition,
-    'The heatmap canvas should be layered inside the player before the AOI overlay.',
+    viewerPosition < heatmapPosition && heatmapPosition < heatmapRulerPosition && heatmapRulerPosition < aoiOverlayPosition,
+    'The heatmap canvas and ruler should be layered inside the player before the AOI overlay.',
   );
   assert.equal(html.includes('id="heatmapCanvas"'), false);
   assert.equal(html.includes('class="aoi-heatmap-panel"'), false);
@@ -156,6 +158,21 @@ test('AOI analytics mode uses player heatmap instead of sidebar preview', () => 
     css,
     /\.app-shell\.is-analytics-mode\s+\.gaze-heatmap-overlay\s*\{[\s\S]*?opacity:/,
     'Analytics mode should reveal the player heatmap overlay.',
+  );
+  assert.match(
+    css,
+    /\.heatmap-ruler\s*\{[\s\S]*?position:\s*absolute[\s\S]*?top:\s*16px[\s\S]*?left:\s*16px/,
+    'The heatmap ruler should pin to the top-left of the player.',
+  );
+  assert.match(
+    css,
+    /\.heatmap-ruler-bar\s*\{[\s\S]*?linear-gradient\(90deg[\s\S]*?0,\s*220,\s*255[\s\S]*?255,\s*210,\s*28[\s\S]*?255,\s*24,\s*16[\s\S]*?255,\s*255,\s*255/,
+    'The heatmap ruler should mirror the cyan-to-white hotspot palette.',
+  );
+  assert.match(
+    css,
+    /\.app-shell\.is-analytics-mode\s+\.heatmap-ruler:not\(\[hidden\]\)\s*\{[\s\S]*?opacity:\s*1/,
+    'Analytics mode should reveal the heatmap ruler when data exists.',
   );
 });
 

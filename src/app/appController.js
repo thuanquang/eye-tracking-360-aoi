@@ -255,6 +255,9 @@ export function createAppController({
     aoiStatsDetails,
     aoiStatsTable,
     gazeHeatmapOverlay,
+    heatmapRuler,
+    heatmapRulerMin,
+    heatmapRulerMax,
     sampleCount,
     modeLabel,
     webcamStatusLabel,
@@ -4523,6 +4526,41 @@ export function createAppController({
 
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, gazeHeatmapOverlay.width || 1, gazeHeatmapOverlay.height || 1);
+    updateHeatmapRuler();
+  }
+
+  function formatHeatmapWeightMs(weightMs) {
+    const value = Number(weightMs);
+    if (!Number.isFinite(value) || value <= 0) {
+      return '--';
+    }
+
+    if (value < 1000) {
+      return `${Math.round(value)}ms`;
+    }
+
+    const seconds = value / 1000;
+    return `${seconds < 10 ? seconds.toFixed(1) : Math.round(seconds)}s`;
+  }
+
+  function updateHeatmapRuler(range = null) {
+    heatmapRuler.hidden = analyticsMode === null || !range;
+
+    if (heatmapRuler.hidden) {
+      heatmapRulerMin.textContent = '--';
+      heatmapRulerMax.textContent = '--';
+      heatmapRuler.removeAttribute('data-point-count');
+      heatmapRuler.setAttribute('aria-label', 'Heatmap intensity scale');
+      return;
+    }
+
+    heatmapRulerMin.textContent = formatHeatmapWeightMs(range.minWeightMs);
+    heatmapRulerMax.textContent = formatHeatmapWeightMs(range.maxWeightMs);
+    heatmapRuler.dataset.pointCount = String(range.pointCount ?? 0);
+    heatmapRuler.setAttribute(
+      'aria-label',
+      `Heatmap intensity scale from ${heatmapRulerMin.textContent} to ${heatmapRulerMax.textContent}`,
+    );
   }
 
   function syncGazeHeatmapOverlaySize() {
@@ -4676,19 +4714,22 @@ export function createAppController({
     const points = trustedPoints.length ? trustedPoints : heatmapPoints;
 
     if (!points.length) {
+      updateHeatmapRuler();
       return;
     }
 
     const maxDrawnPoints = 900;
     const stride = Math.max(1, Math.ceil(points.length / maxDrawnPoints));
     const drawnPoints = points.filter((_, index) => index % stride === 0);
-    const maxWeight = Math.max(...drawnPoints.map((point) => point.weightMs), 1);
+    const minWeightMs = Math.min(...drawnPoints.map((point) => point.weightMs));
+    const maxWeightMs = Math.max(...drawnPoints.map((point) => point.weightMs), 1);
     const radiusBase = clampNumber(Math.min(width, height) * 0.095, 26, 92);
+    updateHeatmapRuler({ minWeightMs, maxWeightMs, pointCount: drawnPoints.length });
 
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
     drawnPoints.forEach((point) => {
-      const intensity = clampNumber(point.weightMs / maxWeight, 0.18, 1);
+      const intensity = clampNumber(point.weightMs / maxWeightMs, 0.18, 1);
       const radius = radiusBase * (0.72 + intensity * 0.42);
       const alpha = 0.1 + intensity * 0.22;
       const gradient = ctx.createRadialGradient(
