@@ -31,6 +31,8 @@ const APP_SELECTORS = [
   '#webcamModeButton',
   '#gazeProviderSelect',
   '#gazeEngineStatus',
+  '#adminSeeSoMonitorSizeInput',
+  '#adminSeeSoFaceDistanceInput',
   '#calibrateButton',
   '#accuracyButton',
   '#rawGazeDiagnosticButton',
@@ -91,17 +93,32 @@ const APP_SELECTORS = [
   '#participantNameInput',
   '#participantAgeInput',
   '#participantConsentInput',
+  '#seeSoMonitorSizeInput',
+  '#seeSoFaceDistanceInput',
   '#participantStartButton',
   '#participantSessionPanel',
   '#participantCalibrateButton',
+  '#participantAccuracyButton',
   '#participantRecordButton',
   '#participantExportButton',
+  '#participantUploadStatus',
   '#participantFlowRail .flow-step',
   '#adminWorkflowRail .admin-flow-step',
   '#validationTestPanel',
   '#validationTestStatus',
+  '#validationSeeSoMonitorSizeInput',
+  '#validationSeeSoFaceDistanceInput',
   '#validationTestCalibrateButton',
   '#validationTestAccuracyButton',
+  '#validationStatsPopup',
+  '#validationStatsSummary',
+  '#validationStatsMean',
+  '#validationStatsMedian',
+  '#validationStatsP90',
+  '#validationStatsMax',
+  '#validationStatsStability',
+  '#validationStatsTargetCount',
+  '#validationStatsCloseButton',
   '#calibrationOverlay',
   '#calibrationTarget',
   '#calibrationProgress',
@@ -135,9 +152,19 @@ test('queryAppDom resolves core app selectors', () => {
   assert.equal(dom.participantStudyVideoSelect.selector, '#participantStudyVideoSelect');
   assert.equal(dom.gazeProviderSelect.selector, '#gazeProviderSelect');
   assert.equal(dom.gazeEngineStatus.selector, '#gazeEngineStatus');
+  assert.equal(dom.adminSeeSoMonitorSizeInput.selector, '#adminSeeSoMonitorSizeInput');
+  assert.equal(dom.adminSeeSoFaceDistanceInput.selector, '#adminSeeSoFaceDistanceInput');
+  assert.equal(dom.seeSoMonitorSizeInput.selector, '#seeSoMonitorSizeInput');
+  assert.equal(dom.seeSoFaceDistanceInput.selector, '#seeSoFaceDistanceInput');
+  assert.equal(dom.validationSeeSoMonitorSizeInput.selector, '#validationSeeSoMonitorSizeInput');
+  assert.equal(dom.validationSeeSoFaceDistanceInput.selector, '#validationSeeSoFaceDistanceInput');
   assert.equal(dom.calibrationProfileSelect.selector, '#calibrationProfileSelect');
   assert.equal(dom.validationPolicySelect.selector, '#validationPolicySelect');
   assert.equal(dom.validationTestPanel.selector, '#validationTestPanel');
+  assert.equal(dom.validationStatsPopup.selector, '#validationStatsPopup');
+  assert.equal(dom.validationStatsSummary.selector, '#validationStatsSummary');
+  assert.equal(dom.validationStatsMean.selector, '#validationStatsMean');
+  assert.equal(dom.validationStatsCloseButton.selector, '#validationStatsCloseButton');
   assert.equal(dom.rawGazeDiagnosticButton.selector, '#rawGazeDiagnosticButton');
   assert.equal(dom.rawGazeDiagnosticStatus.selector, '#rawGazeDiagnosticStatus');
   assert.equal(dom.gazeQualityReadout.selector, '#gazeQualityReadout');

@@ -273,6 +273,57 @@ test('participant setup does not show tracker or stage status boxes', () => {
   assert.equal(appHtml.includes('<span>stage</span>'), false);
 });
 
+test('participant mode hides the live gaze cursor while validation keeps it visible', () => {
+  assert.match(
+    css,
+    /\.app-shell\.is-participant-mode\s+#gazeDot\s*\{[\s\S]*?visibility:\s*hidden/,
+    'Participant mode should not show the live gaze cursor to participants.',
+  );
+  assert.match(
+    css,
+    /\.app-shell\.is-validation-test\s+#gazeDot\s*\{[\s\S]*?opacity:\s*1/,
+    'Validation mode should keep the gaze cursor visible for tracker checks.',
+  );
+});
+
+test('validation result stats popup is present and responsive', () => {
+  assert.match(
+    html,
+    /id="validationStatsPopup"[\s\S]*role="dialog"[\s\S]*id="validationStatsMean"[\s\S]*id="validationStatsTargetCount"[\s\S]*id="validationStatsCloseButton"/,
+    'Validation mode should include a stats dialog with metric fields and a close button.',
+  );
+  assert.match(
+    css,
+    /\.validation-stats-popup\s*\{[\s\S]*?position:\s*fixed/,
+    'The validation stats popup should overlay the validation screen.',
+  );
+  assert.match(
+    css,
+    /\.validation-stats-grid\s*\{[\s\S]*?grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/,
+    'The validation stats should use a stable two-column grid on larger screens.',
+  );
+
+  const mobileRules = readMediaRule('max-width:\\s*620px');
+  assert.match(
+    mobileRules,
+    /\.validation-stats-grid\s*\{[\s\S]*?grid-template-columns:\s*1fr/,
+    'The validation stats grid should collapse to one column on small screens.',
+  );
+});
+
+test('validation controls slide offscreen during active accuracy checks', () => {
+  assert.match(
+    css,
+    /\.app-shell\.is-validation-test\.is-accuracy-check-active\s+#validationTestPanel\s*\{[\s\S]*?transform:\s*translateX\(calc\(100%\s*\+\s*32px\)\)/,
+    'The validation controls should move off to the side while accuracy targets are being captured.',
+  );
+  assert.match(
+    css,
+    /\.app-shell\.is-validation-test\s+#validationTestPanel\s*\{[\s\S]*?transition:\s*transform/,
+    'The validation controls should have a stable slide transition.',
+  );
+});
+
 test('participant setup is concise and exposes explicit video choice', () => {
   assert.equal(
     html.includes('class="participant-copy"'),

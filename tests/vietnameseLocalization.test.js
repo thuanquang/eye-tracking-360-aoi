@@ -15,6 +15,17 @@ test('static entry screen is localized to Vietnamese', () => {
   assert.match(html, /Xuất CSV thống kê/);
 });
 
+test('camera calibration labels avoid tracker wording for participants and validation', () => {
+  const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+  const controller = readFileSync(new URL('../src/app/appController.js', import.meta.url), 'utf8');
+
+  assert.match(html, /Hiệu chỉnh camera/);
+  assert.doesNotMatch(html, /Hiệu chuẩn bộ theo dõi/i);
+  assert.match(controller, /Hiệu chỉnh camera/);
+  assert.match(controller, /Hiệu chỉnh lại camera/);
+  assert.doesNotMatch(controller, /hiệu chuẩn bộ theo dõi/i);
+});
+
 test('AOI stats view model uses Vietnamese result labels', () => {
   const viewModel = buildAoiStatsViewModel({
     sampleCount: 2,

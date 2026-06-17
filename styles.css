@@ -760,6 +760,50 @@ h1 {
   min-height: 44px;
 }
 
+.participant-upload-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 0 0;
+  min-height: 22px;
+  color: var(--muted);
+  font-size: 0.88rem;
+  line-height: 1.35;
+}
+
+.participant-upload-status[hidden] {
+  display: none;
+}
+
+.participant-upload-status.is-uploaded {
+  color: #166534;
+}
+
+.participant-upload-status.is-fallback {
+  color: #9f1239;
+}
+
+.participant-upload-spinner {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 14px;
+  border: 2px solid rgba(20, 20, 20, 0.16);
+  border-top-color: currentColor;
+  border-radius: 50%;
+  animation: participant-upload-spin 0.75s linear infinite;
+}
+
+.participant-upload-status:not(.is-uploading) .participant-upload-spinner {
+  animation: none;
+  border-color: currentColor;
+}
+
+@keyframes participant-upload-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .validation-test-card {
   height: 100%;
   display: grid;
@@ -785,12 +829,85 @@ h1 {
   grid-template-columns: minmax(0, 1fr);
 }
 
+.validation-stats-popup {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(16, 24, 40, 0.42);
+}
+
+.validation-stats-popup[hidden] {
+  display: none;
+}
+
+.validation-stats-card {
+  width: min(440px, calc(100vw - 32px));
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 18px;
+  background: var(--panel);
+  box-shadow: 0 22px 64px rgba(16, 24, 40, 0.24);
+}
+
+.validation-stats-card h2 {
+  margin: 4px 0 0;
+  font-size: 1.28rem;
+  line-height: 1.2;
+}
+
+.validation-stats-summary {
+  margin: 10px 0 0;
+  color: var(--ink);
+  font-size: 0.94rem;
+  font-weight: 750;
+  line-height: 1.35;
+}
+
+.validation-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 14px 0;
+}
+
+.validation-stats-grid div {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 10px;
+  background: #f7f7f7;
+}
+
+.validation-stats-grid dt {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.validation-stats-grid dd {
+  margin: 4px 0 0;
+  color: var(--ink);
+  font-size: 1.08rem;
+  font-weight: 800;
+  line-height: 1.1;
+  overflow-wrap: anywhere;
+}
+
 .app-shell.is-participant-mode {
   grid-template-columns: minmax(0, 1fr) minmax(300px, 360px);
 }
 
 .app-shell.is-participant-mode #playVideoButton {
   display: none;
+}
+
+.app-shell.is-participant-mode #gazeDot {
+  visibility: hidden;
+  opacity: 0;
 }
 
 .app-shell.is-validation-test {
@@ -867,6 +984,13 @@ h1 {
   border: 1px solid var(--line);
   background: rgba(255, 255, 255, 0.96);
   box-shadow: 0 18px 44px rgba(16, 24, 40, 0.16);
+  transition: transform 180ms ease, opacity 180ms ease;
+}
+
+.app-shell.is-validation-test.is-accuracy-check-active #validationTestPanel {
+  transform: translateX(calc(100% + 32px));
+  opacity: 0;
+  pointer-events: none;
 }
 
 .app-shell.is-admin-mode #validationTestPanel,
@@ -1568,6 +1692,20 @@ details.panel-section > summary:focus-visible {
     bottom: 10px;
     width: calc(100vw - 20px);
     min-height: 0;
+  }
+
+  .validation-stats-popup {
+    padding: 10px;
+  }
+
+  .validation-stats-card {
+    width: 100%;
+    max-height: calc(100vh - 20px);
+    overflow: auto;
+  }
+
+  .validation-stats-grid {
+    grid-template-columns: 1fr;
   }
 
   .metadata-grid,

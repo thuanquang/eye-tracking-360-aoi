@@ -80,6 +80,17 @@ test('maps study videos to surface-merged cleaned AOIs', () => {
   );
 });
 
+test('keeps study video and AOI paths local for bundled zip runtime', () => {
+  const video = getDefaultStudyVideo();
+
+  assert.equal(video.path, 'assets/replacement-videos/nguyen-hue-360-0500-0530.mp4');
+  assert.equal(
+    video.aoiPath,
+    'runpod-aoi-results-absolute-quality-with-surfaces/outputs/nguyen-hue-360-0500-0530.enhanced-aois.json',
+  );
+  assert.doesNotMatch(JSON.stringify(STUDY_VIDEOS), /https?:\/\//);
+});
+
 test('selects a random study video from the configured choices', () => {
   const video = getRandomStudyVideo(() => 0.51);
 

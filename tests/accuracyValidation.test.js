@@ -47,6 +47,15 @@ test('exports calibration and accuracy target sets', () => {
   assert.equal(getTargetPointsForMode('calibration').length, CALIBRATION_POINTS.length);
 });
 
+test('calibration and accuracy targets cover the horizontal edges', () => {
+  assert.equal(Math.min(...CALIBRATION_POINTS.map((point) => point.x)) <= 15, true);
+  assert.equal(Math.max(...CALIBRATION_POINTS.map((point) => point.x)) >= 85, true);
+  assert.equal(Math.min(...ACCURACY_REFINEMENT_POINTS.map((point) => point.x)) <= 14, true);
+  assert.equal(Math.max(...ACCURACY_REFINEMENT_POINTS.map((point) => point.x)) >= 86, true);
+  assert.equal(Math.min(...ACCURACY_VALIDATION_POINTS.map((point) => point.x)) <= 25, true);
+  assert.equal(Math.max(...ACCURACY_VALIDATION_POINTS.map((point) => point.x)) >= 75, true);
+});
+
 test('passes accuracy check using separate holdout validation targets', () => {
   const result = evaluateAccuracyCheck({
     refinementSamples: ACCURACY_REFINEMENT_POINTS.map(sampleFromTargetPoint),

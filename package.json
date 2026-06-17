@@ -16,7 +16,11 @@
     "test:validation-age": "node tests/validationAgeSmoke.mjs",
     "test:stale-gaze": "node tests/staleGazeSmoke.mjs",
     "test:webcam": "node tests/webcamSmoke.mjs",
-    "serve": "node scripts/serve_dev.mjs"
+    "serve": "node scripts/serve_dev.mjs",
+    "build:pages": "node scripts/build_pages_dist.mjs",
+    "build:participant-local": "node scripts/build_participant_local_package.mjs",
+    "build:validation-local": "node scripts/build_validation_local_package.mjs",
+    "build:local": "node scripts/build_local_package.mjs"
   },
   "devDependencies": {
     "http-server": "^14.1.1",

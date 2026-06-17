@@ -129,6 +129,21 @@ export function summarizeTargetSamples(
   };
 }
 
+export function shouldContinueTargetSampleCapture({
+  sampleSlots,
+  acceptedSamples,
+  nominalSampleSlots,
+  minAcceptedSamples,
+  elapsedMs,
+  maxDurationMs,
+}) {
+  if (sampleSlots < nominalSampleSlots) {
+    return true;
+  }
+
+  return acceptedSamples < minAcceptedSamples && elapsedMs < maxDurationMs;
+}
+
 export function smoothGazePoint(previous, next, alpha = 0.25) {
   if (!previous?.visible) {
     return next;

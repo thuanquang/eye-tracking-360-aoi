@@ -5,14 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>dynamic aoi</title>
     <script>
-      if (window.location.hostname === '127.0.0.1') {
-        window.location.replace(
-          `http://localhost:${window.location.port}${window.location.pathname}${window.location.search}${window.location.hash}`,
-        );
-      }
       {
         const params = new URLSearchParams(window.location.search);
-        const mode = String(params.get('mode') || '').split('?')[0];
+        const hashParams = new URLSearchParams(String(window.location.hash || '').replace(/^#/, ''));
+        const mode = String(params.get('mode') || hashParams.get('mode') || '').split('?')[0];
         document.documentElement.dataset.initialAppMode = ['admin', 'participant', 'validation'].includes(mode)
           ? mode
           : 'select';
@@ -32,6 +28,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="./styles.css?v=realeye-system-1" />
+    <script src="./deployment-config.js"></script>
     <script src="https://webgazer.cs.brown.edu/webgazer.js" defer></script>
     <script type="importmap">
       {
@@ -99,7 +96,6 @@
         <video
           id="sourceVideo"
           class="source-video"
-          src="./assets/replacement-videos/nguyen-hue-360-0500-0530.mp4"
           crossorigin="anonymous"
           playsinline
           loop
@@ -151,15 +147,30 @@
             <input id="participantConsentInput" type="checkbox" />
             <span>Tôi đồng ý cho ghi lại ánh nhìn qua webcam trong phiên nghiên cứu này.</span>
           </label>
+          <div class="metadata-grid">
+            <label class="field-stack">
+              <span>Kích thước màn hình (inch)</span>
+              <input id="seeSoMonitorSizeInput" type="number" min="8" max="40" step="0.1" placeholder="15.6" inputmode="decimal" />
+            </label>
+            <label class="field-stack">
+              <span>Khoảng cách mặt (cm)</span>
+              <input id="seeSoFaceDistanceInput" type="number" min="30" max="100" step="1" placeholder="60" inputmode="decimal" />
+            </label>
+          </div>
           <button id="participantStartButton" class="primary wide-action" type="button" disabled>Bắt đầu phiên người tham gia</button>
         </section>
         <section id="participantSessionPanel" class="panel-section participant-session-panel" hidden>
           <p class="section-label">Luồng phiên</p>
           <div class="participant-actions">
             <button id="participantCalibrateButton" type="button">Hiệu chuẩn webcam</button>
+            <button id="participantAccuracyButton" type="button">Kiểm tra độ chính xác</button>
             <button id="participantRecordButton" class="primary" type="button">Bắt đầu ghi</button>
-            <button id="participantExportButton" type="button">Xuất JSON</button>
+            <button id="participantExportButton" type="button">Gửi kết quả</button>
           </div>
+          <p id="participantUploadStatus" class="participant-upload-status" aria-live="polite" hidden>
+            <span class="participant-upload-spinner" aria-hidden="true"></span>
+            <span data-upload-status-text></span>
+          </p>
         </section>
       </aside>
 
@@ -168,7 +179,7 @@
           <p class="section-label">Kiểm tra xác thực</p>
           <h2>Kiểm tra độ chính xác</h2>
           <div class="validation-step-list" aria-label="Luồng xác thực">
-            <span>1. Hiệu chuẩn bộ theo dõi</span>
+            <span>1. Hiệu chỉnh camera</span>
             <span>2. Yêu cầu người tham gia ngồi yên không được xoay đầu</span>
             <span>3. Bắt đầu kiểm tra độ chính xác</span>
           </div>
@@ -176,12 +187,64 @@
             <span>Trạng thái</span>
             <strong id="validationTestStatus">Sẵn sàng hiệu chuẩn</strong>
           </div>
+          <div class="metadata-grid">
+            <label class="field-stack">
+              <span>Kích thước màn hình (inch)</span>
+              <input id="validationSeeSoMonitorSizeInput" type="number" min="8" max="40" step="0.1" placeholder="15.6" inputmode="decimal" />
+            </label>
+            <label class="field-stack">
+              <span>Khoảng cách mặt (cm)</span>
+              <input id="validationSeeSoFaceDistanceInput" type="number" min="30" max="100" step="1" placeholder="60" inputmode="decimal" />
+            </label>
+          </div>
           <div class="participant-actions validation-test-actions">
-            <button id="validationTestCalibrateButton" class="primary" type="button">Hiệu chuẩn bộ theo dõi</button>
+            <button id="validationTestCalibrateButton" class="primary" type="button">Hiệu chỉnh camera</button>
             <button id="validationTestAccuracyButton" type="button">Bắt đầu kiểm tra độ chính xác</button>
           </div>
         </section>
       </aside>
+
+      <section
+        id="validationStatsPopup"
+        class="validation-stats-popup"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="validationStatsTitle"
+        hidden
+      >
+        <div class="validation-stats-card">
+          <p class="section-label">Kết quả xác thực</p>
+          <h2 id="validationStatsTitle">Kết quả kiểm tra độ chính xác</h2>
+          <p id="validationStatsSummary" class="validation-stats-summary">Chưa có kết quả.</p>
+          <dl class="validation-stats-grid" aria-label="Thống kê kiểm tra độ chính xác">
+            <div>
+              <dt>Trung bình</dt>
+              <dd id="validationStatsMean">--</dd>
+            </div>
+            <div>
+              <dt>Trung vị</dt>
+              <dd id="validationStatsMedian">--</dd>
+            </div>
+            <div>
+              <dt>P90</dt>
+              <dd id="validationStatsP90">--</dd>
+            </div>
+            <div>
+              <dt>Mục tiêu tệ nhất</dt>
+              <dd id="validationStatsMax">--</dd>
+            </div>
+            <div>
+              <dt>Độ ổn định P90</dt>
+              <dd id="validationStatsStability">--</dd>
+            </div>
+            <div>
+              <dt>Số mục tiêu</dt>
+              <dd id="validationStatsTargetCount">--</dd>
+            </div>
+          </dl>
+          <button id="validationStatsCloseButton" class="primary" type="button">Đóng</button>
+        </div>
+      </section>
 
       <aside id="controlPanel" class="control-panel" aria-label="Điều khiển thí nghiệm">
         <nav id="adminWorkflowRail" class="admin-workflow-rail" aria-label="Quy trình quản trị">
@@ -288,6 +351,16 @@
           <div class="segmented">
             <button id="mouseModeButton" type="button">Demo chuột</button>
             <button id="webcamModeButton" class="is-active" type="button">Ánh nhìn webcam</button>
+          </div>
+          <div class="metadata-grid">
+            <label class="field-label compact-field">
+              <span>Kích thước màn hình (inch)</span>
+              <input id="adminSeeSoMonitorSizeInput" type="number" min="8" max="40" step="0.1" placeholder="15.6" inputmode="decimal" />
+            </label>
+            <label class="field-label compact-field">
+              <span>Khoảng cách mặt (cm)</span>
+              <input id="adminSeeSoFaceDistanceInput" type="number" min="30" max="100" step="1" placeholder="60" inputmode="decimal" />
+            </label>
           </div>
           <label class="field-label compact-field">
             <span>Bộ máy ánh nhìn</span>

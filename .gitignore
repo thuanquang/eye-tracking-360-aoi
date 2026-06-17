@@ -1,4 +1,12 @@
 node_modules/
+.wrangler/
+dist/
+participant-local/
+eye-tracking-360-aoi-participant-local.zip
+validation-local/
+eye-tracking-360-aoi-validation-local.zip
+eye-tracking-360-aoi-local/
+eye-tracking-360-aoi-local.zip
 .worktrees/
 .serena/
 .tools/

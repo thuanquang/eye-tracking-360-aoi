@@ -1,0 +1,10 @@
+name = "eye-tracking-360-aoi-submit"
+main = "participant-upload-worker.js"
+compatibility_date = "2026-06-16"
+
+[[r2_buckets]]
+binding = "RESULTS_BUCKET"
+bucket_name = "eye-tracking-360-aoi-results"
+
+[vars]
+ALLOWED_ORIGIN = "*"

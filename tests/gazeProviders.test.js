@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises';
 
 import { createMouseProvider } from '../src/gaze/providers/mouseProvider.js';
 import {
+  buildSeeSoCalibrationPageUrl,
   buildSeeSoRedirectUrl,
   createSeeSoProvider,
   describeSeeSoInitializationError,
@@ -256,8 +257,6 @@ test('seeso provider initializes tracker and forwards successful gaze', async ()
   }]);
   assert.deepEqual(calls, [
     ['initialize', 'dev-key'],
-    ['setMonitorSize', 14],
-    ['setFaceDistance', 50],
     ['setCameraPosition', 600, true],
     ['addGazeCallback'],
     ['addFaceCallback', 'function'],
@@ -330,31 +329,93 @@ test('seeso provider applies calibration geometry before tracking starts', async
   ]);
 });
 
-test('seeso provider opens hosted calibration and parses returned data', async () => {
+test('seeso provider applies explicit app geometry when calibration data omits it', async () => {
   const calls = [];
   class FakeSeeSo {
-    static openCalibrationPage(...args) {
-      calls.push(args);
+    async initialize() {
+      calls.push(['initialize']);
+      return 0;
     }
+
+    setMonitorSize(value) { calls.push(['setMonitorSize', value]); }
+    setFaceDistance(value) { calls.push(['setFaceDistance', value]); }
+    setCameraPosition(x, isTop) { calls.push(['setCameraPosition', x, isTop]); }
+    addGazeCallback() { calls.push(['addGazeCallback']); }
+    addFaceCallback() { calls.push(['addFaceCallback']); }
+    async setCalibrationData(value) { calls.push(['setCalibrationData', value]); }
+    startTracking(stream) { calls.push(['startTracking', stream.id]); return true; }
   }
   const provider = createSeeSoProvider({
-    sdk: { SeeSo: FakeSeeSo },
+    sdk: {
+      SeeSo: FakeSeeSo,
+      TrackingState: { SUCCESS: 0 },
+      InitializationErrorType: { ERROR_NONE: 0 },
+    },
     licenseKey: 'dev-key',
+    calibrationData: '{"vector":"abc"}',
+    monitorSizeInch: 24,
+    faceDistanceCm: 70,
+    windowRef: { screen: { width: 1280 }, outerWidth: 1200 },
+    navigatorRef: {
+      mediaDevices: {
+        async getUserMedia() {
+          calls.push(['getUserMedia']);
+          return { id: 'camera-stream', getTracks: () => [] };
+        },
+      },
+    },
+    onGaze: () => {},
+  });
+
+  await provider.start();
+
+  assert.deepEqual(calls.slice(0, 4), [
+    ['initialize'],
+    ['setMonitorSize', 24],
+    ['setFaceDistance', 70],
+    ['setCameraPosition', 640, true],
+  ]);
+});
+
+test('seeso provider opens hosted calibration and parses returned data', async () => {
+  const calls = [];
+  const provider = createSeeSoProvider({
+    licenseKey: 'dev-key',
+    windowRef: {
+      location: {
+        replace: (url) => calls.push(url),
+      },
+    },
     onGaze: () => {},
   });
 
   await provider.openCalibrationPage({
     userId: 'participant-1',
-    redirectUrl: 'http://localhost:5179/?mode=admin&gazeProvider=seeso',
+    redirectUrl: 'http://localhost:5179/#mode=validation',
     calibrationPointCount: 5,
+    monitorSizeInch: 24,
+    faceDistanceCm: 70,
   });
 
-  assert.deepEqual(calls, [[
-    'dev-key',
-    'participant-1',
-    'http://localhost:5179/?mode=admin&gazeProvider=seeso',
-    5,
-  ]]);
+  const calibrationServiceParams = new URL(calls[0]).hash.split('?')[1];
+  const parsedCalibrationParams = new URLSearchParams(calibrationServiceParams);
+  assert.equal(parsedCalibrationParams.get('licenseKey'), 'dev-key');
+  assert.equal(parsedCalibrationParams.get('userId'), 'participant-1');
+  assert.equal(parsedCalibrationParams.get('redirectUrl'), 'http://localhost:5179/#mode=validation');
+  assert.equal(parsedCalibrationParams.get('selectCalibrationPoint'), '5');
+  assert.equal(parsedCalibrationParams.get('monitorInch'), '24');
+  assert.equal(parsedCalibrationParams.get('faceDistance'), '70');
+  assert.equal(
+    buildSeeSoCalibrationPageUrl({
+      licenseKey: 'dev-key',
+      userId: 'participant-1',
+      redirectUrl: 'https://example.test/#mode=validation',
+      calibrationPointCount: 5,
+      monitorSizeInch: 15.6,
+      faceDistanceCm: 63,
+    }),
+    'https://calibration.seeso.io/#/service?licenseKey=dev-key&userId=participant-1&redirectUrl=https://example.test/#mode=validation&selectCalibrationPoint=5&monitorInch=15.6&faceDistance=63',
+  );
   assert.equal(
     parseSeeSoCalibrationDataFromUrl('http://localhost:5179/?calibrationData=%7B%22vector%22%3A%22abc%22%7D'),
     '{"vector":"abc"}',
@@ -366,6 +427,13 @@ test('seeso provider opens hosted calibration and parses returned data', async (
   assert.equal(
     buildSeeSoRedirectUrl('http://localhost:5179/?mode=admin&calibrationData=old').toString(),
     'http://localhost:5179/?mode=admin&gazeProvider=seeso',
+  );
+  assert.equal(
+    buildSeeSoRedirectUrl('http://localhost:5179/?mode=validation&gazeProvider=seeso', {
+      includeProvider: false,
+      modePlacement: 'hash',
+    }).toString(),
+    'http://localhost:5179/#mode=validation',
   );
   const malformedValidationReturn = 'http://localhost:5179/?mode=validation%3FcalibrationData%3D%7B%22vector%22%3A%22abc%22%7D&gazeProvider=seeso';
   assert.equal(
@@ -497,9 +565,18 @@ test('app wires SeeSo as an alternate webcam gaze provider', async () => {
   assert.match(appSource, /webcamStartProviderId/);
   assert.match(appSource, /parseSeeSoCalibrationDataFromUrl/);
   assert.match(appSource, /buildSeeSoRedirectUrl/);
+  assert.match(appSource, /modePlacement:\s*'hash'/);
   assert.match(appSource, /gazeProviderSelect/);
   assert.match(appSource, /SEESO_EMBEDDED_LICENSE_KEY/);
+  assert.match(appSource, /getDeploymentSeeSoLicenseKey/);
   assert.match(appSource, /openCalibrationPage/);
+});
+
+test('SeeSo provider loads the deployed SDK from a Pages-safe vendor path', async () => {
+  const providerSource = await readFile(new URL('../src/gaze/providers/seesoProvider.js', import.meta.url), 'utf8');
+
+  assert.match(providerSource, /vendor\/seeso\/seeso\.min\.js/);
+  assert.doesNotMatch(providerSource, /node_modules\/seeso/);
 });
 
 test('app treats SeeSo calibration as hosted setup before webcam tracking', async () => {
@@ -532,8 +609,8 @@ test('app exposes admin SeeSo readiness controls', async () => {
     : '';
 
   assert.match(appSource, /gazeEngineStatus/);
-  assert.match(adminSyncFunction, /Hiệu chuẩn bộ theo dõi/);
-  assert.match(adminSyncFunction, /Hiệu chuẩn lại bộ theo dõi/);
+  assert.match(adminSyncFunction, /Hiệu chỉnh camera/);
+  assert.match(adminSyncFunction, /Hiệu chỉnh lại camera/);
   assert.match(adminSyncFunction, /Bắt đầu ánh nhìn \+ kiểm tra độ chính xác/);
   assert.match(adminSyncFunction, /accuracyButton\.disabled\s*=/);
   assert.match(adminSyncFunction, /recordButton\.disabled\s*=/);

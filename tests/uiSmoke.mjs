@@ -196,6 +196,7 @@ try {
   assert.equal(await participantPage.locator('#controlPanel').isVisible(), false, 'Research controls should be hidden in participant mode.');
   assert.equal(await participantPage.locator('#participantPanel').isVisible(), true, 'Participant panel should be visible in participant mode.');
   assert.equal(await participantPage.locator('#viewerSection').isVisible(), false, 'Participant mode should start on a separate setup screen.');
+  assert.equal(await participantPage.locator('#gazeProviderSelect').inputValue(), 'seeso', 'Participant mode should force the hosted tracker.');
   assert.equal(
     await participantPage.locator('#participantFlowRail').isVisible(),
     true,
@@ -214,25 +215,41 @@ try {
     participantPage.locator('#participantCalibrateButton').waitFor({ state: 'visible', timeout: 5000 }),
     'Participant session should expose calibration as a flow action.',
   );
+  assert.match(
+    await participantPage.locator('#participantCalibrateButton').innerText(),
+    /camera/i,
+    'Participant calibration should use camera wording.',
+  );
   assert.equal(
-    await participantPage.locator('#participantAccuracyButton').count(),
-    0,
-    'Participant session should not expose a separate gaze/accuracy action.',
+    await participantPage.locator('#participantAccuracyButton').isVisible(),
+    false,
+    'Participant session should not expose a separate accuracy-check action before recording.',
   );
   await assert.doesNotReject(
     participantPage.locator('#participantRecordButton').waitFor({ state: 'visible', timeout: 5000 }),
     'Participant session should expose recording as a flow action.',
   );
+  await participantPage.waitForFunction(() => {
+    const source = document.querySelector('#aoiSourceLabel')?.textContent || '';
+    return source.endsWith('.enhanced-aois.json') && !source.startsWith('loading ');
+  }, { timeout: 120000 });
   await participantPage.waitForFunction(() => (
     !document.fullscreenElement || document.fullscreenElement.id === 'appShell'
   ));
-  await participantPage.locator('#participantRecordButton').click();
   assert.equal(
-    await participantPage.locator('#participantRecordButton').evaluate((button) => button.classList.contains('primary')),
+    await participantPage.locator('#participantRecordButton').isEnabled(),
     false,
-    'Participant recording control should be clickable after fullscreen starts.',
+    'Participant recording control should stay disabled until camera calibration is available.',
   );
-  await participantPage.locator('#participantRecordButton').click();
+  assert.equal(
+    await participantPage.locator('#participantRecordButton').evaluate((button) => {
+      const rect = button.getBoundingClientRect();
+      const target = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+      return target === button || button.contains(target);
+    }),
+    true,
+    'Participant recording control should remain clickable after fullscreen starts.',
+  );
   assert.notEqual(await participantPage.locator('#modeLabel').innerText(), '', 'Participant mode should keep a gaze mode label.');
   await participantPage.close();
 
@@ -246,7 +263,7 @@ try {
   assert.equal(await validationPage.locator('#viewerSection').isVisible(), true, 'Validation test should show the blank app screen.');
   assert.equal(await validationPage.locator('#validationTestPanel').isVisible(), true, 'Validation test controls should be visible.');
   assert.equal(await validationPage.locator('#gazeProviderSelect').inputValue(), 'seeso', 'Validation test should force the hosted tracker.');
-  assert.equal(await validationPage.locator('#validationTestCalibrateButton').isVisible(), true, 'Validation test should expose tracker calibration.');
+  assert.equal(await validationPage.locator('#validationTestCalibrateButton').isVisible(), true, 'Validation test should expose camera calibration.');
   assert.equal(await validationPage.locator('#validationTestAccuracyButton').isVisible(), true, 'Validation test should expose the accuracy-check step.');
   assert.equal(await validationPage.locator('#participantRecordButton').isVisible(), false, 'Validation test should not expose recording.');
   assert.equal(
@@ -1241,6 +1258,19 @@ try {
         keyframes: [
           { t: 0, points: dynamicStartPoints },
           { t: 8, points: dynamicEndPoints },
+        ],
+      },
+      {
+        id: 'dynamic-polygon-control',
+        label: 'Dynamic polygon control',
+        color: '#4ecdc4',
+        space: 'video',
+        shape: 'polygon',
+        points: [
+          { x: 0.12, y: 0.14 },
+          { x: 0.22, y: 0.14 },
+          { x: 0.22, y: 0.26 },
+          { x: 0.12, y: 0.26 },
         ],
       },
     ],

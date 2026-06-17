@@ -21,6 +21,7 @@ import {
   isAccuracyValidationUsable,
   isValidationFresh,
   shouldCaptureFreshGazeSample,
+  shouldContinueTargetSampleCapture,
   shouldTrainFreshGazeSample,
   updateLiveGazeQuality,
   resolveGazeUpdate,
@@ -110,6 +111,35 @@ test('rejects target sample groups that are too sparse or unstable', () => {
   assert.equal(sparse.reason, 'too-few-samples');
   assert.equal(unstable.accepted, false);
   assert.equal(unstable.reason, 'unstable');
+});
+
+test('continues target capture after nominal slots only while samples are too sparse', () => {
+  assert.equal(shouldContinueTargetSampleCapture({
+    sampleSlots: 12,
+    acceptedSamples: 6,
+    nominalSampleSlots: 12,
+    minAcceptedSamples: 7,
+    elapsedMs: 700,
+    maxDurationMs: 1320,
+  }), true);
+
+  assert.equal(shouldContinueTargetSampleCapture({
+    sampleSlots: 12,
+    acceptedSamples: 7,
+    nominalSampleSlots: 12,
+    minAcceptedSamples: 7,
+    elapsedMs: 700,
+    maxDurationMs: 1320,
+  }), false);
+
+  assert.equal(shouldContinueTargetSampleCapture({
+    sampleSlots: 13,
+    acceptedSamples: 6,
+    nominalSampleSlots: 12,
+    minAcceptedSamples: 7,
+    elapsedMs: 1320,
+    maxDurationMs: 1320,
+  }), false);
 });
 
 test('rejects implausibly large gaze jumps', () => {

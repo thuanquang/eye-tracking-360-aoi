@@ -1,6 +1,7 @@
-const DEFAULT_SEESO_MODULE_PATH = '../../../node_modules/seeso/dist/seeso.min.js';
+const DEFAULT_SEESO_MODULE_PATH = '../../../vendor/seeso/seeso.min.js';
 const DEFAULT_SEESO_USER_ID = 'aoi-prototype-user';
 const DEFAULT_TRACKING_SUCCESS = 0;
+const SEESO_CALIBRATION_SERVICE_URL = 'https://calibration.seeso.io/#/service';
 const SEESO_INITIALIZATION_ERRORS = new Map([
   [1, {
     name: 'ERROR_INIT',
@@ -61,16 +62,69 @@ export function parseSeeSoCalibrationDataFromUrl(urlString) {
   }
 }
 
-export function buildSeeSoRedirectUrl(urlString) {
-  const url = new URL(urlString);
-  const modeValue = url.searchParams.get('mode') || '';
-  const embeddedQueryIndex = modeValue.indexOf('?');
-  if (embeddedQueryIndex >= 0) {
-    url.searchParams.set('mode', modeValue.slice(0, embeddedQueryIndex));
+function getHashModeValue(hash) {
+  const hashValue = String(hash || '').replace(/^#/, '');
+  if (!hashValue) {
+    return '';
   }
-  url.searchParams.set('gazeProvider', 'seeso');
+
+  return new URLSearchParams(hashValue).get('mode') || '';
+}
+
+export function buildSeeSoRedirectUrl(urlString, { includeProvider = true, modePlacement = 'search' } = {}) {
+  const url = new URL(urlString);
+  const modeValue = url.searchParams.get('mode') || getHashModeValue(url.hash);
+  const embeddedQueryIndex = modeValue.indexOf('?');
+  const cleanModeValue = embeddedQueryIndex >= 0
+    ? modeValue.slice(0, embeddedQueryIndex)
+    : modeValue;
+  if (embeddedQueryIndex >= 0) {
+    url.searchParams.set('mode', cleanModeValue);
+  }
   url.searchParams.delete('calibrationData');
+  if (modePlacement === 'hash' && cleanModeValue) {
+    url.searchParams.delete('mode');
+    url.hash = new URLSearchParams({ mode: cleanModeValue }).toString();
+  }
+  if (includeProvider) {
+    url.searchParams.set('gazeProvider', 'seeso');
+  } else {
+    url.searchParams.delete('gazeProvider');
+  }
   return url;
+}
+
+export function buildSeeSoCalibrationPageUrl({
+  licenseKey,
+  userId = DEFAULT_SEESO_USER_ID,
+  redirectUrl,
+  calibrationPointCount = 5,
+  monitorSizeInch = null,
+  faceDistanceCm = null,
+} = {}) {
+  const params = [
+    ['licenseKey', licenseKey],
+    ['userId', userId || DEFAULT_SEESO_USER_ID],
+    ['redirectUrl', redirectUrl],
+    ['selectCalibrationPoint', String(calibrationPointCount)],
+  ];
+  const monitorInch = positiveNumber(monitorSizeInch);
+  const faceDistance = positiveNumber(faceDistanceCm);
+  if (monitorInch !== null) {
+    params.push(['monitorInch', String(monitorInch)]);
+  }
+  if (faceDistance !== null) {
+    params.push(['faceDistance', String(faceDistance)]);
+  }
+  const query = params
+    .map(([key, value]) => (
+      key === 'redirectUrl'
+        ? `${key}=${value}`
+        : `${key}=${encodeURIComponent(value ?? '')}`
+    ))
+    .join('&');
+
+  return `${SEESO_CALIBRATION_SERVICE_URL}?${query}`;
 }
 
 export function describeSeeSoInitializationError(code) {
@@ -160,8 +214,8 @@ export function createSeeSoProvider({
   licenseKey,
   calibrationData = null,
   userId = DEFAULT_SEESO_USER_ID,
-  monitorSizeInch = 14,
-  faceDistanceCm = 50,
+  monitorSizeInch = null,
+  faceDistanceCm = null,
   windowRef = globalThis.window ?? {},
   navigatorRef = globalThis.navigator ?? {},
   onGaze,
@@ -247,8 +301,12 @@ export function createSeeSoProvider({
       ? calibrationSettings.isCameraOnTop
       : true;
 
-    nextTracker.setMonitorSize?.(monitorInch);
-    nextTracker.setFaceDistance?.(faceDistance);
+    if (monitorInch !== null) {
+      nextTracker.setMonitorSize?.(monitorInch);
+    }
+    if (faceDistance !== null) {
+      nextTracker.setFaceDistance?.(faceDistance);
+    }
     nextTracker.setCameraPosition?.(cameraX, isCameraOnTop);
   }
 
@@ -323,15 +381,18 @@ export function createSeeSoProvider({
       calibrationPointCount = 5,
       userId: nextUserId = userId,
       calibrationUserId = nextUserId,
+      monitorSizeInch: nextMonitorSizeInch = monitorSizeInch,
+      faceDistanceCm: nextFaceDistanceCm = faceDistanceCm,
     } = {}) {
       await assertLicenseKey();
-      const { SeeSo } = await getSdk();
-      SeeSo.openCalibrationPage(
+      windowRef.location?.replace?.(buildSeeSoCalibrationPageUrl({
         licenseKey,
-        calibrationUserId || DEFAULT_SEESO_USER_ID,
+        userId: calibrationUserId,
         redirectUrl,
         calibrationPointCount,
-      );
+        monitorSizeInch: nextMonitorSizeInch,
+        faceDistanceCm: nextFaceDistanceCm,
+      }));
     },
     async setCalibrationData(nextCalibrationData) {
       calibrationData = nextCalibrationData;

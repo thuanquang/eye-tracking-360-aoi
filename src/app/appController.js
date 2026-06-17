@@ -65,6 +65,7 @@ import {
   isValidationFresh,
   resolveGazeUpdate,
   shouldCaptureFreshGazeSample,
+  shouldContinueTargetSampleCapture,
   summarizeTargetSamples,
   updateLiveGazeQuality,
 } from '../gaze/gazeQuality.js';
@@ -104,6 +105,13 @@ import {
   SVG_NS,
   TARGET_CAPTURE,
 } from './constants.js';
+import {
+  buildStudyAssetFetchPath,
+  getDeploymentConfig,
+  getDeploymentSeeSoLicenseKey,
+  submitParticipantExport,
+  submitValidationResult,
+} from './deploymentConfig.js';
 import {
   createDefaultAois,
   createDefaultGaze,
@@ -165,6 +173,8 @@ export function createAppController({
   const VALIDATION_SAMPLES_PER_POINT = TARGET_CAPTURE.validationSamplesPerPoint;
   const TARGET_SETTLE_DELAY_MS = GAZE_TIMING.targetSettleDelayMs;
   const TARGET_SAMPLE_DELAY_MS = GAZE_TIMING.targetSampleDelayMs;
+  const MIN_VALIDATION_SAMPLES_PER_TARGET = Math.max(4, Math.floor(VALIDATION_SAMPLES_PER_POINT * 0.6));
+  const VALIDATION_CAPTURE_MAX_DURATION_MS = TARGET_SAMPLE_DELAY_MS * VALIDATION_SAMPLES_PER_POINT * 2;
   const MIN_ACCEPTED_REFINEMENT_TARGETS = TARGET_CAPTURE.minAcceptedRefinementTargets;
   const MIN_ACCEPTED_VALIDATION_TARGETS = TARGET_CAPTURE.minAcceptedValidationTargets;
   const VALIDATION_MAX_ATTEMPTS_PER_TARGET = TARGET_CAPTURE.validationMaxAttemptsPerTarget;
@@ -179,6 +189,10 @@ export function createAppController({
   const SEESO_CALIBRATION_DATA_STORAGE_KEY = 'aoi.seesoCalibrationData';
   const SEESO_CALIBRATION_USER_ID_STORAGE_KEY = 'aoi.seesoCalibrationUserId';
   const SEESO_CALIBRATION_RETURN_MODE_STORAGE_KEY = 'aoi.seesoCalibrationReturnMode';
+  const SEESO_MONITOR_SIZE_STORAGE_KEY = 'aoi.seesoMonitorSizeInch';
+  const SEESO_FACE_DISTANCE_STORAGE_KEY = 'aoi.seesoFaceDistanceCm';
+  const DEFAULT_VALIDATION_MONITOR_SIZE_INCH = 15.6;
+  const DEFAULT_VALIDATION_FACE_DISTANCE_CM = 60;
   const PARTICIPANT_DRAFT_STORAGE_KEY = 'aoi.participantDraft';
   const PARTICIPANT_SESSION_STORAGE_KEY = 'aoi.participantSession';
   const SEESO_CALIBRATION_POINT_COUNT = 5;
@@ -199,6 +213,8 @@ export function createAppController({
     webcamModeButton,
     gazeProviderSelect,
     gazeEngineStatus,
+    adminSeeSoMonitorSizeInput,
+    adminSeeSoFaceDistanceInput,
     calibrateButton,
     accuracyButton,
     rawGazeDiagnosticButton,
@@ -258,17 +274,32 @@ export function createAppController({
     participantNameInput,
     participantAgeInput,
     participantConsentInput,
+    seeSoMonitorSizeInput,
+    seeSoFaceDistanceInput,
     participantStartButton,
     participantSessionPanel,
     participantCalibrateButton,
+    participantAccuracyButton,
     participantRecordButton,
     participantExportButton,
+    participantUploadStatus,
     participantFlowSteps,
     adminFlowSteps,
     validationTestPanel,
     validationTestStatus,
+    validationSeeSoMonitorSizeInput,
+    validationSeeSoFaceDistanceInput,
     validationTestCalibrateButton,
     validationTestAccuracyButton,
+    validationStatsPopup,
+    validationStatsSummary,
+    validationStatsMean,
+    validationStatsMedian,
+    validationStatsP90,
+    validationStatsMax,
+    validationStatsStability,
+    validationStatsTargetCount,
+    validationStatsCloseButton,
     calibrationOverlay,
     calibrationTarget,
     calibrationProgress,
@@ -499,7 +530,7 @@ export function createAppController({
   }
 
   function getSeeSoLicenseKey() {
-    return (SEESO_EMBEDDED_LICENSE_KEY || seeSoLicenseKeyValue).trim();
+    return (SEESO_EMBEDDED_LICENSE_KEY || getDeploymentSeeSoLicenseKey() || seeSoLicenseKeyValue).trim();
   }
 
   function setSeeSoLicenseKeyControlValue(value) {
@@ -514,6 +545,89 @@ export function createAppController({
     setLocalStorageValue(SEESO_LICENSE_KEY_STORAGE_KEY, getSeeSoLicenseKey());
     syncParticipantSessionControls();
     syncValidationTestControls();
+  }
+
+  function parsePositiveInputValue(value) {
+    const numeric = Number(value);
+    return Number.isFinite(numeric) && numeric > 0 ? numeric : null;
+  }
+
+  function getSeeSoGeometryInputs() {
+    return [
+      [adminSeeSoMonitorSizeInput, adminSeeSoFaceDistanceInput],
+      [seeSoMonitorSizeInput, seeSoFaceDistanceInput],
+      [validationSeeSoMonitorSizeInput, validationSeeSoFaceDistanceInput],
+    ];
+  }
+
+  function setSeeSoGeometryControlValues({ monitorSizeInch = '', faceDistanceCm = '' } = {}) {
+    getSeeSoGeometryInputs().forEach(([monitorInput, distanceInput]) => {
+      monitorInput.value = monitorSizeInch;
+      distanceInput.value = faceDistanceCm;
+    });
+  }
+
+  function getSeeSoGeometrySettings() {
+    const monitorSizeInch = parsePositiveInputValue(seeSoMonitorSizeInput.value)
+      ?? parsePositiveInputValue(adminSeeSoMonitorSizeInput.value)
+      ?? parsePositiveInputValue(validationSeeSoMonitorSizeInput.value);
+    const faceDistanceCm = parsePositiveInputValue(seeSoFaceDistanceInput.value)
+      ?? parsePositiveInputValue(adminSeeSoFaceDistanceInput.value)
+      ?? parsePositiveInputValue(validationSeeSoFaceDistanceInput.value);
+
+    if (state.appMode === 'validation') {
+      return {
+        monitorSizeInch: monitorSizeInch ?? DEFAULT_VALIDATION_MONITOR_SIZE_INCH,
+        faceDistanceCm: faceDistanceCm ?? DEFAULT_VALIDATION_FACE_DISTANCE_CM,
+        complete: true,
+      };
+    }
+
+    return {
+      monitorSizeInch,
+      faceDistanceCm,
+      complete: monitorSizeInch !== null && faceDistanceCm !== null,
+    };
+  }
+
+  function persistSeeSoGeometrySettings(event = null) {
+    const input = event?.target;
+    const current = getSeeSoGeometrySettings();
+    const monitorSizeInch = input && /MonitorSize/.test(input.id)
+      ? parsePositiveInputValue(input.value)
+      : current.monitorSizeInch;
+    const faceDistanceCm = input && /FaceDistance/.test(input.id)
+      ? parsePositiveInputValue(input.value)
+      : current.faceDistanceCm;
+
+    if (monitorSizeInch !== null) {
+      setLocalStorageValue(SEESO_MONITOR_SIZE_STORAGE_KEY, String(monitorSizeInch));
+    }
+    if (faceDistanceCm !== null) {
+      setLocalStorageValue(SEESO_FACE_DISTANCE_STORAGE_KEY, String(faceDistanceCm));
+    }
+
+    setSeeSoGeometryControlValues({
+      monitorSizeInch: monitorSizeInch ?? '',
+      faceDistanceCm: faceDistanceCm ?? '',
+    });
+    syncAdminGazeSetupControls();
+    updateParticipantStartState();
+    syncParticipantSessionControls();
+    syncValidationTestControls();
+  }
+
+  function requireSeeSoGeometrySettings() {
+    const settings = getSeeSoGeometrySettings();
+    if (settings.complete) {
+      return settings;
+    }
+
+    setNotice('Nhập kích thước màn hình và khoảng cách mặt trước khi hiệu chỉnh camera.', true);
+    syncAdminGazeSetupControls();
+    syncParticipantSessionControls();
+    syncValidationTestControls();
+    return null;
   }
 
   function getSeeSoCalibrationDataFromUrl() {
@@ -566,6 +680,10 @@ export function createAppController({
 
   function initializeGazeProviderControls() {
     setSeeSoLicenseKeyControlValue(getLocalStorageValue(SEESO_LICENSE_KEY_STORAGE_KEY));
+    setSeeSoGeometryControlValues({
+      monitorSizeInch: getLocalStorageValue(SEESO_MONITOR_SIZE_STORAGE_KEY),
+      faceDistanceCm: getLocalStorageValue(SEESO_FACE_DISTANCE_STORAGE_KEY),
+    });
 
     const params = new URLSearchParams(window.location.search);
     const requestedProvider = params.get('gazeProvider') === 'seeso'
@@ -579,7 +697,7 @@ export function createAppController({
       state.webcamCalibrationTrained = true;
       setAccuracySummary(null);
       setWebcamStatus('calibrated');
-      setNotice('Dữ liệu hiệu chuẩn bộ theo dõi đã trả về. Đang bắt đầu ánh nhìn cho phiên người tham gia.', false);
+      setNotice('Dữ liệu hiệu chỉnh camera đã trả về. Đang bắt đầu ánh nhìn cho phiên người tham gia.', false);
     }
   }
 
@@ -667,6 +785,7 @@ export function createAppController({
       state.selectedAoiId = null;
       setManualAnnotationIdle();
       renderAoiList();
+      syncParticipantSessionControls();
       loadGeneratedAoisForStudyVideo(video);
     }
 
@@ -683,7 +802,13 @@ export function createAppController({
 
   function getRequestedAppMode() {
     const params = new URLSearchParams(window.location.search);
+    const hashParams = new URLSearchParams(String(window.location.hash || '').replace(/^#/, ''));
+    const hashMode = String(hashParams.get('mode') || '').split('?')[0];
     if (!params.has('mode')) {
+      if (hashMode === 'admin' || hashMode === 'participant' || hashMode === 'validation') {
+        return hashMode;
+      }
+
       const calibrationReturnMode = getSessionStorageValue(SEESO_CALIBRATION_RETURN_MODE_STORAGE_KEY);
       if (params.has('calibrationData') && ['admin', 'participant', 'validation'].includes(calibrationReturnMode)) {
         return calibrationReturnMode;
@@ -701,6 +826,32 @@ export function createAppController({
   }
 
   function setParticipantStage() {}
+
+  function setParticipantUploadStatus(status, fileName = '') {
+    const statusText = participantUploadStatus.querySelector('[data-upload-status-text]') || participantUploadStatus;
+    participantUploadStatus.classList.remove('is-uploading', 'is-uploaded', 'is-fallback');
+
+    if (!status) {
+      participantUploadStatus.hidden = true;
+      statusText.textContent = '';
+      participantExportButton.removeAttribute('aria-busy');
+      return;
+    }
+
+    participantUploadStatus.hidden = false;
+    participantUploadStatus.classList.add(`is-${status}`);
+    participantExportButton.setAttribute('aria-busy', status === 'uploading' ? 'true' : 'false');
+
+    if (status === 'uploading') {
+      statusText.textContent = 'Đang gửi kết quả lên R2...';
+    } else if (status === 'uploaded') {
+      statusText.textContent = fileName
+        ? `Đã gửi lên R2: ${fileName}`
+        : 'Đã gửi kết quả lên R2.';
+    } else if (status === 'fallback') {
+      statusText.textContent = 'Không gửi được lên R2. Đang tải JSON xuống máy này.';
+    }
+  }
 
   function collectParticipantMetadata() {
     return {
@@ -775,7 +926,11 @@ export function createAppController({
     }
 
     const metadata = collectParticipantMetadata();
-    participantStartButton.disabled = !isParticipantMetadataValid(metadata);
+    const requiresGeometry = getSelectedGazeProviderId() === 'seeso';
+    participantStartButton.disabled = (
+      !isParticipantMetadataValid(metadata) ||
+      (requiresGeometry && !getSeeSoGeometrySettings().complete)
+    );
   }
 
   function handleParticipantMetadataChange() {
@@ -787,11 +942,12 @@ export function createAppController({
     const isSeeSo = isSeeSoProviderSelected();
     const hasSeeSoKey = Boolean(getSeeSoLicenseKey());
     const hasSeeSoCalibration = Boolean(getSeeSoCalibrationData());
+    const hasSeeSoGeometry = getSeeSoGeometrySettings().complete;
     const hasProviderCalibration = isSeeSo
       ? hasSeeSoCalibration || state.webcamCalibrationTrained
       : state.webcamCalibrationTrained;
-    const canRunAccuracy = hasProviderCalibration && (!isSeeSo || hasSeeSoKey);
-    const canOpenCalibration = !isSeeSo || hasSeeSoKey;
+    const canRunAccuracy = hasProviderCalibration && (!isSeeSo || (hasSeeSoKey && hasSeeSoGeometry));
+    const canOpenCalibration = !isSeeSo || (hasSeeSoKey && hasSeeSoGeometry);
 
     if (!isSeeSo) {
       gazeEngineStatus.textContent = state.webcamCalibrationTrained
@@ -801,14 +957,16 @@ export function createAppController({
       accuracyButton.textContent = 'Kiểm tra độ chính xác';
     } else {
       calibrateButton.textContent = hasSeeSoCalibration
-        ? 'Hiệu chuẩn lại bộ theo dõi'
-        : 'Hiệu chuẩn bộ theo dõi';
+        ? 'Hiệu chỉnh lại camera'
+        : 'Hiệu chỉnh camera';
       accuracyButton.textContent = 'Bắt đầu ánh nhìn + kiểm tra độ chính xác';
 
       if (!hasSeeSoKey) {
         gazeEngineStatus.textContent = 'Thiếu khóa bộ theo dõi trong mã';
+      } else if (!hasSeeSoGeometry) {
+        gazeEngineStatus.textContent = 'Nhập kích thước màn hình và khoảng cách mặt';
       } else if (hasProviderCalibration) {
-        gazeEngineStatus.textContent = 'Hiệu chuẩn bộ theo dõi đã sẵn sàng';
+        gazeEngineStatus.textContent = 'Hiệu chỉnh camera đã sẵn sàng';
       } else {
         gazeEngineStatus.textContent = 'Bộ theo dõi sẵn sàng hiệu chuẩn';
       }
@@ -834,8 +992,8 @@ export function createAppController({
     }
 
     participantCalibrateButton.textContent = hasSeeSoCalibration
-      ? 'Hiệu chuẩn lại bộ theo dõi'
-      : 'Hiệu chuẩn bộ theo dõi';
+      ? 'Hiệu chỉnh lại camera'
+      : 'Hiệu chỉnh camera';
   }
 
   function setParticipantFlowStep(step) {
@@ -881,6 +1039,7 @@ export function createAppController({
     const isSeeSo = providerId === 'seeso';
     const hasSeeSoKey = Boolean(getSeeSoLicenseKey());
     const hasSeeSoCalibration = Boolean(getSeeSoCalibrationData());
+    const hasSeeSoGeometry = getSeeSoGeometrySettings().complete;
     const hasProviderCalibration = isSeeSo
       ? hasSeeSoCalibration || state.webcamCalibrationTrained
       : state.webcamCalibrationTrained;
@@ -899,14 +1058,17 @@ export function createAppController({
     }
 
     participantRecordButton.textContent = state.isRecording ? 'Dừng ghi' : 'Bắt đầu ghi';
+    participantAccuracyButton.hidden = true;
+    participantAccuracyButton.disabled = true;
+    participantAccuracyButton.classList.remove('primary');
     participantCalibrateButton.classList.toggle(
       'primary',
-      !state.isRecording && !hasProviderCalibration && (!isSeeSo || hasSeeSoKey),
+      !state.isRecording && !hasProviderCalibration && (!isSeeSo || (hasSeeSoKey && hasSeeSoGeometry)),
     );
     participantRecordButton.classList.toggle('primary', !state.isRecording && canRecordCurrentMode());
-    participantCalibrateButton.disabled = state.isRecording || (isSeeSo && !hasSeeSoKey);
-    participantRecordButton.disabled = !state.isRecording && !canRecordCurrentMode();
-    participantExportButton.disabled = state.samples.length === 0;
+    participantCalibrateButton.disabled = state.isRecording || (isSeeSo && (!hasSeeSoKey || !hasSeeSoGeometry));
+    participantRecordButton.disabled = !state.isRecording && (!canRecordCurrentMode() || !hasLoadedStudyAois());
+    participantExportButton.disabled = state.samples.length === 0 || !hasLoadedStudyAois();
 
     if (state.isRecording) {
       setParticipantFlowStep('recording');
@@ -914,21 +1076,24 @@ export function createAppController({
     } else if (state.samples.length > 0) {
       setParticipantFlowStep('export');
       setParticipantStage('Bản ghi sẵn sàng xuất');
-    } else if (state.accuracyValidated) {
+    } else if (canRecordCurrentMode() && hasLoadedStudyAois()) {
       setParticipantFlowStep('recording');
       setParticipantStage('Sẵn sàng: bắt đầu ghi');
     } else if (isSeeSo && !hasSeeSoKey) {
       setParticipantFlowStep('calibration');
       setParticipantStage('Thiếu khóa bộ theo dõi');
+    } else if (isSeeSo && !hasSeeSoGeometry) {
+      setParticipantFlowStep('setup');
+      setParticipantStage('Nhập kích thước màn hình và khoảng cách mặt');
     } else if (isSeeSo && !hasProviderCalibration) {
       setParticipantFlowStep('calibration');
-      setParticipantStage('Sẵn sàng: hiệu chuẩn bộ theo dõi');
+      setParticipantStage('Sẵn sàng: hiệu chỉnh camera');
     } else if (!isSeeSo && !hasProviderCalibration) {
       setParticipantFlowStep('calibration');
       setParticipantStage('Sẵn sàng: hiệu chuẩn WebGazer');
     } else if (state.webcamStatus === 'calibrated' || hasProviderCalibration) {
       setParticipantFlowStep('recording');
-      setParticipantStage('Sẵn sàng: bắt đầu ghi');
+      setParticipantStage('Đang tải AOI trước khi ghi');
     } else {
       setParticipantFlowStep('calibration');
     }
@@ -936,18 +1101,21 @@ export function createAppController({
 
   function syncValidationTestControls() {
     const isValidationTest = state.appMode === 'validation';
+    const isAccuracyTargetActive = isValidationTest && state.targetMode === 'accuracy' && !calibrationOverlay.hidden;
     const hasSeeSoKey = Boolean(getSeeSoLicenseKey());
+    const hasSeeSoGeometry = getSeeSoGeometrySettings().complete;
     const hasSeeSoCalibration = Boolean(getSeeSoCalibrationData()) || state.webcamCalibrationTrained;
 
+    appShell.classList.toggle('is-accuracy-check-active', isAccuracyTargetActive);
     validationTestPanel.hidden = !isValidationTest;
-    validationTestCalibrateButton.disabled = !hasSeeSoKey;
-    validationTestAccuracyButton.disabled = !hasSeeSoKey || !hasSeeSoCalibration || state.isRecording;
+    validationTestCalibrateButton.disabled = !hasSeeSoKey || !hasSeeSoGeometry;
+    validationTestAccuracyButton.disabled = !hasSeeSoKey || !hasSeeSoGeometry || !hasSeeSoCalibration || state.isRecording;
     validationTestCalibrateButton.textContent = hasSeeSoCalibration
-      ? 'Hiệu chuẩn lại bộ theo dõi'
-      : 'Hiệu chuẩn bộ theo dõi';
+      ? 'Hiệu chỉnh lại camera'
+      : 'Hiệu chỉnh camera';
     validationTestAccuracyButton.classList.toggle(
       'primary',
-      hasSeeSoKey && hasSeeSoCalibration && !state.accuracyValidated,
+      hasSeeSoKey && hasSeeSoGeometry && hasSeeSoCalibration && !state.accuracyValidated,
     );
 
     if (!isValidationTest) {
@@ -956,6 +1124,8 @@ export function createAppController({
 
     if (!hasSeeSoKey) {
       validationTestStatus.textContent = 'Thiếu khóa bộ theo dõi trong mã';
+    } else if (!hasSeeSoGeometry) {
+      validationTestStatus.textContent = 'Nhập kích thước màn hình và khoảng cách mặt';
     } else if (state.webcamStatus === 'validating') {
       validationTestStatus.textContent = 'Đang kiểm tra độ chính xác';
     } else if (state.accuracyValidated) {
@@ -1003,6 +1173,7 @@ export function createAppController({
     }
 
     if (isParticipant) {
+      setGazeProviderControlValue('seeso');
       updateParticipantStartState();
       if (state.participant.startedAt) {
         setNotice('Đã khôi phục phiên người tham gia. Tiếp tục hiệu chuẩn, kiểm tra độ chính xác hoặc ghi.', true);
@@ -1046,11 +1217,12 @@ export function createAppController({
     };
     persistParticipantDraft();
     persistParticipantSessionState();
+    setGazeProviderControlValue('seeso');
     selectWebcamMode();
     const setupMessage = isSeeSoProviderSelected()
-      ? 'Phiên người tham gia đã sẵn sàng. Hiệu chuẩn bộ theo dõi, rồi bắt đầu ghi khi sẵn sàng.'
+      ? 'Phiên người tham gia đã sẵn sàng. Hiệu chỉnh camera, rồi bắt đầu ghi khi sẵn sàng.'
       : 'Phiên người tham gia đã sẵn sàng. Hiệu chuẩn webcam, rồi bắt đầu ghi khi sẵn sàng.';
-    setParticipantStage('Sẵn sàng: hiệu chuẩn bộ theo dõi');
+    setParticipantStage('Sẵn sàng: hiệu chỉnh camera');
     setNotice(setupMessage, true);
     syncParticipantSessionControls();
     resize();
@@ -1073,7 +1245,7 @@ export function createAppController({
     }
 
     setParticipantStage('Starting tracker gaze');
-    setNotice('Hiệu chuẩn bộ theo dõi hoàn tất. Đang tự động bắt đầu ánh nhìn.', true);
+    setNotice('Hiệu chỉnh camera hoàn tất. Đang tự động bắt đầu ánh nhìn.', true);
     await setWebcamMode();
     syncParticipantSessionControls();
   }
@@ -1641,6 +1813,7 @@ export function createAppController({
       setManualAnnotationIdle();
     }
     renderAoiList();
+    syncParticipantSessionControls();
   }
 
   async function loadGeneratedAoisForStudyVideo(video) {
@@ -1655,7 +1828,7 @@ export function createAppController({
     renderAoiList();
 
     try {
-      const response = await fetch(`./${aoiPath}`, { cache: 'no-store' });
+      const response = await fetch(buildStudyAssetFetchPath(aoiPath), { cache: 'no-store' });
 
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}`);
@@ -1717,7 +1890,7 @@ export function createAppController({
       throw new Error('JSON bản ghi không có mẫu ánh nhìn hợp lệ.');
     }
 
-    if (Array.isArray(json.aois)) {
+    if (Array.isArray(json.aois) && json.aois.length > 0) {
       registerAois(json, json.project?.aois?.source || source);
     }
 
@@ -1859,6 +2032,105 @@ export function createAppController({
     state.gazeStreamStats = null;
   }
 
+  function formatValidationPx(value) {
+    return Number.isFinite(value) ? `${Math.round(value)} px` : '--';
+  }
+
+  function hideValidationStatsPopup() {
+    validationStatsPopup.hidden = true;
+  }
+
+  function showValidationStatsPopup(evaluation, summary) {
+    if (state.appMode !== 'validation') {
+      return;
+    }
+
+    const hasStats = summary?.quality !== 'untested' && Number.isFinite(summary?.meanPx);
+    const resultText = !hasStats
+      ? 'Không đủ dữ liệu'
+      : evaluation?.validationPassed
+        ? 'Đạt yêu cầu'
+        : 'Chưa đạt';
+
+    validationStatsPopup.dataset.result = !hasStats
+      ? 'untested'
+      : evaluation?.validationPassed
+        ? 'passed'
+        : 'failed';
+    validationStatsSummary.textContent = hasStats
+      ? `${resultText}: lỗi trung bình ${formatValidationPx(summary.meanPx)}, P90 ${formatValidationPx(summary.p90Px)}.`
+      : 'Không đủ dữ liệu ánh nhìn ổn định để tính độ chính xác. Hãy hiệu chỉnh camera và chạy lại.';
+    validationStatsMean.textContent = formatValidationPx(summary?.meanPx);
+    validationStatsMedian.textContent = formatValidationPx(summary?.medianPx);
+    validationStatsP90.textContent = formatValidationPx(summary?.p90Px);
+    validationStatsMax.textContent = formatValidationPx(summary?.maxPx);
+    validationStatsStability.textContent = formatValidationPx(summary?.p90DispersionPx);
+    validationStatsTargetCount.textContent = Number.isFinite(summary?.count)
+      ? `${summary.count}`
+      : '--';
+    validationStatsPopup.hidden = false;
+    validationStatsCloseButton.focus({ preventScroll: true });
+  }
+
+  function buildValidationResultPayload(evaluation, summary) {
+    syncSelectedCalibrationProfileState();
+
+    return {
+      type: 'validation-result',
+      exportedAt: new Date().toISOString(),
+      appMode: state.appMode,
+      project: buildProjectPackage(),
+      video: buildVideoPackageMetadata(),
+      validation: {
+        id: 'validation-test',
+        passed: Boolean(evaluation?.validationPassed),
+        reason: evaluation?.reason ?? null,
+        selectedValidationPolicyId: state.selectedValidationPolicyId ?? evaluation?.validationPolicyId ?? 'prototype',
+        validationPolicyId: evaluation?.validationPolicyId ?? null,
+        policyPassed: evaluation?.policyPassed ?? null,
+        policyFailures: Array.isArray(evaluation?.policyFailures)
+          ? evaluation.policyFailures.map((failure) => ({ ...failure }))
+          : [],
+        summary: summary ? structuredClone(summary) : null,
+        accuracySummary: evaluation?.accuracySummary ? structuredClone(evaluation.accuracySummary) : null,
+        validationSummary: evaluation?.validationSummary ? structuredClone(evaluation.validationSummary) : null,
+        correctedValidationSummary: evaluation?.correctedValidationSummary
+          ? structuredClone(evaluation.correctedValidationSummary)
+          : null,
+        refinementSummary: evaluation?.refinement?.correctedSummary
+          ? structuredClone(evaluation.refinement.correctedSummary)
+          : null,
+        gazeStreamQuality: state.validationGazeStreamQuality
+          ? structuredClone(state.validationGazeStreamQuality)
+          : null,
+        refinementSamples: structuredClone(state.accuracySamples),
+        validationSamples: structuredClone(state.validationSamples),
+      },
+    };
+  }
+
+  async function submitValidationTestResult(evaluation, summary) {
+    if (state.appMode !== 'validation') {
+      return;
+    }
+
+    try {
+      const result = await submitValidationResult(buildValidationResultPayload(evaluation, summary), {
+        config: getDeploymentConfig(window),
+        fetchFn: window.fetch.bind(window),
+      });
+
+      if (result.ok) {
+        validationStatsPopup.dataset.uploaded = 'true';
+        validationStatsPopup.dataset.uploadFileName = result.fileName;
+      } else if (!result.skipped) {
+        validationStatsPopup.dataset.uploaded = 'false';
+      }
+    } catch {
+      validationStatsPopup.dataset.uploaded = 'false';
+    }
+  }
+
   function setAccuracySummary(summary) {
     if (!summary || summary.quality === 'untested') {
       accuracyStatusLabel.textContent = 'chưa kiểm tra';
@@ -1955,6 +2227,12 @@ export function createAppController({
 
   function resetLiveGazeQuality() {
     state.liveGazeQuality = null;
+  }
+
+  function resetLiveGazeFilterState() {
+    state.gaze = createDefaultGaze();
+    state.lastAcceptedGazeAt = 0;
+    state.gazeDropReason = null;
   }
 
   function resetFaceQualityValidationState() {
@@ -2428,9 +2706,16 @@ export function createAppController({
 
       if (providerId === 'seeso') {
         const calibrationData = getSeeSoCalibrationData();
+        const geometrySettings = requireSeeSoGeometrySettings();
+        if (!geometrySettings) {
+          setWebcamStatus('idle');
+          return false;
+        }
         provider = createSeeSoProvider({
           licenseKey: getSeeSoLicenseKey(),
           calibrationData,
+          monitorSizeInch: geometrySettings.monitorSizeInch,
+          faceDistanceCm: geometrySettings.faceDistanceCm,
           windowRef: window,
           navigatorRef: window.navigator,
           ...providerCallbacks,
@@ -2742,6 +3027,11 @@ export function createAppController({
       return;
     }
 
+    const geometrySettings = requireSeeSoGeometrySettings();
+    if (!geometrySettings) {
+      return;
+    }
+
     clearStoredSeeSoCalibrationData();
     state.webcamCalibrationTrained = false;
     clearAccuracyRefinement();
@@ -2749,13 +3039,18 @@ export function createAppController({
     persistParticipantDraft();
     persistParticipantSessionState();
 
-    const redirectUrl = buildSeeSoRedirectUrl(window.location.href).toString();
-    setNotice('Đang mở hiệu chuẩn bộ theo dõi lưu trữ. Quay lại đây sau khi hoàn tất.', false);
+    const redirectUrl = buildSeeSoRedirectUrl(window.location.href, {
+      includeProvider: false,
+      modePlacement: 'hash',
+    }).toString();
+    setNotice('Đang mở hiệu chỉnh camera. Quay lại đây sau khi hoàn tất.', false);
     try {
       const calibrationProvider = webcamProvider?.openCalibrationPage
         ? webcamProvider
         : createSeeSoProvider({
           licenseKey: getSeeSoLicenseKey(),
+          monitorSizeInch: geometrySettings.monitorSizeInch,
+          faceDistanceCm: geometrySettings.faceDistanceCm,
           windowRef: window,
           navigatorRef: window.navigator,
           onGaze: () => {},
@@ -2763,10 +3058,12 @@ export function createAppController({
       await calibrationProvider.openCalibrationPage({
         redirectUrl,
         calibrationPointCount: SEESO_CALIBRATION_POINT_COUNT,
+        monitorSizeInch: geometrySettings.monitorSizeInch,
+        faceDistanceCm: geometrySettings.faceDistanceCm,
         userId: getSeeSoCalibrationUserId(),
       });
     } catch (error) {
-      setNotice(`Không thể mở hiệu chuẩn bộ theo dõi: ${error.message}`);
+      setNotice(`Không thể mở hiệu chỉnh camera: ${error.message}`);
     }
   }
 
@@ -2864,9 +3161,10 @@ export function createAppController({
 
   async function startAccuracyCheck() {
     stopActiveRecordingForTargetMode();
+    hideValidationStatsPopup();
 
     if (isSeeSoProviderSelected() && !getSeeSoCalibrationData()) {
-      setNotice('Hãy hiệu chuẩn bộ theo dõi lưu trữ trước khi chạy xác thực độ chính xác.', true);
+      setNotice('Hãy hiệu chỉnh camera trước khi chạy xác thực độ chính xác.', true);
       syncParticipantSessionControls();
       return;
     }
@@ -2910,6 +3208,43 @@ export function createAppController({
 
   async function abortAccuracyCheckForUnstableTarget(targetSampleSummary, rejection) {
     clearAccuracyRefinement();
+    const validationPolicy = getValidationPolicy(state.activeValidationPolicyId);
+    const summary = {
+      quality: 'untested',
+      reason: targetSampleSummary.reason,
+      count: targetSampleSummary.count ?? 0,
+      meanPx: null,
+      medianPx: null,
+      p90Px: null,
+      maxPx: null,
+      p90DispersionPx: targetSampleSummary.dispersionPx ?? null,
+      maxDispersionPx: targetSampleSummary.dispersionPx ?? null,
+    };
+    const evaluation = {
+      validationPassed: false,
+      reason: targetSampleSummary.reason === 'unstable'
+        ? 'unstable-target-aborted'
+        : 'too-few-samples-aborted',
+      validationPolicyId: validationPolicy.id,
+      policyPassed: false,
+      policyFailures: [{
+        metric: 'validation',
+        actual: targetSampleSummary.reason,
+        limit: 'stable-target',
+        comparator: '==',
+      }],
+      accuracySummary: summary,
+    };
+    state.gazeCorrection = null;
+    state.refinementAccuracySummary = null;
+    state.accuracySummary = summary;
+    state.correctedAccuracySummary = null;
+    state.localAccuracyErrorModel = null;
+    state.accuracyValidated = false;
+    state.accuracyValidatedAt = null;
+    state.validationGazeStreamQuality = getCurrentValidationGazeStreamQuality();
+    applyAccuracyPolicyState(evaluation);
+    state.activeValidationPolicyId = null;
     calibrationOverlay.hidden = true;
     setCalibrationProfileSelectLocked(false);
     setValidationPolicySelectLocked(false);
@@ -2917,6 +3252,9 @@ export function createAppController({
     const reason = targetSampleSummary.reason === 'unstable'
       ? `Accuracy check stopped because target ${state.accuracyIndex + 1} stayed unstable after ${rejection.attempts} attempts.`
       : `Accuracy check stopped because target ${state.accuracyIndex + 1} did not produce enough fresh gaze samples after ${rejection.attempts} attempts.`;
+    setAccuracySummary(evaluation.accuracySummary);
+    showValidationStatsPopup(evaluation, evaluation.accuracySummary);
+    await submitValidationTestResult(evaluation, evaluation.accuracySummary);
     setNotice(`${reason} Hãy hiệu chuẩn lại hoặc cải thiện độ ổn định bộ theo dõi để có độ chính xác webcam đáng tin cậy.`, true);
     await restoreVideoAfterTargetMode();
   }
@@ -2945,7 +3283,16 @@ export function createAppController({
     calibrationProgress.textContent = `Accuracy target ${state.accuracyIndex + 1} of ${VALIDATION_POINTS.length} - hold steady`;
     await delay(TARGET_SETTLE_DELAY_MS);
 
-    for (let sample = 0; sample < VALIDATION_SAMPLES_PER_POINT; sample += 1) {
+    const captureStartedAt = performance.now();
+    let sampleSlots = 0;
+    while (shouldContinueTargetSampleCapture({
+      sampleSlots,
+      acceptedSamples: gazeSamples.length,
+      nominalSampleSlots: VALIDATION_SAMPLES_PER_POINT,
+      minAcceptedSamples: MIN_VALIDATION_SAMPLES_PER_TARGET,
+      elapsedMs: performance.now() - captureStartedAt,
+      maxDurationMs: VALIDATION_CAPTURE_MAX_DURATION_MS,
+    })) {
       if (shouldCaptureFreshGazeSample({
         gaze: state.rawViewerGaze,
         capturedAt: state.rawGazeAt,
@@ -2956,14 +3303,15 @@ export function createAppController({
       })) {
         gazeSamples.push({ x: state.rawViewerGaze.x, y: state.rawViewerGaze.y });
       }
-      calibrationProgress.textContent = `Accuracy target ${state.accuracyIndex + 1} of ${VALIDATION_POINTS.length} - sample ${sample + 1}`;
+      sampleSlots += 1;
+      calibrationProgress.textContent = `Accuracy target ${state.accuracyIndex + 1} of ${VALIDATION_POINTS.length} - sample ${sampleSlots}`;
       await delay(TARGET_SAMPLE_DELAY_MS);
     }
 
     setTargetCapturing(false);
 
     const targetSampleSummary = summarizeTargetSamples(gazeSamples, {
-      minSamples: Math.max(4, Math.floor(VALIDATION_SAMPLES_PER_POINT * 0.6)),
+      minSamples: MIN_VALIDATION_SAMPLES_PER_TARGET,
       maxDispersionPx: TARGET_MAX_DISPERSION_PX,
     });
 
@@ -3033,6 +3381,8 @@ export function createAppController({
         setValidationPolicySelectLocked(false);
         setWebcamStatus('calibrated');
         setAccuracySummary(evaluation.accuracySummary);
+        showValidationStatsPopup(evaluation, evaluation.accuracySummary);
+        await submitValidationTestResult(evaluation, evaluation.accuracySummary);
         setNotice('Kiểm tra độ chính xác không thu thập đủ dự đoán ánh nhìn mới và ổn định. Giữ khuôn mặt cố định, rồi chạy lại Kiểm tra độ chính xác.', true);
         await restoreVideoAfterTargetMode();
         return;
@@ -3051,6 +3401,8 @@ export function createAppController({
         setValidationPolicySelectLocked(false);
         setWebcamStatus('calibrated');
         setAccuracySummary(evaluation.accuracySummary);
+        showValidationStatsPopup(evaluation, evaluation.accuracySummary);
+        await submitValidationTestResult(evaluation, evaluation.accuracySummary);
         setNotice('Kiểm tra độ chính xác chưa bao phủ đủ trình phát. Giữ khuôn mặt cố định và thử lại tất cả mục tiêu để khôi phục độ chính xác webcam đáng tin cậy.', true);
         await restoreVideoAfterTargetMode();
         return;
@@ -3059,6 +3411,7 @@ export function createAppController({
       const correctedValidationSummary = evaluation.correctedValidationSummary;
 
       state.gazeCorrection = evaluation.validationPassed ? evaluation.liveCalibration : null;
+      resetLiveGazeFilterState();
       state.refinementAccuracySummary = evaluation.refinement.correctedSummary;
       state.accuracySummary = evaluation.validationSummary;
       state.correctedAccuracySummary = correctedValidationSummary;
@@ -3077,6 +3430,8 @@ export function createAppController({
       setValidationPolicySelectLocked(false);
       setWebcamStatus('calibrated');
       setAccuracySummary(correctedValidationSummary);
+      showValidationStatsPopup(evaluation, correctedValidationSummary);
+      await submitValidationTestResult(evaluation, correctedValidationSummary);
       if (correctedValidationSummary.quality === 'untested') {
         setNotice('Kiểm tra độ chính xác không thu thập được dự đoán ánh nhìn. Hãy hiệu chuẩn lại và giữ khuôn mặt ổn định trong khung hình.', true);
       } else {
@@ -3724,7 +4079,7 @@ export function createAppController({
       return;
     }
 
-    const trustedForAoiAnalysis = state.mode !== 'webcam' || state.accuracyValidated;
+    const trustedForAoiAnalysis = state.appMode === 'participant' || state.mode !== 'webcam' || state.accuracyValidated;
 
     state.samples.push(buildRecordingSample({
       timeSec: sourceVideo.currentTime,
@@ -3872,10 +4227,38 @@ export function createAppController({
   }
 
   function canRecordCurrentMode() {
+    if (state.appMode === 'participant') {
+      return Boolean(getSeeSoCalibrationData()) || state.webcamCalibrationTrained || state.webcamStarted;
+    }
+
     return true;
   }
 
+  function isAoiPackageLoading() {
+    return typeof aoiSource === 'string' && aoiSource.startsWith('loading ');
+  }
+
+  function hasLoadedStudyAois() {
+    return activeAois.length > 0 && !isAoiPackageLoading() && aoiSource !== 'none';
+  }
+
+  function ensureLoadedStudyAois() {
+    if (hasLoadedStudyAois()) {
+      return true;
+    }
+
+    const message = isAoiPackageLoading()
+      ? 'AOI quality package is still loading. Wait for it to finish before recording or exporting JSON.'
+      : 'No quality AOI package is loaded for this video. Recording/export is blocked.';
+    setNotice(message, true);
+    return false;
+  }
+
   function canStartRecordingNow() {
+    if (!ensureLoadedStudyAois()) {
+      return false;
+    }
+
     const rawDiagnostic = state.rawGazeDiagnostic.latestSummary;
     if (state.mode === 'webcam' && rawDiagnostic?.shouldBlockRecording) {
       setNotice(`${rawDiagnostic.reason} Đã chặn ghi.`, true);
@@ -3955,6 +4338,12 @@ export function createAppController({
     }
 
     if (!canStartRecordingNow()) {
+      return;
+    }
+
+    await setWebcamMode();
+    if (!state.webcamStarted) {
+      syncParticipantSessionControls();
       return;
     }
 
@@ -4301,7 +4690,7 @@ export function createAppController({
     drawnPoints.forEach((point) => {
       const intensity = clampNumber(point.weightMs / maxWeight, 0.18, 1);
       const radius = radiusBase * (0.72 + intensity * 0.42);
-      const alpha = 0.05 + intensity * 0.1;
+      const alpha = 0.1 + intensity * 0.22;
       const gradient = ctx.createRadialGradient(
         point.x,
         point.y,
@@ -4311,10 +4700,11 @@ export function createAppController({
         radius,
       );
 
-      gradient.addColorStop(0, `rgba(252, 119, 83, ${alpha.toFixed(3)})`);
-      gradient.addColorStop(0.36, `rgba(255, 196, 87, ${(alpha * 0.74).toFixed(3)})`);
-      gradient.addColorStop(0.68, `rgba(40, 122, 118, ${(alpha * 0.36).toFixed(3)})`);
-      gradient.addColorStop(1, 'rgba(40, 122, 118, 0)');
+      gradient.addColorStop(0, `rgba(255, 255, 255, ${(alpha * 0.96).toFixed(3)})`);
+      gradient.addColorStop(0.16, `rgba(255, 24, 16, ${alpha.toFixed(3)})`);
+      gradient.addColorStop(0.42, `rgba(255, 210, 28, ${(alpha * 0.76).toFixed(3)})`);
+      gradient.addColorStop(0.72, `rgba(0, 220, 255, ${(alpha * 0.38).toFixed(3)})`);
+      gradient.addColorStop(1, 'rgba(0, 220, 255, 0)');
       ctx.fillStyle = gradient;
       ctx.beginPath();
       ctx.arc(point.x, point.y, radius, 0, Math.PI * 2);
@@ -4555,7 +4945,7 @@ export function createAppController({
     redrawAnalyticsHeatmapOverlay({ force: true });
   }
 
-  function exportSamples() {
+  function buildCurrentExportPayload() {
     syncSelectedCalibrationProfileState();
     syncSelectedValidationPolicyState();
     const activeStatsSamples = getActiveStatsSamples();
@@ -4564,7 +4954,7 @@ export function createAppController({
       : { ...state, samples: activeStatsSamples };
     const { exportAois, namedAoiMetrics } = buildCurrentNamedAoiMetrics(activeStatsSamples);
     const video = buildVideoPackageMetadata();
-    const payload = buildExportPayload({
+    return buildExportPayload({
       sourceVideo: sourceVideo.currentSrc || sourceVideo.src,
       exportedAt: new Date().toISOString(),
       participant: getExportParticipantMetadata(),
@@ -4576,6 +4966,39 @@ export function createAppController({
       aois: exportAois,
       state: exportState,
     });
+  }
+
+  async function exportSamples() {
+    if (!ensureLoadedStudyAois()) {
+      return;
+    }
+
+    const payload = buildCurrentExportPayload();
+
+    if (state.appMode === 'participant') {
+      setParticipantUploadStatus('uploading');
+      participantExportButton.disabled = true;
+      try {
+        const result = await submitParticipantExport(payload, {
+          config: getDeploymentConfig(window),
+          fetchFn: window.fetch.bind(window),
+        });
+
+        if (result.ok) {
+          participantExportButton.disabled = false;
+          setParticipantUploadStatus('uploaded', result.fileName);
+          setNotice(`Đã gửi kết quả nghiên cứu: ${result.fileName}`, true);
+          renderAoiStatsPanel();
+          return;
+        }
+      } catch {
+        // Fall through to the manual JSON download so participants still keep their data.
+      }
+
+      participantExportButton.disabled = false;
+      setParticipantUploadStatus('fallback');
+    }
+
     downloadJson(payload, `aoi-samples-${Date.now()}.json`);
     renderAoiStatsPanel();
   }
@@ -5137,12 +5560,22 @@ export function createAppController({
       participantNameInput.addEventListener('input', handleParticipantMetadataChange);
       participantAgeInput.addEventListener('input', handleParticipantMetadataChange);
       participantConsentInput.addEventListener('change', handleParticipantMetadataChange);
+      getSeeSoGeometryInputs().forEach(([monitorInput, distanceInput]) => {
+        monitorInput.addEventListener('input', persistSeeSoGeometrySettings);
+        distanceInput.addEventListener('input', persistSeeSoGeometrySettings);
+      });
       participantStartButton.addEventListener('click', startParticipantSession);
       participantCalibrateButton.addEventListener('click', startCalibration);
       participantRecordButton.addEventListener('click', toggleParticipantRecording);
       participantExportButton.addEventListener('click', exportSamples);
       validationTestCalibrateButton.addEventListener('click', startCalibration);
       validationTestAccuracyButton.addEventListener('click', startAccuracyCheck);
+      validationStatsCloseButton.addEventListener('click', hideValidationStatsPopup);
+      validationStatsPopup.addEventListener('click', (event) => {
+        if (event.target === validationStatsPopup) {
+          hideValidationStatsPopup();
+        }
+      });
       window.addEventListener('resize', handleResize);
       window.addEventListener('blur', handleWindowFocusLoss);
       document.addEventListener('visibilitychange', handleVisibilityChange);
