@@ -270,6 +270,50 @@ test('seeso provider initializes tracker and forwards successful gaze', async ()
   ]);
 });
 
+test('seeso provider converts monitor-coordinate gaze to browser viewport coordinates', async () => {
+  let gazeCallback = null;
+  const emitted = [];
+  class FakeSeeSo {
+    async initialize() {
+      return 0;
+    }
+
+    setCameraPosition() {}
+    addGazeCallback(callback) { gazeCallback = callback; }
+    addFaceCallback() {}
+    async setCalibrationData() {}
+    startTracking() { return true; }
+  }
+  const provider = createSeeSoProvider({
+    sdk: {
+      SeeSo: FakeSeeSo,
+      TrackingState: { SUCCESS: 0 },
+      InitializationErrorType: { ERROR_NONE: 0 },
+    },
+    licenseKey: 'dev-key',
+    calibrationData: '{"vector":"abc"}',
+    windowRef: { screenX: 240, screenY: 80, outerWidth: 1200 },
+    navigatorRef: {
+      mediaDevices: {
+        async getUserMedia() {
+          return { id: 'camera-stream', getTracks: () => [] };
+        },
+      },
+    },
+    onGaze: (gaze) => emitted.push(gaze),
+  });
+
+  await provider.start();
+  gazeCallback({ x: 740, y: 380, trackingState: 0 });
+
+  assert.deepEqual(emitted, [{
+    x: 500,
+    y: 300,
+    visible: true,
+    source: 'webcam',
+  }]);
+});
+
 test('seeso provider applies calibration geometry before tracking starts', async () => {
   const calls = [];
   const calibrationData = JSON.stringify({
@@ -329,6 +373,98 @@ test('seeso provider applies calibration geometry before tracking starts', async
   ]);
 });
 
+test('seeso provider defaults camera position to the absolute browser window center', async () => {
+  const calls = [];
+  class FakeSeeSo {
+    async initialize() {
+      return 0;
+    }
+
+    setMonitorSize() {}
+    setFaceDistance() {}
+    setCameraPosition(x, isTop) { calls.push(['setCameraPosition', x, isTop]); }
+    addGazeCallback() {}
+    addFaceCallback() {}
+    async setCalibrationData() {}
+    startTracking() { return true; }
+  }
+  const provider = createSeeSoProvider({
+    sdk: {
+      SeeSo: FakeSeeSo,
+      TrackingState: { SUCCESS: 0 },
+      InitializationErrorType: { ERROR_NONE: 0 },
+    },
+    licenseKey: 'dev-key',
+    calibrationData: '{"vector":"abc"}',
+    windowRef: { screenX: 240, screenLeft: 260, screen: { width: 1920 }, outerWidth: 1366, innerWidth: 1000 },
+    navigatorRef: {
+      mediaDevices: {
+        async getUserMedia() {
+          return { id: 'camera-stream', getTracks: () => [] };
+        },
+      },
+    },
+    onGaze: () => {},
+  });
+
+  await provider.start();
+
+  assert.deepEqual(calls, [['setCameraPosition', 740, true]]);
+});
+
+test('seeso provider normalizes hosted calibration data with browser-relative default camera position', async () => {
+  const calls = [];
+  const calibrationData = JSON.stringify({
+    vector: 'abc+def/ghi==',
+    vectorLength: 3,
+    isCameraOnTop: true,
+    cameraX: 500,
+    monitorInch: 16,
+    faceDistance: 50,
+  });
+  class FakeSeeSo {
+    async initialize() {
+      return 0;
+    }
+
+    setMonitorSize(value) { calls.push(['setMonitorSize', value]); }
+    setFaceDistance(value) { calls.push(['setFaceDistance', value]); }
+    setCameraPosition(x, isTop) { calls.push(['setCameraPosition', x, isTop]); }
+    addGazeCallback() {}
+    addFaceCallback() {}
+    async setCalibrationData(value) { calls.push(['setCalibrationData', value]); }
+    startTracking() { return true; }
+  }
+  const provider = createSeeSoProvider({
+    sdk: {
+      SeeSo: FakeSeeSo,
+      TrackingState: { SUCCESS: 0 },
+      InitializationErrorType: { ERROR_NONE: 0 },
+    },
+    licenseKey: 'dev-key',
+    calibrationData,
+    windowRef: { screenX: 240, innerWidth: 1000, outerWidth: 1200, screen: { width: 1920 } },
+    navigatorRef: {
+      mediaDevices: {
+        async getUserMedia() {
+          return { id: 'camera-stream', getTracks: () => [] };
+        },
+      },
+    },
+    onGaze: () => {},
+  });
+
+  await provider.start();
+
+  assert.deepEqual(calls.slice(0, 3), [
+    ['setMonitorSize', 16],
+    ['setFaceDistance', 50],
+    ['setCameraPosition', 740, true],
+  ]);
+  const appliedCalibration = JSON.parse(calls.find((call) => call[0] === 'setCalibrationData')[1]);
+  assert.equal(appliedCalibration.cameraX, 740);
+});
+
 test('seeso provider applies explicit app geometry when calibration data omits it', async () => {
   const calls = [];
   class FakeSeeSo {
@@ -373,7 +509,7 @@ test('seeso provider applies explicit app geometry when calibration data omits i
     ['initialize'],
     ['setMonitorSize', 24],
     ['setFaceDistance', 70],
-    ['setCameraPosition', 640, true],
+    ['setCameraPosition', 600, true],
   ]);
 });
 
@@ -594,6 +730,8 @@ test('app treats SeeSo calibration as hosted setup before webcam tracking', asyn
   const webcamStartIndex = startCalibrationFunction.indexOf('await setWebcamMode()');
 
   assert.match(hostedCalibrationFunction, /createSeeSoProvider\(\{/);
+  assert.match(hostedCalibrationFunction, /createSeeSoCalibrationUserId\(\)/);
+  assert.match(hostedCalibrationFunction, /userId:\s*calibrationUserId/);
   assert.ok(
     seeSoBranchIndex >= 0 && webcamStartIndex >= 0 && seeSoBranchIndex < webcamStartIndex,
     'SeeSo hosted calibration should open before local webcam gaze is started',

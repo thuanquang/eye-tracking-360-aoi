@@ -670,15 +670,15 @@ export function createAppController({
     syncParticipantGazeSetupControls();
   }
 
-  function getSeeSoCalibrationUserId() {
-    const existingUserId = getLocalStorageValue(SEESO_CALIBRATION_USER_ID_STORAGE_KEY);
-    if (existingUserId) {
-      return existingUserId;
-    }
-
+  function createSeeSoCalibrationUserId() {
     const nextUserId = `aoi-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     setLocalStorageValue(SEESO_CALIBRATION_USER_ID_STORAGE_KEY, nextUserId);
     return nextUserId;
+  }
+
+  function getSeeSoCalibrationUserId() {
+    return getLocalStorageValue(SEESO_CALIBRATION_USER_ID_STORAGE_KEY)
+      || createSeeSoCalibrationUserId();
   }
 
   function initializeGazeProviderControls() {
@@ -1112,7 +1112,13 @@ export function createAppController({
     appShell.classList.toggle('is-accuracy-check-active', isAccuracyTargetActive);
     validationTestPanel.hidden = !isValidationTest;
     validationTestCalibrateButton.disabled = !hasSeeSoKey || !hasSeeSoGeometry;
-    validationTestAccuracyButton.disabled = !hasSeeSoKey || !hasSeeSoGeometry || !hasSeeSoCalibration || state.isRecording;
+    validationTestAccuracyButton.disabled = (
+      !hasSeeSoKey ||
+      !hasSeeSoGeometry ||
+      !hasSeeSoCalibration ||
+      state.isRecording ||
+      state.webcamStatus === 'validating'
+    );
     validationTestCalibrateButton.textContent = hasSeeSoCalibration
       ? 'Hiệu chỉnh lại camera'
       : 'Hiệu chỉnh camera';
@@ -3046,6 +3052,7 @@ export function createAppController({
       includeProvider: false,
       modePlacement: 'hash',
     }).toString();
+    const calibrationUserId = createSeeSoCalibrationUserId();
     setNotice('Đang mở hiệu chỉnh camera. Quay lại đây sau khi hoàn tất.', false);
     try {
       const calibrationProvider = webcamProvider?.openCalibrationPage
@@ -3063,7 +3070,7 @@ export function createAppController({
         calibrationPointCount: SEESO_CALIBRATION_POINT_COUNT,
         monitorSizeInch: geometrySettings.monitorSizeInch,
         faceDistanceCm: geometrySettings.faceDistanceCm,
-        userId: getSeeSoCalibrationUserId(),
+        userId: calibrationUserId,
       });
     } catch (error) {
       setNotice(`Không thể mở hiệu chỉnh camera: ${error.message}`);
@@ -3172,9 +3179,11 @@ export function createAppController({
       return;
     }
 
+    setWebcamStatus('validating');
     await setWebcamMode();
 
     if (!state.webcamStarted) {
+      setWebcamStatus(state.webcamCalibrationTrained ? 'calibrated' : 'idle');
       return;
     }
 
@@ -3203,7 +3212,6 @@ export function createAppController({
     setCalibrationProfileSelectLocked(true);
     setValidationPolicySelectLocked(true);
     calibrationOverlay.hidden = false;
-    setWebcamStatus('validating');
     setAccuracySummary(null);
     state.activeValidationPolicyId = validationPolicy.id;
     positionTargetOverlay();

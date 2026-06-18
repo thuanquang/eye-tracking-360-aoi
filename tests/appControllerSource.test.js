@@ -284,6 +284,24 @@ test('validation mode hides controls beside the screen during active accuracy ta
   );
 });
 
+test('validation mode shows pending feedback immediately after starting accuracy check', () => {
+  const startAccuracyCheckFunction = controllerSource.match(
+    /async\s+function\s+startAccuracyCheck\(\)\s*\{[\s\S]*?\n  \}/,
+  )?.[0] || '';
+
+  assert.notEqual(startAccuracyCheckFunction, '', 'The controller should define the accuracy-check starter.');
+  assert.match(
+    startAccuracyCheckFunction,
+    /setWebcamStatus\('validating'\);\s*await\s+setWebcamMode\(\);/,
+    'Validation mode should enter a visible validating state before awaiting tracker startup.',
+  );
+  assert.match(
+    controllerSource,
+    /validationTestAccuracyButton\.disabled\s*=\s*\([\s\S]*?!hasSeeSoKey\s*\|\|[\s\S]*?!hasSeeSoGeometry\s*\|\|[\s\S]*?!hasSeeSoCalibration\s*\|\|[\s\S]*?state\.isRecording\s*\|\|[\s\S]*?state\.webcamStatus\s*===\s*'validating'[\s\S]*?\);/,
+    'Validation mode should disable the accuracy button while the check is starting or running.',
+  );
+});
+
 test('validation mode submits the completed validation result to deployment storage', () => {
   assert.match(
     controllerSource,

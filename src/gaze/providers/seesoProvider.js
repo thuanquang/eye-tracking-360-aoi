@@ -207,6 +207,87 @@ function positiveNumber(value) {
   return number !== null && number > 0 ? number : null;
 }
 
+function getWindowScreenLeft(windowRef) {
+  return finiteNumber(windowRef?.screenX) ?? finiteNumber(windowRef?.screenLeft);
+}
+
+function getWindowScreenTop(windowRef) {
+  return finiteNumber(windowRef?.screenY) ?? finiteNumber(windowRef?.screenTop);
+}
+
+function convertMonitorGazeToViewport(gazeInfo, windowRef) {
+  return {
+    x: gazeInfo.x - (getWindowScreenLeft(windowRef) ?? 0),
+    y: gazeInfo.y - (getWindowScreenTop(windowRef) ?? 0),
+  };
+}
+
+function getAbsoluteWindowCenterX(windowRef) {
+  const screenLeft = getWindowScreenLeft(windowRef);
+  const viewportWidth = positiveNumber(windowRef?.innerWidth) ?? positiveNumber(windowRef?.outerWidth);
+
+  if (screenLeft === null || viewportWidth === null) {
+    return null;
+  }
+
+  return screenLeft + viewportWidth / 2;
+}
+
+function getDefaultCameraXForWindow(windowRef) {
+  const absoluteWindowCenterX = getAbsoluteWindowCenterX(windowRef);
+  if (absoluteWindowCenterX !== null) {
+    return absoluteWindowCenterX;
+  }
+
+  return (
+    positiveNumber(windowRef?.outerWidth) ||
+    positiveNumber(windowRef?.innerWidth) ||
+    positiveNumber(windowRef?.screen?.width) ||
+    0
+  ) / 2;
+}
+
+function shouldNormalizeHostedDefaultCameraX(cameraX, windowRef) {
+  const screenLeft = getWindowScreenLeft(windowRef);
+  const innerWidth = positiveNumber(windowRef?.innerWidth);
+
+  if (screenLeft === null || Math.abs(screenLeft) < 1 || innerWidth === null) {
+    return false;
+  }
+
+  const hostedDefaultCameraX = innerWidth / 2;
+  const tolerancePx = Math.max(2, innerWidth * 0.01);
+  return Math.abs(cameraX - hostedDefaultCameraX) <= tolerancePx;
+}
+
+function normalizeSeeSoCalibrationDataForWindow(calibrationData, windowRef) {
+  if (!calibrationData) {
+    return calibrationData;
+  }
+
+  try {
+    const isStringPayload = typeof calibrationData === 'string';
+    const data = isStringPayload ? JSON.parse(calibrationData) : calibrationData;
+    if (!data || typeof data !== 'object') {
+      return calibrationData;
+    }
+
+    const cameraX = finiteNumber(data.cameraX);
+    if (cameraX === null || !shouldNormalizeHostedDefaultCameraX(cameraX, windowRef)) {
+      return calibrationData;
+    }
+
+    const normalizedData = {
+      ...data,
+      cameraX: getDefaultCameraXForWindow(windowRef),
+    };
+
+    return isStringPayload ? JSON.stringify(normalizedData) : normalizedData;
+  } catch {
+    return calibrationData;
+  }
+}
+
 export function createSeeSoProvider({
   sdk = null,
   moduleLoader,
@@ -285,12 +366,7 @@ export function createSeeSoProvider({
   }
 
   function getDefaultCameraX() {
-    return (
-      positiveNumber(windowRef?.screen?.width) ||
-      positiveNumber(windowRef?.outerWidth) ||
-      positiveNumber(windowRef?.innerWidth) ||
-      0
-    ) / 2;
+    return getDefaultCameraXForWindow(windowRef);
   }
 
   function configureTrackerGeometry(nextTracker, calibrationSettings = null) {
@@ -331,6 +407,7 @@ export function createSeeSoProvider({
         throw new Error(describeSeeSoInitializationError(initCode));
       }
 
+      calibrationData = normalizeSeeSoCalibrationDataForWindow(calibrationData, windowRef);
       const calibrationSettings = parseCalibrationSettings(calibrationData);
       configureTrackerGeometry(nextTracker, calibrationSettings);
 
@@ -343,9 +420,10 @@ export function createSeeSoProvider({
           return;
         }
 
+        const viewportGaze = convertMonitorGazeToViewport(gazeInfo, windowRef);
         onGaze?.({
-          x: gazeInfo.x,
-          y: gazeInfo.y,
+          x: viewportGaze.x,
+          y: viewportGaze.y,
           visible: true,
           source: 'webcam',
         });
@@ -395,8 +473,8 @@ export function createSeeSoProvider({
       }));
     },
     async setCalibrationData(nextCalibrationData) {
-      calibrationData = nextCalibrationData;
-      await tracker?.setCalibrationData?.(nextCalibrationData);
+      calibrationData = normalizeSeeSoCalibrationDataForWindow(nextCalibrationData, windowRef);
+      await tracker?.setCalibrationData?.(calibrationData);
     },
     stop() {
       stopRequested = true;
