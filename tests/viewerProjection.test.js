@@ -141,7 +141,7 @@ test('browser entrypoint cache-busts viewer projection modules', async () => {
   assert.match(controllerSource, /'\.\/studyVideos\.js\?v=nguyen-hue-1'/);
 });
 
-test('browser entrypoint lists legacy and Nguyen Hue study videos', async () => {
+test('browser entrypoint lists finalized study videos', async () => {
   const indexSource = await readFile(new URL('../index.html', import.meta.url), 'utf8');
 
   [
@@ -149,11 +149,11 @@ test('browser entrypoint lists legacy and Nguyen Hue study videos', async () => 
     'culture-thap-ba-2d',
     'nature-tam-coc-360',
     'nature-tam-coc-2d',
-    'nguyen-hue-360-0500',
     'nguyen-hue-360-0532',
-    'nguyen-hue-2d-0500',
     'nguyen-hue-2d-0532',
   ].forEach((id) => {
     assert.match(indexSource, new RegExp(`<option value="${id}"`));
   });
+  assert.doesNotMatch(indexSource, /<option value="nguyen-hue-360-0500"/);
+  assert.doesNotMatch(indexSource, /<option value="nguyen-hue-2d-0500"/);
 });

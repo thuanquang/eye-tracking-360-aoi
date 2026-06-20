@@ -369,6 +369,49 @@ test('participant setup is concise and exposes explicit video choice', () => {
   );
 });
 
+test('participant recording view hides app chrome until recording stops', () => {
+  assert.match(
+    html,
+    /id="participantRecordingCountdown"/,
+    'Participant recording should include a visible countdown inside the player.',
+  );
+  assert.match(
+    html,
+    /id="participantResultPanel"[\s\S]*id="participantExportCsvButton"[\s\S]*id="participantExportJsonButton"[\s\S]*id="participantExportHeatmapButton"/,
+    'Participant results should expose CSV, JSON, and heatmap export actions.',
+  );
+  assert.match(
+    css,
+    /\.participant-recording-countdown\s*\{[\s\S]*?position:\s*absolute/,
+    'The recording countdown should be an overlaid player control.',
+  );
+  assert.match(
+    css,
+    /\.participant-result-panel\s*\{[\s\S]*?display:\s*grid/,
+    'Participant results should render as a structured stats panel.',
+  );
+  assert.match(
+    html,
+    /id="participantExportButton"[^>]*>Tải CSV<\/button>/,
+    'Participant export should be a local CSV download action for offline fieldwork.',
+  );
+  assert.match(
+    css,
+    /\.app-shell\.is-participant-recording-focus\s*\{[\s\S]*?grid-template-columns:\s*minmax\(0,\s*1fr\)[\s\S]*?padding:\s*0/,
+    'Participant recording focus should make the video the only grid column.',
+  );
+  assert.match(
+    css,
+    /\.app-shell\.is-participant-recording-focus\s+\.viewer-toolbar,[\s\S]*?\.app-shell\.is-participant-recording-focus\s+#participantPanel\s*\{[\s\S]*?display:\s*none/,
+    'Participant recording focus should hide the title toolbar and participant side panel.',
+  );
+  assert.match(
+    css,
+    /\.app-shell\.is-participant-recording-focus\s+\.viewer\s*\{[\s\S]*?height:\s*100vh/,
+    'Participant recording focus should make the video fill the viewport height.',
+  );
+});
+
 test('flat video viewer styling removes drag affordance', () => {
   assert.match(
     css,

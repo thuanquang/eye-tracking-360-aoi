@@ -54,9 +54,9 @@ test('creates fresh app state without shared mutable arrays', () => {
 test('creates initial video metadata for the default study video', () => {
   assert.deepEqual(createInitialVideoInfo(), {
     kind: 'study-video',
-    id: 'nguyen-hue-360-0500',
-    name: 'nguyen-hue-360-0500-0530.mp4',
-    path: 'assets/replacement-videos/nguyen-hue-360-0500-0530.mp4',
+    id: 'nguyen-hue-360-0532',
+    name: 'nguyen-hue-360-0532-0602.mp4',
+    path: 'assets/replacement-videos/nguyen-hue-360-0532-0602.mp4',
     type: 'video/mp4',
     size: null,
     lastModified: null,

@@ -109,7 +109,6 @@ import {
   buildStudyAssetFetchPath,
   getDeploymentConfig,
   getDeploymentSeeSoLicenseKey,
-  submitParticipantExport,
   submitValidationResult,
 } from './deploymentConfig.js';
 import {
@@ -157,6 +156,7 @@ export function createAppController({
   let seeSoLicenseKeyValue = '';
   let shouldAutoStartSeeSoGazeAfterCalibrationReturn = false;
   let aoiOverlayVersion = 0;
+  let participantRecordingStartedAtSec = null;
 
   let recordingSampleScheduler = createSampleScheduler({ intervalMs: RECORDING_SAMPLE_INTERVAL_MS });
   const GAZE_SMOOTHING_ALPHA = GAZE_SMOOTHING.alpha;
@@ -191,6 +191,8 @@ export function createAppController({
   const SEESO_CALIBRATION_RETURN_MODE_STORAGE_KEY = 'aoi.seesoCalibrationReturnMode';
   const SEESO_MONITOR_SIZE_STORAGE_KEY = 'aoi.seesoMonitorSizeInch';
   const SEESO_FACE_DISTANCE_STORAGE_KEY = 'aoi.seesoFaceDistanceCm';
+  const PARTICIPANT_RECORDING_LIMIT_SEC = 30;
+  const PARTICIPANT_EXPORT_SUCCESS_MESSAGE = 'K\u1ebft qu\u1ea3 \u0111\u00e3 \u0111\u01b0\u1ee3c g\u1eedi l\u00ean th\u00e0nh c\u00f4ng';
   const DEFAULT_VALIDATION_MONITOR_SIZE_INCH = 15.6;
   const DEFAULT_VALIDATION_FACE_DISTANCE_CM = 60;
   const PARTICIPANT_DRAFT_STORAGE_KEY = 'aoi.participantDraft';
@@ -203,6 +205,7 @@ export function createAppController({
     viewer,
     viewerSection,
     viewerNotice,
+    participantRecordingCountdown,
     aoiOverlay,
     gazeDot,
     sourceVideo,
@@ -285,6 +288,11 @@ export function createAppController({
     participantAccuracyButton,
     participantRecordButton,
     participantExportButton,
+    participantResultPanel,
+    participantResultSummary,
+    participantExportCsvButton,
+    participantExportJsonButton,
+    participantExportHeatmapButton,
     participantUploadStatus,
     participantFlowSteps,
     adminFlowSteps,
@@ -310,6 +318,7 @@ export function createAppController({
     cancelCalibrationButton,
   } = dom;
 
+  const initialViewerNoticeText = viewerNotice.textContent;
   const state = createInitialAppState();
   let activeCalibrationProfile = null;
 
@@ -369,6 +378,13 @@ export function createAppController({
   function setNotice(message, visible = true) {
     viewerNotice.textContent = message;
     viewerNotice.classList.toggle('is-hidden', !visible);
+  }
+
+  function isViewerNoticeShowingWorkflowMessage() {
+    return (
+      !viewerNotice.classList.contains('is-hidden') &&
+      viewerNotice.textContent !== initialViewerNoticeText
+    );
   }
 
   function getCurrentProjection() {
@@ -801,6 +817,9 @@ export function createAppController({
 
   function handleParticipantStudyVideoChange() {
     setStudyVideo(participantStudyVideoSelect.value);
+    persistParticipantDraft();
+    persistParticipantSessionState();
+    updateParticipantStartState();
   }
 
   function getRequestedAppMode() {
@@ -832,7 +851,7 @@ export function createAppController({
 
   function setParticipantUploadStatus(status, fileName = '') {
     const statusText = participantUploadStatus.querySelector('[data-upload-status-text]') || participantUploadStatus;
-    participantUploadStatus.classList.remove('is-uploading', 'is-uploaded', 'is-fallback');
+    participantUploadStatus.classList.remove('is-uploading', 'is-uploaded', 'is-fallback', 'is-downloaded');
 
     if (!status) {
       participantUploadStatus.hidden = true;
@@ -853,6 +872,8 @@ export function createAppController({
         : 'Đã gửi kết quả lên R2.';
     } else if (status === 'fallback') {
       statusText.textContent = 'Không gửi được lên R2. Đang tải JSON xuống máy này.';
+    } else if (status === 'downloaded') {
+      statusText.textContent = PARTICIPANT_EXPORT_SUCCESS_MESSAGE;
     }
   }
 
@@ -865,6 +886,13 @@ export function createAppController({
     };
   }
 
+  function collectParticipantDraft() {
+    return {
+      ...collectParticipantMetadata(),
+      studyVideoId: selectedStudyVideo.id,
+    };
+  }
+
   function applyParticipantMetadataToInputs(metadata = {}) {
     participantIdInput.value = typeof metadata.id === 'string' ? metadata.id : '';
     participantNameInput.value = typeof metadata.name === 'string' ? metadata.name : '';
@@ -873,7 +901,7 @@ export function createAppController({
   }
 
   function persistParticipantDraft() {
-    setSessionStorageValue(PARTICIPANT_DRAFT_STORAGE_KEY, JSON.stringify(collectParticipantMetadata()));
+    setSessionStorageValue(PARTICIPANT_DRAFT_STORAGE_KEY, JSON.stringify(collectParticipantDraft()));
   }
 
   function persistParticipantSessionState() {
@@ -882,7 +910,10 @@ export function createAppController({
       return;
     }
 
-    setSessionStorageValue(PARTICIPANT_SESSION_STORAGE_KEY, JSON.stringify(state.participant));
+    setSessionStorageValue(PARTICIPANT_SESSION_STORAGE_KEY, JSON.stringify({
+      ...state.participant,
+      studyVideoId: selectedStudyVideo.id,
+    }));
   }
 
   function isParticipantMetadataValid(metadata) {
@@ -894,6 +925,14 @@ export function createAppController({
       metadata.age < 120 &&
       metadata.consent
     );
+  }
+
+  function restoreParticipantStudyVideo(videoId) {
+    if (!videoId || !findStudyVideoById(videoId)) {
+      return;
+    }
+
+    setStudyVideo(videoId, { clearAois: true });
   }
 
   function restoreParticipantState() {
@@ -918,9 +957,18 @@ export function createAppController({
         age: Number(session.age),
         consent: Boolean(session.consent),
         startedAt: String(session.startedAt),
+        studyVideoId: typeof session.studyVideoId === 'string'
+          ? session.studyVideoId
+          : (typeof draft?.studyVideoId === 'string' ? draft.studyVideoId : selectedStudyVideo.id),
       };
       applyParticipantMetadataToInputs(state.participant);
     }
+
+    restoreParticipantStudyVideo(
+      typeof state.participant.studyVideoId === 'string'
+        ? state.participant.studyVideoId
+        : draft?.studyVideoId,
+    );
   }
 
   function updateParticipantStartState() {
@@ -939,6 +987,39 @@ export function createAppController({
   function handleParticipantMetadataChange() {
     persistParticipantDraft();
     updateParticipantStartState();
+  }
+
+  function renderParticipantResultPanel() {
+    const hasResults = state.appMode === 'participant' && state.samples.length > 0 && hasLoadedStudyAois();
+
+    participantResultPanel.hidden = !hasResults;
+    participantExportCsvButton.disabled = !hasResults;
+    participantExportJsonButton.disabled = !hasResults;
+    participantExportHeatmapButton.disabled = !hasResults;
+
+    if (!hasResults) {
+      participantResultSummary.replaceChildren();
+      return;
+    }
+
+    const { namedAoiMetrics } = buildCurrentNamedAoiMetrics(state.samples);
+    const viewModel = buildAoiStatsViewModel({
+      namedAoiMetrics,
+      sampleCount: state.samples.length,
+    });
+    const topAoi = viewModel.cards[0];
+    const items = [
+      ...viewModel.summaryItems.slice(0, 3).map((item) => (
+        createStatsBlock('participant-result-metric', item.label, item.value)
+      )),
+    ];
+
+    if (topAoi) {
+      items.push(createStatsBlock('participant-result-metric', 'AOI top', topAoi.label));
+      items.push(createStatsBlock('participant-result-metric', topAoi.primaryLabel, topAoi.primaryValue));
+    }
+
+    participantResultSummary.replaceChildren(...items);
   }
 
   function syncAdminGazeSetupControls() {
@@ -1048,10 +1129,13 @@ export function createAppController({
       : state.webcamCalibrationTrained;
 
     appShell.classList.toggle('is-participant-started', isParticipant && isStarted);
+    appShell.classList.toggle('is-participant-recording-focus', state.appMode === 'participant' && state.isRecording);
     participantSessionPanel.hidden = !isParticipant || !isStarted;
     syncParticipantGazeSetupControls();
+    renderParticipantResultPanel();
 
     if (!isParticipant) {
+      participantRecordingCountdown.hidden = true;
       return;
     }
 
@@ -1222,6 +1306,7 @@ export function createAppController({
 
     state.participant = {
       ...metadata,
+      studyVideoId: selectedStudyVideo.id,
       startedAt: new Date().toISOString(),
     };
     persistParticipantDraft();
@@ -1266,6 +1351,7 @@ export function createAppController({
 
     return {
       ...state.participant,
+      studyVideoId: selectedStudyVideo.id,
     };
   }
 
@@ -4153,6 +4239,7 @@ export function createAppController({
       drawMiniMap({ nowMs: now, force: false });
     }
     maybeSample(now);
+    enforceParticipantRecordingLimit();
     renderer.render(scene, camera);
     requestAnimationFrame(animate);
   }
@@ -4279,6 +4366,63 @@ export function createAppController({
     return true;
   }
 
+  function getParticipantRecordingElapsedSec() {
+    if (!Number.isFinite(participantRecordingStartedAtSec)) {
+      return 0;
+    }
+
+    const currentTime = Number(sourceVideo.currentTime);
+    return Math.max(0, (Number.isFinite(currentTime) ? currentTime : 0) - participantRecordingStartedAtSec);
+  }
+
+  function formatCountdownSeconds(value) {
+    const seconds = Math.max(0, Math.ceil(value));
+    return `00:${String(seconds).padStart(2, '0')}`;
+  }
+
+  function updateParticipantRecordingCountdown() {
+    if (state.appMode !== 'participant' || !state.isRecording) {
+      participantRecordingCountdown.hidden = true;
+      return PARTICIPANT_RECORDING_LIMIT_SEC;
+    }
+
+    const remainingSec = Math.max(
+      0,
+      PARTICIPANT_RECORDING_LIMIT_SEC - getParticipantRecordingElapsedSec(),
+    );
+    participantRecordingCountdown.hidden = false;
+    participantRecordingCountdown.textContent = formatCountdownSeconds(remainingSec);
+    return remainingSec;
+  }
+
+  function startParticipantRecordingCountdown() {
+    participantRecordingStartedAtSec = Number.isFinite(Number(sourceVideo.currentTime))
+      ? Number(sourceVideo.currentTime)
+      : 0;
+    updateParticipantRecordingCountdown();
+  }
+
+  function stopParticipantRecordingCountdown() {
+    participantRecordingStartedAtSec = null;
+    participantRecordingCountdown.hidden = true;
+  }
+
+  function enforceParticipantRecordingLimit() {
+    if (state.appMode !== 'participant' || !state.isRecording) {
+      updateParticipantRecordingCountdown();
+      return;
+    }
+
+    const remainingSec = updateParticipantRecordingCountdown();
+    if (remainingSec > 0) {
+      return;
+    }
+
+    setRecordingActive(false);
+    pauseSynchronizedParticipantPlayback();
+    setNotice('Báº£n ghi Ä‘Ã£ tá»± dá»«ng sau 30 giÃ¢y. CÃ³ thá»ƒ xuáº¥t káº¿t quáº£.', true);
+  }
+
   function setRecordingActive(isRecording) {
     if (state.isRecording === isRecording) {
       return;
@@ -4298,6 +4442,11 @@ export function createAppController({
     recordButton.classList.toggle('primary', !state.isRecording);
     syncAdminGazeSetupControls();
     syncParticipantSessionControls();
+    if (state.appMode === 'participant' && state.isRecording) {
+      startParticipantRecordingCountdown();
+    } else {
+      stopParticipantRecordingCountdown();
+    }
     if (!state.isRecording) {
       enterAnalyticsMode('live');
     }
@@ -4312,6 +4461,10 @@ export function createAppController({
   }
 
   async function startSynchronizedParticipantPlayback() {
+    if (state.appMode === 'participant') {
+      sourceVideo.loop = false;
+    }
+
     if (!sourceVideo.paused) {
       playVideoButton.textContent = 'Tạm dừng';
       return true;
@@ -4380,6 +4533,18 @@ export function createAppController({
     playVideoButton.textContent = 'Tạm dừng';
     if (!state.isRecording && canRecordCurrentMode() && canStartRecordingNow()) {
       setRecordingActive(true);
+    }
+  }
+
+  function handleParticipantVideoEnded() {
+    if (state.appMode !== 'participant') {
+      return;
+    }
+
+    playVideoButton.textContent = 'Phát';
+    if (state.isRecording) {
+      setRecordingActive(false);
+      setNotice('Bản ghi đã hoàn tất. Có thể tải CSV thống kê xuống máy này.', true);
     }
   }
 
@@ -4481,6 +4646,57 @@ export function createAppController({
 
   function downloadJson(payload, fileName) {
     downloadText(JSON.stringify(payload, null, 2), fileName, 'application/json');
+  }
+
+  function normalizeDownloadSegment(value, fallback) {
+    const normalized = String(value ?? '')
+      .trim()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-zA-Z0-9-]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .toLowerCase();
+
+    return normalized || fallback;
+  }
+
+  function buildParticipantCsvFileName() {
+    const participantId = normalizeDownloadSegment(
+      state.participant.id || participantIdInput.value,
+      'participant',
+    );
+    const videoId = normalizeDownloadSegment(
+      selectedStudyVideo?.id || sourceVideoInfo.name,
+      'video',
+    );
+
+    return `aoi-stats-${videoId}-${participantId}-${Date.now()}.csv`;
+  }
+
+  function buildParticipantJsonFileName() {
+    const participantId = normalizeDownloadSegment(
+      state.participant.id || participantIdInput.value,
+      'participant',
+    );
+    const videoId = normalizeDownloadSegment(
+      selectedStudyVideo?.id || sourceVideoInfo.name,
+      'video',
+    );
+
+    return `aoi-result-${videoId}-${participantId}-${Date.now()}.json`;
+  }
+
+  function buildParticipantHeatmapFileName() {
+    const participantId = normalizeDownloadSegment(
+      state.participant.id || participantIdInput.value,
+      'participant',
+    );
+    const videoId = normalizeDownloadSegment(
+      selectedStudyVideo?.id || sourceVideoInfo.name,
+      'video',
+    );
+
+    return `aoi-heatmap-${videoId}-${participantId}-${Date.now()}.json`;
   }
 
   function buildVideoPackageMetadata() {
@@ -5017,36 +5233,65 @@ export function createAppController({
     });
   }
 
-  async function exportSamples() {
+  function exportParticipantStatsCsv() {
+    const { namedAoiMetrics } = buildCurrentNamedAoiMetrics(getActiveStatsSamples());
+    const csv = buildAoiStatsCsv({ namedAoiMetrics });
+    const fileName = buildParticipantCsvFileName();
+
+    downloadText(csv, fileName, 'text/csv;charset=utf-8');
+    participantExportButton.disabled = false;
+    setParticipantUploadStatus('downloaded', fileName);
+    setNotice(PARTICIPANT_EXPORT_SUCCESS_MESSAGE, true);
+    renderParticipantResultPanel();
+    renderAoiStatsPanel();
+  }
+
+  function exportParticipantJson() {
     if (!ensureLoadedStudyAois()) {
       return;
     }
 
     const payload = buildCurrentExportPayload();
+    downloadJson(payload, buildParticipantJsonFileName());
+    setParticipantUploadStatus('downloaded');
+    setNotice(PARTICIPANT_EXPORT_SUCCESS_MESSAGE, true);
+    renderParticipantResultPanel();
+    renderAoiStatsPanel();
+  }
+
+  function exportParticipantHeatmap() {
+    if (!ensureLoadedStudyAois()) {
+      return;
+    }
+
+    const payload = buildCurrentExportPayload();
+    const heatmapPayload = {
+      exportedAt: payload.exportedAt,
+      participant: payload.participant,
+      video: payload.video,
+      summary: {
+        heatmaps: payload.summary.heatmaps,
+      },
+    };
+
+    downloadJson(heatmapPayload, buildParticipantHeatmapFileName());
+    setParticipantUploadStatus('downloaded');
+    setNotice(PARTICIPANT_EXPORT_SUCCESS_MESSAGE, true);
+    renderParticipantResultPanel();
+    renderAoiStatsPanel();
+  }
+
+  async function exportSamples() {
+    if (!ensureLoadedStudyAois()) {
+      return;
+    }
 
     if (state.appMode === 'participant') {
-      setParticipantUploadStatus('uploading');
-      participantExportButton.disabled = true;
-      try {
-        const result = await submitParticipantExport(payload, {
-          config: getDeploymentConfig(window),
-          fetchFn: window.fetch.bind(window),
-        });
-
-        if (result.ok) {
-          participantExportButton.disabled = false;
-          setParticipantUploadStatus('uploaded', result.fileName);
-          setNotice(`Đã gửi kết quả nghiên cứu: ${result.fileName}`, true);
-          renderAoiStatsPanel();
-          return;
-        }
-      } catch {
-        // Fall through to the manual JSON download so participants still keep their data.
-      }
-
-      participantExportButton.disabled = false;
-      setParticipantUploadStatus('fallback');
+      exportParticipantStatsCsv();
+      return;
     }
+
+    const payload = buildCurrentExportPayload();
 
     downloadJson(payload, `aoi-samples-${Date.now()}.json`);
     renderAoiStatsPanel();
@@ -5532,7 +5777,11 @@ export function createAppController({
       return;
     }
 
-    setNotice('Video đã tải. Nhấn Phát, kéo để xoay, rồi bắt đầu ghi.', false);
+    if (isViewerNoticeShowingWorkflowMessage()) {
+      return;
+    }
+
+    setNotice('Video đã load thành công trên hệ thống và sẵn sàng để tải về.', false);
   }
 
   return {
@@ -5541,6 +5790,7 @@ export function createAppController({
       sourceVideo.addEventListener('canplay', syncVideoNotice);
       sourceVideo.addEventListener('play', syncParticipantRecordingFromPlayback);
       sourceVideo.addEventListener('pause', syncParticipantRecordingFromPlayback);
+      sourceVideo.addEventListener('ended', handleParticipantVideoEnded);
 
       sourceVideo.addEventListener('error', () => {
         setNotice('Không thể tải video nghiên cứu đã chọn. Hãy kiểm tra các clip nghiên cứu trong assets/clips và assets/clips-2d.');
@@ -5617,6 +5867,9 @@ export function createAppController({
       participantCalibrateButton.addEventListener('click', startCalibration);
       participantRecordButton.addEventListener('click', toggleParticipantRecording);
       participantExportButton.addEventListener('click', exportSamples);
+      participantExportCsvButton.addEventListener('click', exportParticipantStatsCsv);
+      participantExportJsonButton.addEventListener('click', exportParticipantJson);
+      participantExportHeatmapButton.addEventListener('click', exportParticipantHeatmap);
       validationTestCalibrateButton.addEventListener('click', startCalibration);
       validationTestAccuracyButton.addEventListener('click', startAccuracyCheck);
       validationStatsCloseButton.addEventListener('click', hideValidationStatsPopup);

@@ -207,6 +207,8 @@ try {
   await participantPage.locator('#participantNameInput').fill('Nguyen A');
   await participantPage.locator('#participantAgeInput').fill('22');
   await participantPage.locator('#participantConsentInput').check();
+  await participantPage.locator('#seeSoMonitorSizeInput').fill('15.6');
+  await participantPage.locator('#seeSoFaceDistanceInput').fill('60');
   assert.equal(await participantPage.locator('#participantStartButton').isEnabled(), true, 'Participant start should enable after valid metadata.');
   await participantPage.locator('#participantStartButton').click();
   assert.equal(await participantPage.locator('#viewerSection').isVisible(), true, 'Participant session should advance to the viewer screen.');

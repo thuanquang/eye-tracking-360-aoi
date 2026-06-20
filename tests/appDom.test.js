@@ -21,6 +21,7 @@ const APP_SELECTORS = [
   '#viewer',
   '#viewerSection',
   '#viewerNotice',
+  '#participantRecordingCountdown',
   '#aoiOverlay',
   '#gazeDot',
   '#sourceVideo',
@@ -104,6 +105,11 @@ const APP_SELECTORS = [
   '#participantAccuracyButton',
   '#participantRecordButton',
   '#participantExportButton',
+  '#participantResultPanel',
+  '#participantResultSummary',
+  '#participantExportCsvButton',
+  '#participantExportJsonButton',
+  '#participantExportHeatmapButton',
   '#participantUploadStatus',
   '#participantFlowRail .flow-step',
   '#adminWorkflowRail .admin-flow-step',
@@ -150,6 +156,7 @@ test('queryAppDom resolves core app selectors', () => {
   const dom = queryAppDom(document);
 
   assert.equal(dom.viewer.selector, '#viewer');
+  assert.equal(dom.participantRecordingCountdown.selector, '#participantRecordingCountdown');
   assert.equal(dom.sourceVideo.selector, '#sourceVideo');
   assert.equal(dom.studyVideoSelect.selector, '#studyVideoSelect');
   assert.equal(dom.participantStudyVideoSelect.selector, '#participantStudyVideoSelect');
@@ -182,6 +189,11 @@ test('queryAppDom resolves core app selectors', () => {
   assert.equal(dom.aoiStatsCards.selector, '#aoiStatsCards');
   assert.equal(dom.aoiStatsDetails.selector, '#aoiStatsDetails');
   assert.equal(dom.aoiStatsTable.selector, '#aoiStatsTable');
+  assert.equal(dom.participantResultPanel.selector, '#participantResultPanel');
+  assert.equal(dom.participantResultSummary.selector, '#participantResultSummary');
+  assert.equal(dom.participantExportCsvButton.selector, '#participantExportCsvButton');
+  assert.equal(dom.participantExportJsonButton.selector, '#participantExportJsonButton');
+  assert.equal(dom.participantExportHeatmapButton.selector, '#participantExportHeatmapButton');
   assert.equal(dom.gazeHeatmapOverlay.selector, '#gazeHeatmapOverlay');
   assert.equal(dom.heatmapRuler.selector, '#heatmapRuler');
   assert.equal(dom.heatmapRulerMin.selector, '#heatmapRulerMin');

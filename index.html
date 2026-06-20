@@ -90,6 +90,7 @@
           </div>
           <svg id="aoiOverlay" class="aoi-overlay" aria-hidden="true"></svg>
           <div id="gazeDot" class="gaze-dot" aria-hidden="true"></div>
+          <div id="participantRecordingCountdown" class="participant-recording-countdown" aria-live="polite" hidden>00:30</div>
           <div id="viewerNotice" class="viewer-notice">
             Chọn một video nghiên cứu.
           </div>
@@ -132,10 +133,8 @@
           <label class="field-stack">
             <span>Video nghiên cứu</span>
             <select id="participantStudyVideoSelect">
-              <option value="nguyen-hue-360-0500">Nguyen Hue 5:00-5:30 (360)</option>
               <option value="nguyen-hue-360-0532">Nguyen Hue 5:32-6:02 (360)</option>
-              <option value="nguyen-hue-2d-0500">Nguyen Hue 5:00-5:30 (2D)</option>
-              <option value="nguyen-hue-2d-0532">Nguyen Hue 5:32-6:02 (2D)</option>
+              <option value="nguyen-hue-2d-0532">Nguyen Hue 5:32-6:02 (2D - updated angle)</option>
               <option value="culture-thap-ba-360">Thap Ba 1:19-1:49 (360)</option>
               <option value="culture-thap-ba-2d">Thap Ba 1:19-1:49 (2D)</option>
               <option value="nature-tam-coc-360">Tam Coc 4:31-5:01 (360)</option>
@@ -176,8 +175,19 @@
             <button id="participantCalibrateButton" type="button">Hiệu chuẩn webcam</button>
             <button id="participantAccuracyButton" type="button">Kiểm tra độ chính xác</button>
             <button id="participantRecordButton" class="primary" type="button">Bắt đầu ghi</button>
-            <button id="participantExportButton" type="button">Gửi kết quả</button>
+            <button id="participantExportButton" type="button">Tải CSV</button>
           </div>
+          <section id="participantResultPanel" class="participant-result-panel" aria-label="Kết quả người tham gia" hidden>
+            <div>
+              <p class="section-label">Kết quả</p>
+              <div id="participantResultSummary" class="participant-result-summary"></div>
+            </div>
+            <div class="participant-result-actions">
+              <button id="participantExportCsvButton" type="button">Xuất CSV</button>
+              <button id="participantExportJsonButton" type="button">Xuất JSON</button>
+              <button id="participantExportHeatmapButton" type="button">Xuất heatmap</button>
+            </div>
+          </section>
           <p id="participantUploadStatus" class="participant-upload-status" aria-live="polite" hidden>
             <span class="participant-upload-spinner" aria-hidden="true"></span>
             <span data-upload-status-text></span>
@@ -274,10 +284,8 @@
           <label class="field-label">
             <span>Video nghiên cứu</span>
             <select id="studyVideoSelect">
-              <option value="nguyen-hue-360-0500">Nguyen Hue 5:00-5:30 (360)</option>
               <option value="nguyen-hue-360-0532">Nguyen Hue 5:32-6:02 (360)</option>
-              <option value="nguyen-hue-2d-0500">Nguyen Hue 5:00-5:30 (2D)</option>
-              <option value="nguyen-hue-2d-0532">Nguyen Hue 5:32-6:02 (2D)</option>
+              <option value="nguyen-hue-2d-0532">Nguyen Hue 5:32-6:02 (2D - updated angle)</option>
               <option value="culture-thap-ba-360">Thap Ba 1:19-1:49 (360)</option>
               <option value="culture-thap-ba-2d">Thap Ba 1:19-1:49 (2D)</option>
               <option value="nature-tam-coc-360">Tam Coc 4:31-5:01 (360)</option>

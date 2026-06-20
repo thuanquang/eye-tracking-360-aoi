@@ -79,6 +79,21 @@ test('participant mode uses the selected study video instead of random assignmen
     /if \(isParticipant\) \{[\s\S]*setStudyVideo\(getRandomStudyVideo\(\)\.id/,
     'Participant mode should preserve the selected study video before the participant starts.',
   );
+  assert.match(
+    controllerSource,
+    /function\s+collectParticipantDraft\(\)[\s\S]*studyVideoId:\s*selectedStudyVideo\.id/,
+    'Participant draft state should remember the selected study video before hosted calibration.',
+  );
+  assert.match(
+    controllerSource,
+    /function\s+persistParticipantSessionState\(\)[\s\S]*studyVideoId:\s*selectedStudyVideo\.id/,
+    'Participant session state should persist the selected study video across calibration redirects.',
+  );
+  assert.match(
+    controllerSource,
+    /function\s+restoreParticipantStudyVideo\(\s*videoId\s*\)[\s\S]*setStudyVideo\(videoId,\s*\{\s*clearAois:\s*true\s*\}\)/,
+    'Participant restore should set the saved study video instead of falling back to the default.',
+  );
 });
 
 test('flat study videos mark the viewer as non-interactive for camera drag', () => {
@@ -199,39 +214,103 @@ test('player heatmap updates a dynamic intensity ruler', () => {
   );
 });
 
-test('participant export submits to deployment endpoint before falling back to download', () => {
+test('video ready events do not overwrite visible workflow notices', () => {
   assert.match(
     controllerSource,
-    /submitParticipantExport/,
-    'The controller should use the deployment upload helper for participant submissions.',
+    /const\s+initialViewerNoticeText\s*=\s*viewerNotice\.textContent/,
+    'The controller should remember the initial placeholder notice separately from runtime workflow notices.',
   );
   assert.match(
     controllerSource,
-    /state\.appMode === 'participant'/,
-    'Participant upload behavior should be scoped to participant mode.',
+    /function\s+isViewerNoticeShowingWorkflowMessage\(\)[\s\S]*viewerNotice\.textContent\s*!==\s*initialViewerNoticeText/,
+    'The controller should distinguish visible workflow notices from the initial placeholder.',
+  );
+  assert.match(
+    controllerSource,
+    /function\s+syncVideoNotice\(\)[\s\S]*if\s*\(\s*isViewerNoticeShowingWorkflowMessage\(\)\s*\)\s*\{[\s\S]*?return;[\s\S]*?\}[\s\S]*setNotice\('Video/,
+    'Video readiness should not replace visible AOI upload or workflow messages.',
   );
 });
 
-test('participant export shows R2 upload progress and fallback status', () => {
+test('participant export downloads local CSV instead of uploading study data', () => {
   assert.match(
     controllerSource,
     /function\s+setParticipantUploadStatus\(/,
-    'The controller should render participant upload status separately from the global notice.',
+    'The controller should keep a participant export status helper for local-download feedback.',
   );
   assert.match(
     controllerSource,
-    /setParticipantUploadStatus\('uploading'\);[\s\S]*await\s+submitParticipantExport/,
-    'Participant export should show an uploading state while sending to R2.',
+    /state\.appMode === 'participant'[\s\S]*?exportParticipantStatsCsv\(\);[\s\S]*?return;/,
+    'Participant export should download a stats CSV locally instead of submitting data online.',
   );
   assert.match(
     controllerSource,
-    /setParticipantUploadStatus\('uploaded',\s*result\.fileName\)/,
-    'Participant export should show an uploaded state when R2 accepts the JSON.',
+    /const\s+fileName\s*=\s*buildParticipantCsvFileName\(\);[\s\S]*?downloadText\(csv,\s*fileName,\s*'text\/csv;charset=utf-8'\)/,
+    'Participant CSV export should use one local file name for the download and status message.',
   );
   assert.match(
     controllerSource,
-    /setParticipantUploadStatus\('fallback'\)/,
-    'Participant export should explain that local download means the R2 upload failed.',
+    /function\s+exportParticipantJson\(\)[\s\S]*downloadJson\(payload,\s*buildParticipantJsonFileName\(\)\)/,
+    'Participant results should offer a local JSON export.',
+  );
+  assert.match(
+    controllerSource,
+    /function\s+exportParticipantHeatmap\(\)[\s\S]*summary\.heatmaps[\s\S]*downloadJson\(heatmapPayload,\s*buildParticipantHeatmapFileName\(\)\)/,
+    'Participant results should offer a local heatmap export.',
+  );
+  assert.match(
+    controllerSource,
+    /PARTICIPANT_EXPORT_SUCCESS_MESSAGE/,
+    'Participant exports should show the requested success message after data is ready.',
+  );
+  assert.doesNotMatch(
+    controllerSource,
+    /await\s+submitParticipantExport/,
+    'Participant export should not attempt an R2 upload before downloading locally.',
+  );
+});
+
+test('participant recording focus mode hides chrome while recording', () => {
+  assert.match(
+    controllerSource,
+    /appShell\.classList\.toggle\('is-participant-recording-focus',\s*state\.appMode\s*===\s*'participant'\s*&&\s*state\.isRecording\)/,
+    'Participant recording should expose a focused fullscreen class while recording is active.',
+  );
+});
+
+test('participant recording stops when the study clip ends', () => {
+  assert.match(
+    controllerSource,
+    /async function startSynchronizedParticipantPlayback\(\)[\s\S]*?if \(state\.appMode === 'participant'\) \{[\s\S]*?sourceVideo\.loop = false;[\s\S]*?\}/,
+    'Participant recording should play the study clip once instead of looping while chrome is hidden.',
+  );
+  assert.match(
+    controllerSource,
+    /function handleParticipantVideoEnded\(\)[\s\S]*?state\.appMode !== 'participant'[\s\S]*?state\.isRecording[\s\S]*?setRecordingActive\(false\)/,
+    'Participant recording should return to the export controls after the clip ends.',
+  );
+  assert.match(
+    controllerSource,
+    /sourceVideo\.addEventListener\('ended',\s*handleParticipantVideoEnded\)/,
+    'The participant-ended handler should be wired to the study video element.',
+  );
+});
+
+test('participant recording has a visible countdown and a 30 second guardrail', () => {
+  assert.match(
+    controllerSource,
+    /const\s+PARTICIPANT_RECORDING_LIMIT_SEC\s*=\s*30/,
+    'Participant recording should default to a 30 second max duration.',
+  );
+  assert.match(
+    controllerSource,
+    /function\s+updateParticipantRecordingCountdown\([\s\S]*participantRecordingCountdown\.textContent/,
+    'Participant recording should update an on-player countdown.',
+  );
+  assert.match(
+    controllerSource,
+    /function\s+enforceParticipantRecordingLimit\([\s\S]*setRecordingActive\(false\)[\s\S]*pauseSynchronizedParticipantPlayback\(\)/,
+    'Participant recording should stop automatically when the countdown expires.',
   );
 });
 

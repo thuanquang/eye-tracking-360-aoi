@@ -494,6 +494,27 @@ h1 {
   display: none;
 }
 
+.participant-recording-countdown {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  z-index: 5;
+  min-width: 88px;
+  padding: 9px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.52);
+  background: rgba(10, 14, 22, 0.74);
+  color: #ffffff;
+  font-size: 1.05rem;
+  font-weight: 800;
+  line-height: 1;
+  text-align: center;
+  backdrop-filter: blur(8px);
+}
+
+.participant-recording-countdown[hidden] {
+  display: none;
+}
+
 .gaze-dot {
   position: absolute;
   z-index: 5;
@@ -831,6 +852,58 @@ h1 {
   min-height: 44px;
 }
 
+.participant-result-panel {
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.participant-result-panel[hidden] {
+  display: none;
+}
+
+.participant-result-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.participant-result-metric {
+  display: grid;
+  gap: 4px;
+  min-height: 62px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  background: #ffffff;
+}
+
+.participant-result-metric span {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.participant-result-metric strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--ink);
+  font-size: 1rem;
+  line-height: 1.2;
+}
+
+.participant-result-actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.participant-result-actions button {
+  min-height: 40px;
+}
+
 .participant-upload-status {
   display: flex;
   align-items: center;
@@ -1127,6 +1200,33 @@ h1 {
 
 .app-shell.is-participant-started .participant-card {
   display: none;
+}
+
+.app-shell.is-participant-recording-focus {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
+  padding: 0;
+}
+
+.app-shell.is-participant-recording-focus .viewer-toolbar,
+.app-shell.is-participant-recording-focus #participantPanel {
+  display: none;
+}
+
+.app-shell.is-participant-recording-focus .viewer-section {
+  grid-template-rows: minmax(0, 1fr);
+  border: 0;
+  box-shadow: none;
+}
+
+.app-shell.is-participant-recording-focus .viewer {
+  width: 100vw;
+  height: 100vh;
+  aspect-ratio: auto;
+}
+
+.participant-upload-status.is-downloaded {
+  color: #166534;
 }
 
 .panel-section {
