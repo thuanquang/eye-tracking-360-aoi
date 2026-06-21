@@ -162,6 +162,30 @@ function Start-LocalListener {
   throw 'Could not start local study server on the configured localhost ports.'
 }
 
+function Test-IsClientDisconnectError {
+  param([Exception]$Exception)
+
+  $clientDisconnectMessages = @(
+    'The I/O operation has been aborted',
+    'The specified network name is no longer available',
+    'An established connection was aborted',
+    'An existing connection was forcibly closed'
+  )
+
+  $current = $Exception
+  while ($null -ne $current) {
+    foreach ($message in $clientDisconnectMessages) {
+      if ($current.Message -like "*$message*") {
+        return $true
+      }
+    }
+
+    $current = $current.InnerException
+  }
+
+  return $false
+}
+
 $server = Start-LocalListener
 $listener = $server.Listener
 $port = $server.Port
@@ -219,7 +243,9 @@ try {
       $context.Response.ContentLength64 = $bytes.Length
       $context.Response.OutputStream.Write($bytes, 0, $bytes.Length)
     } catch {
-      Write-Host "Request handling failed; keeping local server alive: $($_.Exception.Message)"
+      if (!(Test-IsClientDisconnectError $_.Exception)) {
+        Write-Host "Request handling failed; keeping local server alive: $($_.Exception.Message)"
+      }
     } finally {
       try { $context.Response.OutputStream.Close() } catch {}
     }
@@ -250,6 +276,12 @@ Vì sao cần launcher này:
 Ứng dụng chạy trên 127.0.0.1 để camera và bộ theo dõi có thể khởi động bằng khóa phát triển.
 Video và AOI chất lượng cao đã được đóng gói cục bộ trong thư mục app.
 
+Modern bundled study media:
+- The modern 3D clip is Nguyen Hue 5:32-6:02.
+- The modern 2D clip is YouTube tCgWkNSclHQ 0:45-1:15.
+- The four culture/nature clips are still included.
+- Only the selected study videos and their matching generated AOI JSON files are bundled.
+
 Xử lý nhanh:
 - Nếu trình duyệt không tự mở, copy địa chỉ http://127.0.0.1 hiện trong cửa sổ rồi dán vào Chrome hoặc Edge.
 - Nếu Windows hỏi có chạy script không, chọn cho phép chạy.
@@ -277,6 +309,12 @@ Cách dùng:
 Vì sao cần launcher này:
 Ứng dụng chạy trên 127.0.0.1 để camera và bộ theo dõi có thể khởi động bằng khóa phát triển.
 Video và AOI chất lượng cao đã được đóng gói cục bộ trong thư mục app.
+
+Modern bundled study media:
+- The modern 3D clip is Nguyen Hue 5:32-6:02.
+- The modern 2D clip is YouTube tCgWkNSclHQ 0:45-1:15.
+- The four culture/nature clips are still included.
+- Only the selected study videos and their matching generated AOI JSON files are bundled.
 
 Xử lý nhanh:
 - Nếu trình duyệt không tự mở, copy địa chỉ http://127.0.0.1 hiện trong cửa sổ rồi dán vào Chrome hoặc Edge.
@@ -319,11 +357,11 @@ async function copyPathIntoApp(root, appDir, relativePath) {
 }
 
 async function copyFullQualityStudyAssets(root, appDir) {
-  await copyPathIntoApp(root, appDir, 'runpod-aoi-results-absolute-quality-with-surfaces');
-  await copyPathIntoApp(root, appDir, 'assets/replacement-videos');
-
   for (const video of STUDY_VIDEOS) {
     await copyPathIntoApp(root, appDir, video.path);
+    if (video.aoiPath) {
+      await copyPathIntoApp(root, appDir, video.aoiPath);
+    }
   }
 }
 

@@ -97,7 +97,6 @@ export function queryAppDom(documentRef = document) {
     participantCalibrateButton: getRequiredElement(documentRef, '#participantCalibrateButton'),
     participantAccuracyButton: getRequiredElement(documentRef, '#participantAccuracyButton'),
     participantRecordButton: getRequiredElement(documentRef, '#participantRecordButton'),
-    participantExportButton: getRequiredElement(documentRef, '#participantExportButton'),
     participantResultPanel: getRequiredElement(documentRef, '#participantResultPanel'),
     participantResultSummary: getRequiredElement(documentRef, '#participantResultSummary'),
     participantExportCsvButton: getRequiredElement(documentRef, '#participantExportCsvButton'),

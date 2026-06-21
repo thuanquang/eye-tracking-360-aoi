@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { createAppController } from './app/appController.js?v=nguyen-hue-1';
+import { createAppController } from './app/appController.js?v=youtube-2d-1';
 
 createAppController({
   document,

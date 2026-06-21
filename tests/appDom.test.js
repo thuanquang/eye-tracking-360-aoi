@@ -104,7 +104,6 @@ const APP_SELECTORS = [
   '#participantCalibrateButton',
   '#participantAccuracyButton',
   '#participantRecordButton',
-  '#participantExportButton',
   '#participantResultPanel',
   '#participantResultSummary',
   '#participantExportCsvButton',

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { access, readFile, stat } from 'node:fs/promises';
+import { access, readdir, readFile, stat } from 'node:fs/promises';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import test from 'node:test';
@@ -23,24 +23,60 @@ async function assertBundledDefaultAois(packageDir) {
 
 async function assertAllStudyAssetsBundled(packageDir) {
   for (const video of STUDY_VIDEOS) {
-    const bundledAoiPath = `${packageDir}/app/${video.aoiPath}`;
     const bundledVideoPath = `${packageDir}/app/${video.path}`;
-    const sourceAoiStat = await stat(video.aoiPath);
-    const bundledAoiStat = await stat(bundledAoiPath);
     const sourceVideoStat = await stat(video.path);
     const bundledVideoStat = await stat(bundledVideoPath);
 
-    assert.equal(
-      bundledAoiStat.size,
-      sourceAoiStat.size,
-      `${video.aoiPath} should be bundled at full enhanced quality.`,
-    );
+    if (video.aoiPath) {
+      const bundledAoiPath = `${packageDir}/app/${video.aoiPath}`;
+      const sourceAoiStat = await stat(video.aoiPath);
+      const bundledAoiStat = await stat(bundledAoiPath);
+
+      assert.equal(
+        bundledAoiStat.size,
+        sourceAoiStat.size,
+        `${video.aoiPath} should be bundled at full enhanced quality.`,
+      );
+    }
+
     assert.equal(
       bundledVideoStat.size,
       sourceVideoStat.size,
       `${video.path} should be bundled locally.`,
     );
   }
+}
+
+async function listFilesByExtension(rootDir, extension) {
+  const entries = await readdir(rootDir, { recursive: true, withFileTypes: true });
+  return entries
+    .filter((entry) => entry.isFile() && entry.name.endsWith(extension))
+    .map((entry) => `${entry.parentPath}/${entry.name}`.replaceAll('\\', '/'))
+    .sort();
+}
+
+async function assertOnlyReferencedStudyMediaBundled(packageDir) {
+  const appDir = `${packageDir}/app`;
+  const expectedVideoPaths = STUDY_VIDEOS
+    .map((video) => `${appDir}/${video.path}`.replaceAll('\\', '/'))
+    .sort();
+  const expectedAoiPaths = STUDY_VIDEOS
+    .map((video) => video.aoiPath)
+    .filter(Boolean)
+    .map((aoiPath) => `${appDir}/${aoiPath}`.replaceAll('\\', '/'))
+    .sort();
+
+  assert.deepEqual(
+    await listFilesByExtension(appDir, '.mp4'),
+    expectedVideoPaths,
+    'Local package should not include unused study videos.',
+  );
+  assert.deepEqual(
+    (await listFilesByExtension(`${appDir}/runpod-aoi-results-absolute-quality-with-surfaces`, '.json'))
+      .filter((filePath) => !filePath.endsWith('/manifest.json')),
+    expectedAoiPaths,
+    'Local package should not include unused generated AOI JSON files.',
+  );
 }
 
 test('builds a double-click Windows participant localhost package', async () => {
@@ -76,6 +112,10 @@ test('builds a double-click Windows participant localhost package', async () => 
   assert.match(server, /\$studyUrl = "http:\/\/127\.0\.0\.1:\$port\/\?mode=participant"/);
   assert.match(server, /try\s*\{\s*\$context = \$listener\.GetContext\(\)/);
   assert.match(server, /Request handling failed; keeping local server alive/);
+  assert.match(server, /function Test-IsClientDisconnectError/);
+  assert.match(server, /The I\/O operation has been aborted/);
+  assert.match(server, /The specified network name is no longer available/);
+  assert.match(server, /if \(!\(Test-IsClientDisconnectError \$_.Exception\)\)/);
   assert.match(server, /try \{ \$context\.Response\.OutputStream\.Close\(\) \} catch \{\}/);
   assert.match(server, /continue\s*\n\s*\}/);
   assert.match(server, /'\.ico'\s*=\s*'image\/x-icon'/);
@@ -90,6 +130,7 @@ test('builds a double-click Windows participant localhost package', async () => 
   assert.match(deploymentConfig, /seeSoLicenseKey:\s*'dev_/);
   await assertAllStudyAssetsBundled('participant-local');
   await assertBundledDefaultAois('participant-local');
+  await assertOnlyReferencedStudyMediaBundled('participant-local');
 
   const readme = await readFile('participant-local/README.txt', 'utf8');
   assert.match(readme, /Cách dùng:/);
@@ -131,6 +172,8 @@ test('builds a double-click Windows validation localhost package', async () => {
   assert.match(server, /\$studyUrl = "http:\/\/127\.0\.0\.1:\$port\/\?mode=validation"/);
   assert.match(server, /try\s*\{\s*\$context = \$listener\.GetContext\(\)/);
   assert.match(server, /Request handling failed; keeping local server alive/);
+  assert.match(server, /function Test-IsClientDisconnectError/);
+  assert.match(server, /if \(!\(Test-IsClientDisconnectError \$_.Exception\)\)/);
   assert.match(server, /try \{ \$context\.Response\.OutputStream\.Close\(\) \} catch \{\}/);
   assert.match(server, /continue\s*\n\s*\}/);
   assert.match(server, /\[switch\]\$NoBrowser/);
@@ -148,6 +191,7 @@ test('builds a double-click Windows validation localhost package', async () => {
   assert.match(deploymentConfig, /submissionEndpoint\s*:/);
   await assertAllStudyAssetsBundled('validation-local');
   await assertBundledDefaultAois('validation-local');
+  await assertOnlyReferencedStudyMediaBundled('validation-local');
 });
 
 test('builds one combined localhost package with participant and validation launchers', async () => {
@@ -176,6 +220,7 @@ test('builds one combined localhost package with participant and validation laun
   await access('eye-tracking-360-aoi-local.zip');
   await assertAllStudyAssetsBundled('eye-tracking-360-aoi-local');
   await assertBundledDefaultAois('eye-tracking-360-aoi-local');
+  await assertOnlyReferencedStudyMediaBundled('eye-tracking-360-aoi-local');
 
   const participantLauncher = await readFile(`eye-tracking-360-aoi-local/${participantBatName}`, 'utf8');
   assert.match(participantLauncher, /serve-participant-local\.ps1/);
@@ -192,6 +237,8 @@ test('builds one combined localhost package with participant and validation laun
   assert.match(adminServer, /\$studyUrl = "http:\/\/127\.0\.0\.1:\$port\/\?mode=admin"/);
   assert.match(adminServer, /try\s*\{\s*\$context = \$listener\.GetContext\(\)/);
   assert.match(adminServer, /Request handling failed; keeping local server alive/);
+  assert.match(adminServer, /function Test-IsClientDisconnectError/);
+  assert.match(adminServer, /if \(!\(Test-IsClientDisconnectError \$_.Exception\)\)/);
 
   const participantServer = await readFile('eye-tracking-360-aoi-local/serve-participant-local.ps1', 'utf8');
   assert.match(participantServer, /mode=participant/);
@@ -199,6 +246,8 @@ test('builds one combined localhost package with participant and validation laun
   assert.match(participantServer, /\$studyUrl = "http:\/\/127\.0\.0\.1:\$port\/\?mode=participant"/);
   assert.match(participantServer, /try\s*\{\s*\$context = \$listener\.GetContext\(\)/);
   assert.match(participantServer, /Request handling failed; keeping local server alive/);
+  assert.match(participantServer, /function Test-IsClientDisconnectError/);
+  assert.match(participantServer, /if \(!\(Test-IsClientDisconnectError \$_.Exception\)\)/);
 
   const validationServer = await readFile('eye-tracking-360-aoi-local/serve-validation-local.ps1', 'utf8');
   assert.match(validationServer, /mode=validation/);

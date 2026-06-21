@@ -1128,13 +1128,54 @@ h1 {
   border: 1px solid var(--line);
   background: rgba(255, 255, 255, 0.96);
   box-shadow: 0 18px 44px rgba(16, 24, 40, 0.16);
-  transition: transform 180ms ease, opacity 180ms ease;
+  transition:
+    width 180ms ease,
+    height 180ms ease,
+    right 180ms ease,
+    bottom 180ms ease,
+    box-shadow 180ms ease;
 }
 
-.app-shell.is-validation-test.is-accuracy-check-active #validationTestPanel {
-  transform: translateX(calc(100% + 32px));
-  opacity: 0;
-  pointer-events: none;
+.app-shell.is-validation-test.is-validation-recording-focus .viewer {
+  width: 100vw;
+  height: 100vh;
+}
+
+.app-shell.is-validation-test.is-validation-recording-focus #validationTestPanel {
+  width: 56px;
+  height: 56px;
+  right: 18px;
+  bottom: 18px;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 999px;
+  border-color: rgba(21, 110, 200, 0.36);
+  background: rgba(255, 255, 255, 0.86);
+  box-shadow:
+    0 12px 34px rgba(16, 24, 40, 0.18),
+    0 0 0 6px rgba(21, 110, 200, 0.08);
+  backdrop-filter: blur(10px);
+}
+
+.app-shell.is-validation-test.is-validation-recording-focus #validationTestPanel::before {
+  content: "";
+  width: 16px;
+  height: 16px;
+  border: 3px solid rgba(21, 110, 200, 0.2);
+  border-top-color: #156ec8;
+  border-radius: 999px;
+  animation: validation-popup-spin 900ms linear infinite;
+}
+
+.app-shell.is-validation-test.is-validation-recording-focus #validationTestPanel > * {
+  display: none;
+}
+
+@keyframes validation-popup-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .app-shell.is-admin-mode #validationTestPanel,
@@ -1208,8 +1249,44 @@ h1 {
   padding: 0;
 }
 
-.app-shell.is-participant-recording-focus .viewer-toolbar,
+.app-shell.is-participant-recording-focus .viewer-toolbar {
+  display: none;
+}
+
 .app-shell.is-participant-recording-focus #participantPanel {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 40;
+  width: 56px;
+  height: 56px;
+  display: grid;
+  place-items: center;
+  min-width: 0;
+  max-height: none;
+  overflow: hidden;
+  border-radius: 999px;
+  border-color: rgba(252, 119, 83, 0.42);
+  background: rgba(255, 255, 255, 0.86);
+  box-shadow:
+    0 12px 34px rgba(16, 24, 40, 0.18),
+    0 0 0 6px rgba(252, 119, 83, 0.1);
+  backdrop-filter: blur(10px);
+}
+
+.app-shell.is-participant-recording-focus #participantPanel::before {
+  content: "";
+  width: 15px;
+  height: 15px;
+  border-radius: 999px;
+  background: var(--accent);
+  box-shadow:
+    0 0 0 0 rgba(252, 119, 83, 0.42),
+    0 0 18px rgba(252, 119, 83, 0.36);
+  animation: participant-popup-pulse 1100ms ease-out infinite;
+}
+
+.app-shell.is-participant-recording-focus #participantPanel > * {
   display: none;
 }
 
@@ -1223,6 +1300,20 @@ h1 {
   width: 100vw;
   height: 100vh;
   aspect-ratio: auto;
+}
+
+@keyframes participant-popup-pulse {
+  70% {
+    box-shadow:
+      0 0 0 12px rgba(252, 119, 83, 0),
+      0 0 18px rgba(252, 119, 83, 0.36);
+  }
+
+  100% {
+    box-shadow:
+      0 0 0 0 rgba(252, 119, 83, 0),
+      0 0 18px rgba(252, 119, 83, 0.36);
+  }
 }
 
 .participant-upload-status.is-downloaded {

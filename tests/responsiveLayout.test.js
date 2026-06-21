@@ -328,16 +328,21 @@ test('validation result stats popup is present and responsive', () => {
   );
 });
 
-test('validation controls slide offscreen during active accuracy checks', () => {
+test('validation controls collapse into a popup during active accuracy checks', () => {
   assert.match(
     css,
-    /\.app-shell\.is-validation-test\.is-accuracy-check-active\s+#validationTestPanel\s*\{[\s\S]*?transform:\s*translateX\(calc\(100%\s*\+\s*32px\)\)/,
-    'The validation controls should move off to the side while accuracy targets are being captured.',
+    /\.app-shell\.is-validation-test\.is-validation-recording-focus\s+#validationTestPanel\s*\{[\s\S]*?width:\s*56px;[\s\S]*?height:\s*56px;/,
+    'The validation controls should collapse into a small visible popup while accuracy targets are being captured.',
   );
   assert.match(
     css,
-    /\.app-shell\.is-validation-test\s+#validationTestPanel\s*\{[\s\S]*?transition:\s*transform/,
-    'The validation controls should have a stable slide transition.',
+    /\.app-shell\.is-validation-test\.is-validation-recording-focus\s+#validationTestPanel::before\s*\{[\s\S]*?animation:\s*validation-popup-spin/,
+    'The collapsed validation popup should show a quiet active indicator.',
+  );
+  assert.match(
+    css,
+    /\.app-shell\.is-validation-test\s+#validationTestPanel\s*\{[\s\S]*?transition:[\s\S]*?width\s+180ms\s+ease/,
+    'The validation controls should have a stable collapse transition.',
   );
 });
 
@@ -369,7 +374,7 @@ test('participant setup is concise and exposes explicit video choice', () => {
   );
 });
 
-test('participant recording view hides app chrome until recording stops', () => {
+test('participant recording view makes the viewer fullscreen with a compact sidebar popup', () => {
   assert.match(
     html,
     /id="participantRecordingCountdown"/,
@@ -390,10 +395,15 @@ test('participant recording view hides app chrome until recording stops', () => 
     /\.participant-result-panel\s*\{[\s\S]*?display:\s*grid/,
     'Participant results should render as a structured stats panel.',
   );
+  assert.doesNotMatch(
+    html,
+    /id="participantExportButton"|>Tải CSV<\/button>/,
+    'Participant mode should remove the legacy Tải CSV action.',
+  );
   assert.match(
     html,
-    /id="participantExportButton"[^>]*>Tải CSV<\/button>/,
-    'Participant export should be a local CSV download action for offline fieldwork.',
+    /id="participantExportCsvButton"[^>]*>Xuất CSV<\/button>/,
+    'Participant results should keep the Xuất CSV action.',
   );
   assert.match(
     css,
@@ -402,13 +412,23 @@ test('participant recording view hides app chrome until recording stops', () => 
   );
   assert.match(
     css,
-    /\.app-shell\.is-participant-recording-focus\s+\.viewer-toolbar,[\s\S]*?\.app-shell\.is-participant-recording-focus\s+#participantPanel\s*\{[\s\S]*?display:\s*none/,
-    'Participant recording focus should hide the title toolbar and participant side panel.',
+    /\.app-shell\.is-participant-recording-focus\s+\.viewer-toolbar\s*\{[\s\S]*?display:\s*none/,
+    'Participant recording focus should hide the title toolbar.',
   );
   assert.match(
     css,
-    /\.app-shell\.is-participant-recording-focus\s+\.viewer\s*\{[\s\S]*?height:\s*100vh/,
-    'Participant recording focus should make the video fill the viewport height.',
+    /\.app-shell\.is-participant-recording-focus\s+#participantPanel\s*\{[\s\S]*?width:\s*56px;[\s\S]*?height:\s*56px;/,
+    'Participant recording focus should collapse the participant side panel into a small popup.',
+  );
+  assert.match(
+    css,
+    /\.app-shell\.is-participant-recording-focus\s+#participantPanel::before\s*\{[\s\S]*?animation:\s*participant-popup-pulse/,
+    'The collapsed participant popup should keep a visible recording indicator.',
+  );
+  assert.match(
+    css,
+    /\.app-shell\.is-participant-recording-focus\s+\.viewer\s*\{[\s\S]*?width:\s*100vw[\s\S]*?height:\s*100vh/,
+    'Participant recording focus should make the video fill the viewport.',
   );
 });
 

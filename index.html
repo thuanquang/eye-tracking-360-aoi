@@ -65,9 +65,6 @@
 
       <section id="viewerSection" class="viewer-section" aria-label="Trình xem video 360">
         <div class="viewer-toolbar">
-          <div>
-            <h1>Kiểm tra ánh xạ ánh nhìn 360</h1>
-          </div>
           <div class="toolbar-actions">
             <a id="adminModeLink" class="mode-link" href="./?mode=admin">Quản trị</a>
             <button id="playVideoButton" type="button">Phát</button>
@@ -134,11 +131,11 @@
             <span>Video nghiên cứu</span>
             <select id="participantStudyVideoSelect">
               <option value="nguyen-hue-360-0532">Nguyen Hue 5:32-6:02 (360)</option>
-              <option value="nguyen-hue-2d-0532">Nguyen Hue 5:32-6:02 (2D - updated angle)</option>
               <option value="culture-thap-ba-360">Thap Ba 1:19-1:49 (360)</option>
               <option value="culture-thap-ba-2d">Thap Ba 1:19-1:49 (2D)</option>
               <option value="nature-tam-coc-360">Tam Coc 4:31-5:01 (360)</option>
               <option value="nature-tam-coc-2d">Tam Coc 4:31-5:01 (2D)</option>
+              <option value="youtube-tcgwknsclhq-2d-0045-yaw-29p9-pitch-17p6">YouTube tCgWkNSclHQ 0:45-1:15 (2D - yaw 29.9, pitch 17.6)</option>
             </select>
           </label>
           <label class="field-stack">
@@ -175,7 +172,6 @@
             <button id="participantCalibrateButton" type="button">Hiệu chuẩn webcam</button>
             <button id="participantAccuracyButton" type="button">Kiểm tra độ chính xác</button>
             <button id="participantRecordButton" class="primary" type="button">Bắt đầu ghi</button>
-            <button id="participantExportButton" type="button">Tải CSV</button>
           </div>
           <section id="participantResultPanel" class="participant-result-panel" aria-label="Kết quả người tham gia" hidden>
             <div>
@@ -285,11 +281,11 @@
             <span>Video nghiên cứu</span>
             <select id="studyVideoSelect">
               <option value="nguyen-hue-360-0532">Nguyen Hue 5:32-6:02 (360)</option>
-              <option value="nguyen-hue-2d-0532">Nguyen Hue 5:32-6:02 (2D - updated angle)</option>
               <option value="culture-thap-ba-360">Thap Ba 1:19-1:49 (360)</option>
               <option value="culture-thap-ba-2d">Thap Ba 1:19-1:49 (2D)</option>
               <option value="nature-tam-coc-360">Tam Coc 4:31-5:01 (360)</option>
               <option value="nature-tam-coc-2d">Tam Coc 4:31-5:01 (2D)</option>
+              <option value="youtube-tcgwknsclhq-2d-0045-yaw-29p9-pitch-17p6">YouTube tCgWkNSclHQ 0:45-1:15 (2D - yaw 29.9, pitch 17.6)</option>
             </select>
           </label>
         </section>
@@ -535,6 +531,6 @@
       </aside>
     </main>
 
-    <script type="module" src="./src/app.js?v=nguyen-hue-1"></script>
+    <script type="module" src="./src/app.js?v=youtube-2d-1"></script>
   </body>
 </html>

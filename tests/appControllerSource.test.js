@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
 const controllerSource = await readFile(new URL('../src/app/appController.js', import.meta.url), 'utf8');
+const stylesSource = await readFile(new URL('../styles.css', import.meta.url), 'utf8');
 
 test('participant record control synchronizes video playback with recording', () => {
   assert.match(
@@ -19,6 +20,19 @@ test('participant record control synchronizes video playback with recording', ()
     controllerSource,
     /participantRecordButton\.addEventListener\('click',\s*toggleParticipantRecording\)/,
     'Participant record button should use participant-specific synchronized behavior.',
+  );
+  assert.match(
+    controllerSource,
+    /async function toggleParticipantRecording\(\)[\s\S]*await requestParticipantFullscreen\(\);[\s\S]*setRecordingActive\(true\)/,
+    'Participant recording should request fullscreen from the recording click before entering recording focus.',
+  );
+});
+
+test('participant recording shows startup feedback before awaiting the tracker', () => {
+  assert.match(
+    controllerSource,
+    /async function toggleParticipantRecording\(\)[\s\S]*setWebcamStatus\('starting'\);[\s\S]*syncParticipantSessionControls\(\);[\s\S]*await setWebcamMode\(\);[\s\S]*startSynchronizedParticipantPlayback/,
+    'Participant recording should immediately show tracker startup feedback before awaiting camera/provider startup.',
   );
 });
 
@@ -53,13 +67,41 @@ test('participant hosted calibration return starts gaze before direct recording'
   );
   assert.match(
     controllerSource,
-    /autoStartParticipantGazeAfterCalibrationReturn/,
+    /autoStartGazeAfterCalibrationReturn/,
     'Participant mode should have an explicit hosted calibration return auto-start hook.',
   );
   assert.match(
     controllerSource,
-    /restoreParticipantState\(\);[\s\S]*applyAppMode\(\);[\s\S]*void autoStartParticipantGazeAfterCalibrationReturn\(\);/,
+    /restoreParticipantState\(\);[\s\S]*applyAppMode\(\);[\s\S]*void autoStartGazeAfterCalibrationReturn\(\);/,
     'Participant state should restore before auto-starting gaze from returned hosted calibration.',
+  );
+});
+
+test('validation hosted calibration return starts gaze before accuracy recording', () => {
+  assert.match(
+    controllerSource,
+    /returnedCalibrationData && isSeeSoProviderSelected\(\)[\s\S]*shouldAutoStartSeeSoGazeAfterCalibrationReturn = true/,
+    'Hosted calibration return should schedule tracker startup after calibration data is stored.',
+  );
+  assert.match(
+    controllerSource,
+    /function getHostedCalibrationReturnNotice\([\s\S]*mode === 'validation'[\s\S]*kiểm tra độ chính xác/,
+    'Hosted calibration return notice should be specific to standalone validation mode.',
+  );
+  assert.match(
+    controllerSource,
+    /async function autoStartGazeAfterCalibrationReturn\(\)[\s\S]*state\.appMode !== 'participant'[\s\S]*state\.appMode !== 'validation'[\s\S]*return;/,
+    'Calibration return auto-start should allow both participant and validation modes.',
+  );
+  assert.match(
+    controllerSource,
+    /autoStartGazeAfterCalibrationReturn\(\)[\s\S]*setWebcamStatus\('starting'\);[\s\S]*await setWebcamMode\(\);/,
+    'Validation mode should start the tracker immediately after returning from hosted calibration.',
+  );
+  assert.match(
+    controllerSource,
+    /applyAppMode\(\);[\s\S]*void autoStartGazeAfterCalibrationReturn\(\);/,
+    'App mode should be applied before deciding whether to auto-start validation gaze.',
   );
 });
 
@@ -93,6 +135,19 @@ test('participant mode uses the selected study video instead of random assignmen
     controllerSource,
     /function\s+restoreParticipantStudyVideo\(\s*videoId\s*\)[\s\S]*setStudyVideo\(videoId,\s*\{\s*clearAois:\s*true\s*\}\)/,
     'Participant restore should set the saved study video instead of falling back to the default.',
+  );
+});
+
+test('participant restore selects the saved study video before the initial AOI load', () => {
+  assert.match(
+    controllerSource,
+    /restoreParticipantState\(\);[\s\S]*if \(!sourceVideo\.getAttribute\('src'\)\) \{[\s\S]*setStudyVideo\(selectedStudyVideo\.id,\s*\{\s*clearAois:\s*true\s*\}\)/,
+    'Startup should restore a participant-selected study video before loading the first generated AOI package.',
+  );
+  assert.doesNotMatch(
+    controllerSource,
+    /setStudyVideo\(selectedStudyVideo\.id,\s*\{\s*clearAois:\s*true\s*\}\);[\s\S]*restoreParticipantState\(\);/,
+    'Startup should not load the default study AOIs before restoring the participant session.',
   );
 });
 
@@ -322,6 +377,24 @@ test('participant recording samples are trusted for AOI analysis without in-app 
   );
 });
 
+test('recording sample collection does not resync the participant panel every frame', () => {
+  const maybeSampleFunction = controllerSource.match(
+    /function maybeSample\(now\) \{[\s\S]*?\n  \}/,
+  )?.[0] || '';
+
+  assert.notEqual(maybeSampleFunction, '', 'The controller should define maybeSample.');
+  assert.match(
+    maybeSampleFunction,
+    /sampleCount\.textContent = String\(state\.samples\.length\);/,
+    'Recording samples should keep the sample counter current.',
+  );
+  assert.doesNotMatch(
+    maybeSampleFunction,
+    /syncParticipantSessionControls\(\);/,
+    'Recording samples should not resync participant controls at sampling rate.',
+  );
+});
+
 test('validation mode shows a stats popup after accuracy validation completes', () => {
   assert.match(
     controllerSource,
@@ -360,6 +433,29 @@ test('validation mode hides controls beside the screen during active accuracy ta
     controllerSource,
     /appShell\.classList\.toggle\('is-accuracy-check-active',\s*isAccuracyTargetActive\)/,
     'Validation mode should expose an accuracy-active class for hiding the controls.',
+  );
+});
+
+test('validation recording focus keeps a small sidebar popup over a fullscreen viewer', () => {
+  assert.match(
+    controllerSource,
+    /appShell\.classList\.toggle\('is-validation-recording-focus',\s*isAccuracyTargetActive\)/,
+    'Validation mode should expose a recording-focus class while accuracy targets are active.',
+  );
+  assert.match(
+    stylesSource,
+    /\.app-shell\.is-validation-test\.is-validation-recording-focus\s+#validationTestPanel\s*\{[\s\S]*?width:\s*56px;[\s\S]*?height:\s*56px;/,
+    'The validation sidebar should collapse into a small popup while recording validation targets.',
+  );
+  assert.doesNotMatch(
+    stylesSource,
+    /\.app-shell\.is-validation-test\.is-validation-recording-focus\s+#validationTestPanel\s*\{[\s\S]*?translateX\(calc\(100%/,
+    'The collapsed validation popup should stay visible instead of moving completely offscreen.',
+  );
+  assert.match(
+    stylesSource,
+    /\.app-shell\.is-validation-test\.is-validation-recording-focus\s+\.viewer\s*\{[\s\S]*?width:\s*100vw;[\s\S]*?height:\s*100vh;/,
+    'Validation recording focus should keep the viewer fullscreen for participants.',
   );
 });
 
@@ -422,6 +518,24 @@ test('accuracy validation resets live gaze filter after changing correction', ()
     controllerSource,
     /state\.gazeCorrection\s*=\s*evaluation\.validationPassed\s*\?\s*evaluation\.liveCalibration\s*:\s*null;\s*resetLiveGazeFilterState\(\);/,
     'Changing the validation correction should reset the live gaze filter so corrected samples are not smoothed against pre-correction gaze.',
+  );
+});
+
+test('active accuracy validation bypasses laggy live gaze smoothing and hold', () => {
+  assert.match(
+    controllerSource,
+    /function\s+getLiveGazeUpdateOptions\(\)\s*\{[\s\S]*?hasActiveAccuracyValidation\(\)[\s\S]*?alpha:\s*1,[\s\S]*?maxJumpPx:\s*Number\.POSITIVE_INFINITY,[\s\S]*?adaptiveSmoothing:\s*false,[\s\S]*?\}/,
+    'Accuracy validation should use latest gaze immediately instead of applying participant-recording smoothing.',
+  );
+  assert.match(
+    controllerSource,
+    /function\s+canHoldLastWebcamGaze[\s\S]*?\{\s*if\s*\(hasActiveAccuracyValidation\(\)\)\s*\{[\s\S]*?return\s+false;[\s\S]*?\}/,
+    'Accuracy validation should not hold stale gaze points because they make the live dot look delayed.',
+  );
+  assert.match(
+    controllerSource,
+    /const\s+liveGazeUpdateOptions\s*=\s*getLiveGazeUpdateOptions\(\);[\s\S]*?resolveGazeUpdate\(\{[\s\S]*?\.\.\.liveGazeUpdateOptions,/,
+    'Webcam gaze processing should apply the validation-specific live gaze options.',
   );
 });
 

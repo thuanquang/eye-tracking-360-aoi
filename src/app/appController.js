@@ -124,7 +124,7 @@ import {
   getDefaultStudyVideo,
   validateAoiVideoCompatibility,
   videoInfoFromStudyVideo,
-} from './studyVideos.js?v=nguyen-hue-1';
+} from './studyVideos.js?v=youtube-2d-1';
 import { queryAppDom } from './dom.js';
 import { createMouseProvider } from '../gaze/providers/mouseProvider.js?v=gaze-providers-1';
 import {
@@ -287,7 +287,6 @@ export function createAppController({
     participantCalibrateButton,
     participantAccuracyButton,
     participantRecordButton,
-    participantExportButton,
     participantResultPanel,
     participantResultSummary,
     participantExportCsvButton,
@@ -681,6 +680,18 @@ export function createAppController({
       ?? '';
   }
 
+  function getHostedCalibrationReturnNotice(mode = state.appMode || getRequestedAppMode()) {
+    if (mode === 'validation') {
+      return 'Dữ liệu hiệu chỉnh camera đã trả về. Đang bắt đầu ánh nhìn cho kiểm tra độ chính xác.';
+    }
+
+    if (mode === 'participant') {
+      return 'Dữ liệu hiệu chỉnh camera đã trả về. Đang bắt đầu ánh nhìn cho phiên người tham gia.';
+    }
+
+    return 'Dữ liệu hiệu chỉnh camera đã trả về. Đang bắt đầu ánh nhìn.';
+  }
+
   function clearStoredSeeSoCalibrationData() {
     setLocalStorageValue(SEESO_CALIBRATION_DATA_STORAGE_KEY, '');
     syncParticipantGazeSetupControls();
@@ -716,7 +727,7 @@ export function createAppController({
       state.webcamCalibrationTrained = true;
       setAccuracySummary(null);
       setWebcamStatus('calibrated');
-      setNotice('Dữ liệu hiệu chỉnh camera đã trả về. Đang bắt đầu ánh nhìn cho phiên người tham gia.', false);
+      setNotice(getHostedCalibrationReturnNotice(), false);
     }
   }
 
@@ -856,13 +867,13 @@ export function createAppController({
     if (!status) {
       participantUploadStatus.hidden = true;
       statusText.textContent = '';
-      participantExportButton.removeAttribute('aria-busy');
+      participantExportCsvButton.removeAttribute('aria-busy');
       return;
     }
 
     participantUploadStatus.hidden = false;
     participantUploadStatus.classList.add(`is-${status}`);
-    participantExportButton.setAttribute('aria-busy', status === 'uploading' ? 'true' : 'false');
+    participantExportCsvButton.setAttribute('aria-busy', status === 'uploading' ? 'true' : 'false');
 
     if (status === 'uploading') {
       statusText.textContent = 'Đang gửi kết quả lên R2...';
@@ -1155,7 +1166,6 @@ export function createAppController({
     participantRecordButton.classList.toggle('primary', !state.isRecording && canRecordCurrentMode());
     participantCalibrateButton.disabled = state.isRecording || (isSeeSo && (!hasSeeSoKey || !hasSeeSoGeometry));
     participantRecordButton.disabled = !state.isRecording && (!canRecordCurrentMode() || !hasLoadedStudyAois());
-    participantExportButton.disabled = state.samples.length === 0 || !hasLoadedStudyAois();
 
     if (state.isRecording) {
       setParticipantFlowStep('recording');
@@ -1194,6 +1204,7 @@ export function createAppController({
     const hasSeeSoCalibration = Boolean(getSeeSoCalibrationData()) || state.webcamCalibrationTrained;
 
     appShell.classList.toggle('is-accuracy-check-active', isAccuracyTargetActive);
+    appShell.classList.toggle('is-validation-recording-focus', isAccuracyTargetActive);
     validationTestPanel.hidden = !isValidationTest;
     validationTestCalibrateButton.disabled = !hasSeeSoKey || !hasSeeSoGeometry;
     validationTestAccuracyButton.disabled = (
@@ -1323,25 +1334,30 @@ export function createAppController({
     await requestParticipantFullscreen();
   }
 
-  async function autoStartParticipantGazeAfterCalibrationReturn() {
+  async function autoStartGazeAfterCalibrationReturn() {
     if (!shouldAutoStartSeeSoGazeAfterCalibrationReturn) {
       return;
     }
 
     shouldAutoStartSeeSoGazeAfterCalibrationReturn = false;
 
-    if (
-      state.appMode !== 'participant' ||
-      !state.participant.startedAt ||
-      !isSeeSoProviderSelected()
-    ) {
+    if ((state.appMode !== 'participant' && state.appMode !== 'validation') || !isSeeSoProviderSelected()) {
       return;
     }
 
-    setParticipantStage('Starting tracker gaze');
-    setNotice('Hiệu chỉnh camera hoàn tất. Đang tự động bắt đầu ánh nhìn.', true);
+    if (state.appMode === 'participant' && !state.participant.startedAt) {
+      return;
+    }
+
+    if (state.appMode === 'participant') {
+      setParticipantStage('Starting tracker gaze');
+    }
+
+    setWebcamStatus('starting');
+    setNotice(getHostedCalibrationReturnNotice(state.appMode), true);
     await setWebcamMode();
     syncParticipantSessionControls();
+    syncValidationTestControls();
   }
 
   function getExportParticipantMetadata() {
@@ -2352,6 +2368,27 @@ export function createAppController({
     return state.targetMode === 'accuracy' && !calibrationOverlay.hidden;
   }
 
+  function getLiveGazeUpdateOptions() {
+    if (hasActiveAccuracyValidation()) {
+      return {
+        alpha: 1,
+        maxJumpPx: Number.POSITIVE_INFINITY,
+        adaptiveSmoothing: false,
+        adaptiveSmoothingOptions: {},
+      };
+    }
+
+    return {
+      alpha: GAZE_SMOOTHING_ALPHA,
+      maxJumpPx: MAX_GAZE_JUMP_PX,
+      adaptiveSmoothing: true,
+      adaptiveSmoothingOptions: {
+        maxAlpha: GAZE_FAST_SMOOTHING_ALPHA,
+        fastDistancePx: GAZE_FAST_SMOOTHING_DISTANCE_PX,
+      },
+    };
+  }
+
   function buildGazeStreamEvent(event) {
     return {
       atMs: event.atMs ?? performance.now(),
@@ -2642,6 +2679,10 @@ export function createAppController({
   }
 
   function canHoldLastWebcamGaze(now = performance.now()) {
+    if (hasActiveAccuracyValidation()) {
+      return false;
+    }
+
     return (
       state.mode === 'webcam' &&
       state.gaze.visible &&
@@ -2715,18 +2756,13 @@ export function createAppController({
     }
 
     const previousWebcamGaze = state.gaze.visible && state.gaze.source === 'webcam' ? state.gaze : null;
+    const liveGazeUpdateOptions = getLiveGazeUpdateOptions();
     const update = resolveGazeUpdate({
       previous: previousWebcamGaze,
       next: viewerGaze,
       viewport,
-      alpha: GAZE_SMOOTHING_ALPHA,
-      maxJumpPx: MAX_GAZE_JUMP_PX,
       boundsMarginPx: GAZE_BOUNDS_MARGIN_PX,
-      adaptiveSmoothing: true,
-      adaptiveSmoothingOptions: {
-        maxAlpha: GAZE_FAST_SMOOTHING_ALPHA,
-        fastDistancePx: GAZE_FAST_SMOOTHING_DISTANCE_PX,
-      },
+      ...liveGazeUpdateOptions,
     });
 
     if (!update.accepted) {
@@ -4215,7 +4251,6 @@ export function createAppController({
       uncertainty: state.latestUncertainty,
     }));
     sampleCount.textContent = String(state.samples.length);
-    syncParticipantSessionControls();
   }
 
   function animate(now = 0) {
@@ -4505,6 +4540,8 @@ export function createAppController({
       return;
     }
 
+    setWebcamStatus('starting');
+    syncParticipantSessionControls();
     await setWebcamMode();
     if (!state.webcamStarted) {
       syncParticipantSessionControls();
@@ -4513,6 +4550,7 @@ export function createAppController({
 
     const playbackStarted = await startSynchronizedParticipantPlayback();
     if (playbackStarted) {
+      await requestParticipantFullscreen();
       setRecordingActive(true);
     }
   }
@@ -5239,7 +5277,6 @@ export function createAppController({
     const fileName = buildParticipantCsvFileName();
 
     downloadText(csv, fileName, 'text/csv;charset=utf-8');
-    participantExportButton.disabled = false;
     setParticipantUploadStatus('downloaded', fileName);
     setNotice(PARTICIPANT_EXPORT_SUCCESS_MESSAGE, true);
     renderParticipantResultPanel();
@@ -5866,7 +5903,6 @@ export function createAppController({
       participantStartButton.addEventListener('click', startParticipantSession);
       participantCalibrateButton.addEventListener('click', startCalibration);
       participantRecordButton.addEventListener('click', toggleParticipantRecording);
-      participantExportButton.addEventListener('click', exportSamples);
       participantExportCsvButton.addEventListener('click', exportParticipantStatsCsv);
       participantExportJsonButton.addEventListener('click', exportParticipantJson);
       participantExportHeatmapButton.addEventListener('click', exportParticipantHeatmap);
@@ -5892,9 +5928,11 @@ export function createAppController({
           }
         });
       });
-      setStudyVideo(selectedStudyVideo.id, { clearAois: true });
       initializeGazeProviderControls();
       restoreParticipantState();
+      if (!sourceVideo.getAttribute('src')) {
+        setStudyVideo(selectedStudyVideo.id, { clearAois: true });
+      }
       syncSelectedCalibrationProfileState();
       syncSelectedValidationPolicyState();
       resize();
@@ -5903,7 +5941,7 @@ export function createAppController({
       setWebcamStatus(state.webcamCalibrationTrained ? 'calibrated' : 'idle');
       syncVideoNotice();
       applyAppMode();
-      void autoStartParticipantGazeAfterCalibrationReturn();
+      void autoStartGazeAfterCalibrationReturn();
       animate();
       window.__aoiGetRuntimeQualityMetadata = () => ({
         faceQuality: getFaceQualityRuntimeMetadata(),
