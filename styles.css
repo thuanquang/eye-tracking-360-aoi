@@ -1393,6 +1393,13 @@ details.panel-section > summary:focus-visible {
   color: var(--ink);
 }
 
+.file-loader:focus-within {
+  border-color: var(--accent-2);
+  color: var(--ink);
+  outline: 2px solid rgba(21, 110, 200, 0.32);
+  outline-offset: 2px;
+}
+
 .file-loader input {
   position: absolute;
   width: 1px;

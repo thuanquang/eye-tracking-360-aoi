@@ -180,6 +180,13 @@ test('admin recording panel includes batch heatmap merge controls', () => {
   const adminRecordingStart = html.indexOf('id="adminRecordingPanel"');
   const nextPanelStart = html.indexOf('id="adminReadoutPanel"');
   const adminRecordingPanel = html.slice(adminRecordingStart, nextPanelStart);
+  const requiredDisabledControls = [
+    'mergedHeatmapGroupSelect',
+    'mergedHeatmapVariantSelect',
+    'mergedHeatmapTypeSelect',
+    'exportMergedHeatmapJsonButton',
+    'exportMergedHeatmapImageButton',
+  ];
 
   assert.notEqual(adminRecordingStart, -1, 'The admin recording panel should exist in the page markup.');
   assert.notEqual(nextPanelStart, -1, 'The admin readout panel should follow the recording panel.');
@@ -187,6 +194,23 @@ test('admin recording panel includes batch heatmap merge controls', () => {
     adminRecordingPanel,
     /id="heatmapMergeFileInput"[\s\S]*multiple[\s\S]*id="exportMergedHeatmapJsonButton"[\s\S]*id="exportMergedHeatmapImageButton"/,
     'Batch heatmap merge controls should appear in order inside the admin recording panel.',
+  );
+  assert.match(
+    adminRecordingPanel,
+    /<input\b(?=[^>]*\bid="heatmapMergeFileInput")(?=[^>]*\bmultiple\b)[^>]*>/,
+    'The batch heatmap file input should be the element that accepts multiple files.',
+  );
+  requiredDisabledControls.forEach((id) => {
+    assert.match(
+      adminRecordingPanel,
+      new RegExp(`<(?:select|button)\\b(?=[^>]*\\bid="${id}")(?=[^>]*\\bdisabled\\b)[^>]*>`),
+      `${id} should be disabled until batch heatmap files are loaded.`,
+    );
+  });
+  assert.match(
+    adminRecordingPanel,
+    /<p\b(?=[^>]*\bid="heatmapMergeStatus")(?=[^>]*\brole="status")(?=[^>]*\baria-live="polite")[^>]*>/,
+    'Batch heatmap status should be exposed as a polite live status region.',
   );
   assert.match(
     css,
@@ -197,6 +221,14 @@ test('admin recording panel includes batch heatmap merge controls', () => {
     css,
     /\.batch-heatmap-controls\s*\{/,
     'Batch heatmap controls should have responsive control layout styles.',
+  );
+});
+
+test('file upload labels show keyboard focus state', () => {
+  assert.match(
+    css,
+    /\.file-loader:focus-within\s*\{/,
+    'Hidden file inputs should expose a visible focus state on their file loader labels.',
   );
 });
 
