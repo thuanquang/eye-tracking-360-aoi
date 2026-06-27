@@ -151,12 +151,44 @@ function normalizeVideoKeyPart(value) {
     .replace(/^-+|-+$/g, '');
 }
 
+function isBlobUrl(value) {
+  return typeof value === 'string' && value.trim().toLowerCase().startsWith('blob:');
+}
+
+function getStableVideoSource(video) {
+  if (!video) {
+    return null;
+  }
+
+  if (video.src && !isBlobUrl(video.src)) {
+    return video.src;
+  }
+
+  return video.path ?? null;
+}
+
 export function getHeatmapVideoKey(payload) {
   const video = getPayloadVideo(payload);
-  const parts = [
-    normalizeVideoKeyPart(video?.name),
-    normalizeVideoKeyPart(video?.src),
-  ].filter(Boolean);
+  let parts = [];
+
+  if (video?.kind === 'local-file') {
+    parts = [
+      normalizeVideoKeyPart(video.name),
+      normalizeVideoKeyPart(video.size),
+      normalizeVideoKeyPart(video.lastModified),
+    ].filter(Boolean);
+  } else {
+    const id = normalizeVideoKeyPart(video?.id);
+
+    if (id) {
+      return id;
+    }
+
+    parts = [
+      normalizeVideoKeyPart(video?.name),
+      normalizeVideoKeyPart(getStableVideoSource(video)),
+    ].filter(Boolean);
+  }
 
   return parts.length > 0 ? parts.join('|') : 'unknown-video';
 }
@@ -185,19 +217,24 @@ function getMergeErrorMessage(error) {
   return error instanceof Error ? error.message : String(error);
 }
 
-function addIncompatibleHeatmapSkip(skipped, groupKey, heatmapPath, error) {
+function addIncompatibleHeatmapSkip(skipped, groupKey, heatmapPath, sourceFiles, error) {
   skipped.push({
     reason: 'incompatible-heatmap-grid',
     groupKey,
     heatmapPath,
+    sourceFiles,
     message: getMergeErrorMessage(error),
   });
 }
 
 function mergeHeatmapPath({ group, heatmapPath, getHeatmap, setHeatmap, skipped }) {
-  const heatmaps = group.entries
-    .map((entry) => getHeatmap(entry.heatmaps))
-    .filter(Boolean);
+  const heatmapEntries = group.entries
+    .map((entry) => ({
+      fileName: entry.fileName,
+      heatmap: getHeatmap(entry.heatmaps),
+    }))
+    .filter((entry) => Boolean(entry.heatmap));
+  const heatmaps = heatmapEntries.map((entry) => entry.heatmap);
 
   if (heatmaps.length === 0) {
     return;
@@ -206,7 +243,13 @@ function mergeHeatmapPath({ group, heatmapPath, getHeatmap, setHeatmap, skipped 
   try {
     setHeatmap(mergeCompatibleHeatmaps(heatmaps));
   } catch (error) {
-    addIncompatibleHeatmapSkip(skipped, group.groupKey, heatmapPath, error);
+    addIncompatibleHeatmapSkip(
+      skipped,
+      group.groupKey,
+      heatmapPath,
+      heatmapEntries.map((entry) => entry.fileName),
+      error,
+    );
   }
 }
 

@@ -421,6 +421,51 @@ test('keeps different videos in separate merged heatmap groups', () => {
   assert.equal(mergedExport.groups[1].sources[0].participantId, 'top-level-p2');
 });
 
+test('groups local-file heatmap exports by stable metadata and ignores blob sources', () => {
+  const baseVideo = {
+    kind: 'local-file',
+    name: 'Local Clip.mp4',
+    size: 123456,
+    lastModified: 1760000000000,
+  };
+  const mergedExport = buildMergedHeatmapExport([
+    {
+      fileName: 'local-p1.json',
+      payload: payload({
+        video: { ...baseVideo, src: 'blob:http://localhost/first' },
+        participant: { id: 'P1' },
+        heatmaps: {
+          screen: screenHeatmap({
+            bins: [{ column: 0, row: 0, weightSec: 0.1, sampleCount: 1 }],
+          }),
+        },
+      }),
+    },
+    {
+      fileName: 'local-p2.json',
+      payload: payload({
+        video: { ...baseVideo, src: 'blob:http://localhost/second' },
+        participant: { id: 'P2' },
+        heatmaps: {
+          screen: screenHeatmap({
+            bins: [{ column: 0, row: 0, weightSec: 0.2, sampleCount: 2 }],
+          }),
+        },
+      }),
+    },
+  ], { exportedAt: '2026-06-27T12:00:00.000Z' });
+
+  assert.equal(
+    getHeatmapVideoKey({ video: { ...baseVideo, src: 'blob:http://localhost/first' } }),
+    'local-clip-mp4|123456|1760000000000',
+  );
+  assert.equal(mergedExport.groupCount, 1);
+  assert.equal(mergedExport.groups[0].sourceCount, 2);
+  assert.deepEqual(mergedExport.groups[0].summary.heatmaps.screen.bins, [
+    { column: 0, row: 0, weightSec: 0.3, sampleCount: 3 },
+  ]);
+});
+
 test('skips files with missing heatmaps and reports why', () => {
   const mergedExport = buildMergedHeatmapExport([
     {
@@ -444,6 +489,20 @@ test('builds stable video keys from metadata', () => {
   assert.equal(
     getHeatmapVideoKey({ video: { name: 'Clip A.mp4', src: 'assets/clips/a.mp4' } }),
     'clip-a-mp4|assets-clips-a-mp4',
+  );
+  assert.equal(
+    getHeatmapVideoKey({ video: { id: 'clip-a', name: 'Clip A.mp4', src: 'assets/clips/a.mp4' } }),
+    'clip-a',
+  );
+  assert.equal(
+    getHeatmapVideoKey({
+      video: {
+        name: 'Path Clip.mp4',
+        src: 'blob:http://localhost/transient',
+        path: 'assets/path-clip.mp4',
+      },
+    }),
+    'path-clip-mp4|assets-path-clip-mp4',
   );
 });
 
@@ -558,6 +617,8 @@ test('reports incompatible heatmap paths without throwing and keeps compatible p
   );
   assert.match(mergedExport.skipped[0].message, /Incompatible heatmap grids/);
   assert.match(mergedExport.skipped[1].message, /Incompatible heatmap grids/);
+  assert.deepEqual(mergedExport.skipped[0].sourceFiles, ['p1.json', 'p2.json']);
+  assert.deepEqual(mergedExport.skipped[1].sourceFiles, ['p1.json', 'p2.json']);
 });
 
 test('throws a clear error for null heatmaps', () => {
