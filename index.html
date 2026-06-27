@@ -470,38 +470,44 @@
           </label>
           <section class="batch-heatmap-panel" aria-labelledby="batchHeatmapHeading">
             <div class="batch-heatmap-heading">
-              <h3 id="batchHeatmapHeading">Gop heatmap nhieu file</h3>
+              <h3 id="batchHeatmapHeading">Gộp heatmap nhiều file</h3>
             </div>
             <label class="file-loader batch-heatmap-loader">
-              <span>Tai JSON heatmap</span>
+              <span>Tải file nguồn để gộp</span>
               <input id="heatmapMergeFileInput" type="file" accept="application/json,.json" multiple />
+            </label>
+            <label class="file-loader batch-heatmap-loader">
+              <span>Tải JSON heatmap tổng để xem lại</span>
+              <input id="mergedHeatmapPackageFileInput" type="file" accept="application/json,.json" />
             </label>
             <div class="batch-heatmap-controls">
               <label class="field-label compact-field">
-                <span>Nhom</span>
+                <span>Nhóm</span>
                 <select id="mergedHeatmapGroupSelect" disabled></select>
               </label>
               <label class="field-label compact-field">
-                <span>Bien the</span>
+                <span>Biến thể</span>
                 <select id="mergedHeatmapVariantSelect" disabled>
-                  <option value="trusted">trusted</option>
-                  <option value="likely">likely</option>
-                  <option value="possible">possible</option>
+                  <option value="trusted">Tin cậy</option>
+                  <option value="likely">Có khả năng</option>
+                  <option value="possible">Có thể</option>
                 </select>
               </label>
               <label class="field-label compact-field">
-                <span>Loai</span>
+                <span>Loại</span>
                 <select id="mergedHeatmapTypeSelect" disabled>
-                  <option value="panorama">panorama</option>
-                  <option value="screen">screen</option>
+                  <option value="panorama">Toàn cảnh</option>
+                  <option value="screen">Màn hình</option>
                 </select>
               </label>
             </div>
             <div class="batch-heatmap-actions">
-              <button id="exportMergedHeatmapJsonButton" type="button" disabled>Xuat JSON heatmap tong</button>
-              <button id="exportMergedHeatmapImageButton" type="button" disabled>Xuat anh heatmap</button>
+              <button id="viewMergedHeatmapButton" type="button" disabled>Xem heatmap tổng</button>
+              <button id="clearMergedHeatmapViewButton" type="button" disabled>Ẩn heatmap tổng</button>
+              <button id="exportMergedHeatmapJsonButton" type="button" disabled>Xuất JSON heatmap tổng</button>
+              <button id="exportMergedHeatmapImageButton" type="button" disabled>Xuất ảnh heatmap</button>
             </div>
-            <p id="heatmapMergeStatus" class="fine-print" role="status" aria-live="polite">Chua tai heatmap JSON.</p>
+            <p id="heatmapMergeStatus" class="fine-print" role="status" aria-live="polite">Chưa tải JSON heatmap.</p>
           </section>
           <div class="status-grid">
             <div>

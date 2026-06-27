@@ -15,6 +15,10 @@ function readMediaRule(query) {
   return pattern.exec(css)?.[1] || '';
 }
 
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 test('viewer keeps a usable aspect ratio in stacked responsive layouts', () => {
   const viewerRule = readRule('.viewer');
   assert.match(
@@ -184,16 +188,39 @@ test('admin recording panel includes batch heatmap merge controls', () => {
     'mergedHeatmapGroupSelect',
     'mergedHeatmapVariantSelect',
     'mergedHeatmapTypeSelect',
+    'viewMergedHeatmapButton',
+    'clearMergedHeatmapViewButton',
     'exportMergedHeatmapJsonButton',
     'exportMergedHeatmapImageButton',
+  ];
+  const requiredLabels = [
+    'Gộp heatmap nhiều file',
+    'Tải file nguồn để gộp',
+    'Tải JSON heatmap tổng để xem lại',
+    'Nhóm',
+    'Biến thể',
+    'Loại',
+    'Tin cậy',
+    'Có khả năng',
+    'Có thể',
+    'Toàn cảnh',
+    'Màn hình',
+    'Xem heatmap tổng',
+    'Ẩn heatmap tổng',
+    'Xuất JSON heatmap tổng',
+    'Xuất ảnh heatmap',
+    'Chưa tải JSON heatmap.',
   ];
 
   assert.notEqual(adminRecordingStart, -1, 'The admin recording panel should exist in the page markup.');
   assert.notEqual(nextPanelStart, -1, 'The admin readout panel should follow the recording panel.');
+  requiredLabels.forEach((label) => {
+    assert.match(html, new RegExp(escapeRegExp(label)));
+  });
   assert.match(
     adminRecordingPanel,
-    /id="heatmapMergeFileInput"[\s\S]*multiple[\s\S]*id="exportMergedHeatmapJsonButton"[\s\S]*id="exportMergedHeatmapImageButton"/,
-    'Batch heatmap merge controls should appear in order inside the admin recording panel.',
+    /id="heatmapMergeFileInput"[\s\S]*id="mergedHeatmapPackageFileInput"[\s\S]*id="viewMergedHeatmapButton"[\s\S]*id="clearMergedHeatmapViewButton"/,
+    'Batch heatmap merge and viewer controls should appear in order inside the admin recording panel.',
   );
   assert.match(
     adminRecordingPanel,
