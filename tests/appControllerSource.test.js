@@ -586,8 +586,16 @@ test('recording import ignores empty AOI arrays from incomplete participant expo
 test('batch heatmap merge imports the merge helper', () => {
   assert.match(
     controllerSource,
-    /import\s+\{[\s\S]*buildMergedHeatmapExport[\s\S]*readHeatmapExportFiles[\s\S]*\}\s+from\s+'\.\.\/recording\/heatmapMerge\.js'/,
+    /import\s+\{[\s\S]*readMergedHeatmapPackageFile[\s\S]*\}\s+from\s+'\.\.\/recording\/heatmapMerge\.js'/,
     'The app controller should import the batch heatmap merge and file reader helpers.',
+  );
+});
+
+test('batch heatmap viewer imports overlay helpers', () => {
+  assert.match(
+    controllerSource,
+    /import\s+\{[\s\S]*buildMergedHeatmapOverlayPoints[\s\S]*\}\s+from\s+'\.\.\/recording\/heatmapOverlay\.js'/,
+    'The app controller should import merged heatmap overlay point helpers for viewer rendering.',
   );
 });
 
@@ -608,6 +616,9 @@ test('batch heatmap merge destructures DOM controls', () => {
     'mergedHeatmapGroupSelect',
     'mergedHeatmapVariantSelect',
     'mergedHeatmapTypeSelect',
+    'mergedHeatmapPackageFileInput',
+    'viewMergedHeatmapButton',
+    'clearMergedHeatmapViewButton',
     'exportMergedHeatmapJsonButton',
     'exportMergedHeatmapImageButton',
   ].forEach((nodeName) => {
@@ -629,6 +640,16 @@ test('batch heatmap merge keeps merged export controller state', () => {
     controllerSource,
     /let\s+heatmapMergeLoadId\s*=\s*0\s*;/,
     'The app controller should track the current batch heatmap file load.',
+  );
+  assert.match(
+    controllerSource,
+    /let\s+activeMergedHeatmapView\s*=\s*null\s*;/,
+    'The app controller should track whether a merged heatmap package is visible.',
+  );
+  assert.match(
+    controllerSource,
+    /let\s+mergedHeatmapPackageLoadId\s*=\s*0\s*;/,
+    'The app controller should track the current merged heatmap package load.',
   );
 });
 
@@ -669,6 +690,19 @@ test('batch heatmap file import ignores stale async completions', () => {
     /catch\s*\(error\)\s*\{[\s\S]*?if\s*\(\s*loadId\s*!==\s*heatmapMergeLoadId\s*\)\s*\{[\s\S]*?return;[\s\S]*?\}[\s\S]*?mergedHeatmapExport\s*=\s*null[\s\S]*?syncMergedHeatmapControls\(\)[\s\S]*?setNotice/,
     'Batch heatmap import should ignore stale failures before clearing state or showing failure.',
   );
+});
+
+test('merged heatmap package file import validates and loads final packages', () => {
+  const loadFunction = controllerSource.match(
+    /async\s+function\s+loadMergedHeatmapPackageFile\(event\)[\s\S]*?\r?\n  \}\r?\n\r?\n  function resize/,
+  )?.[0] || '';
+
+  assert.notEqual(loadFunction, '');
+  assert.match(loadFunction, /readMergedHeatmapPackageFile\(file\)/);
+  assert.match(loadFunction, /mergedHeatmapExport\s*=\s*payload/);
+  assert.match(loadFunction, /syncMergedHeatmapControls\(\)/);
+  assert.match(loadFunction, /viewSelectedMergedHeatmap\(\{\s*auto:\s*true\s*\}\)/);
+  assert.match(loadFunction, /event\.target\.value\s*=\s*''/);
 });
 
 test('batch heatmap JSON export downloads the merged package', () => {
@@ -805,8 +839,31 @@ test('batch heatmap merge status summarizes files groups and skips', () => {
   );
   assert.match(
     controllerSource,
-    /Chua tai heatmap JSON\./,
+    /Chưa tải JSON heatmap\./,
     'Merged heatmap status should show an initial no-data message.',
+  );
+  assert.match(
+    controllerSource,
+    /Đã tải \$\{mergedHeatmapExport\.sourceFileCount\} file, \$\{mergedHeatmapExport\.groupCount\} nhóm, bỏ qua \$\{mergedHeatmapExport\.skipped\.length\}\./,
+    'Merged heatmap status should use accented Vietnamese after loading source files.',
+  );
+});
+
+test('batch heatmap runtime notices use accented Vietnamese', () => {
+  assert.match(
+    controllerSource,
+    /Đã gộp heatmap: \$\{mergedHeatmapExport\.sourceFileCount\} file, \$\{mergedHeatmapExport\.groupCount\} nhóm, bỏ qua \$\{mergedHeatmapExport\.skipped\.length\}\./,
+    'Merged source import success notice should use accented Vietnamese.',
+  );
+  assert.match(
+    controllerSource,
+    /Không thể gộp heatmap JSON/,
+    'Merged source import failure notice should use accented Vietnamese.',
+  );
+  assert.match(
+    controllerSource,
+    /Đã tải JSON heatmap tổng/,
+    'Merged package import success notice should use accented Vietnamese.',
   );
 });
 
@@ -815,6 +872,21 @@ test('batch heatmap merge event listeners are wired', () => {
     controllerSource,
     /heatmapMergeFileInput\.addEventListener\('change',\s*loadHeatmapMergeFiles\)/,
     'The heatmap merge file input should load selected files.',
+  );
+  assert.match(
+    controllerSource,
+    /mergedHeatmapPackageFileInput\.addEventListener\('change',\s*loadMergedHeatmapPackageFile\)/,
+    'The merged heatmap package file input should load final merged JSON packages.',
+  );
+  assert.match(
+    controllerSource,
+    /viewMergedHeatmapButton\.addEventListener\('click',\s*\(\)\s*=>\s*viewSelectedMergedHeatmap\(\)\)/,
+    'The merged heatmap view button should show the selected final heatmap.',
+  );
+  assert.match(
+    controllerSource,
+    /clearMergedHeatmapViewButton\.addEventListener\('click',\s*clearMergedHeatmapView\)/,
+    'The merged heatmap clear button should hide the visible final heatmap.',
   );
   assert.match(
     controllerSource,

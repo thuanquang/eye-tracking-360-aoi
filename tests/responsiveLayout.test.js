@@ -215,17 +215,22 @@ test('admin recording panel includes batch heatmap merge controls', () => {
   assert.notEqual(adminRecordingStart, -1, 'The admin recording panel should exist in the page markup.');
   assert.notEqual(nextPanelStart, -1, 'The admin readout panel should follow the recording panel.');
   requiredLabels.forEach((label) => {
-    assert.match(html, new RegExp(escapeRegExp(label)));
+    assert.match(adminRecordingPanel, new RegExp(escapeRegExp(label)));
   });
   assert.match(
     adminRecordingPanel,
-    /id="heatmapMergeFileInput"[\s\S]*id="mergedHeatmapPackageFileInput"[\s\S]*id="viewMergedHeatmapButton"[\s\S]*id="clearMergedHeatmapViewButton"/,
+    /id="heatmapMergeFileInput"[\s\S]*id="mergedHeatmapPackageFileInput"[\s\S]*id="viewMergedHeatmapButton"[\s\S]*id="clearMergedHeatmapViewButton"[\s\S]*id="exportMergedHeatmapJsonButton"[\s\S]*id="exportMergedHeatmapImageButton"/,
     'Batch heatmap merge and viewer controls should appear in order inside the admin recording panel.',
   );
   assert.match(
     adminRecordingPanel,
     /<input\b(?=[^>]*\bid="heatmapMergeFileInput")(?=[^>]*\bmultiple\b)[^>]*>/,
     'The batch heatmap file input should be the element that accepts multiple files.',
+  );
+  assert.match(
+    adminRecordingPanel,
+    /<input\b(?=[^>]*\bid="mergedHeatmapPackageFileInput")(?![^>]*\bmultiple\b)[^>]*>/,
+    'The merged heatmap package file input should load one final JSON package at a time.',
   );
   requiredDisabledControls.forEach((id) => {
     assert.match(

@@ -29,7 +29,9 @@ import {
 import {
   buildMergedHeatmapExport,
   readHeatmapExportFiles,
+  readMergedHeatmapPackageFile,
 } from '../recording/heatmapMerge.js';
+import { buildMergedHeatmapOverlayPoints } from '../recording/heatmapOverlay.js';
 import {
   getHeatmapRenderDimensions,
   normalizeHeatmapBins,
@@ -166,7 +168,9 @@ export function createAppController({
   let aoiOverlayVersion = 0;
   let participantRecordingStartedAtSec = null;
   let mergedHeatmapExport = null;
+  let activeMergedHeatmapView = null;
   let heatmapMergeLoadId = 0;
+  let mergedHeatmapPackageLoadId = 0;
 
   let recordingSampleScheduler = createSampleScheduler({ intervalMs: RECORDING_SAMPLE_INTERVAL_MS });
   const GAZE_SMOOTHING_ALPHA = GAZE_SMOOTHING.alpha;
@@ -254,10 +258,13 @@ export function createAppController({
     deleteSelectedAoiButton,
     recordingFileInput,
     heatmapMergeFileInput,
+    mergedHeatmapPackageFileInput,
     heatmapMergeStatus,
     mergedHeatmapGroupSelect,
     mergedHeatmapVariantSelect,
     mergedHeatmapTypeSelect,
+    viewMergedHeatmapButton,
+    clearMergedHeatmapViewButton,
     exportMergedHeatmapJsonButton,
     exportMergedHeatmapImageButton,
     recordButton,
@@ -2091,6 +2098,77 @@ export function createAppController({
     return option;
   }
 
+  function createMergedHeatmapViewState() {
+    const group = getSelectedMergedHeatmapGroup();
+    const heatmap = getSelectedMergedHeatmap();
+
+    if (!group || !heatmap) {
+      return null;
+    }
+
+    return {
+      groupKey: group.groupKey,
+      variant: mergedHeatmapVariantSelect.value,
+      type: mergedHeatmapTypeSelect.value,
+      heatmap,
+    };
+  }
+
+  function redrawMergedHeatmapOverlay({ force = false } = {}) {
+    void force;
+
+    if (activeMergedHeatmapView?.heatmap) {
+      const dimensions = getViewerScreenDimensions();
+      const overlayPoints = buildMergedHeatmapOverlayPoints({
+        heatmap: activeMergedHeatmapView.heatmap,
+        dimensions,
+        projectPanoramaPoint: ({ yaw, pitch }) => {
+          const projected = panoramaPointToScreen({
+            yaw,
+            pitch,
+            width: dimensions.width,
+            height: dimensions.height,
+            cameraYaw: state.cameraYaw,
+            cameraPitch: state.cameraPitch,
+            fov: camera.fov,
+          });
+
+          return projected.visible ? { x: projected.x, y: projected.y } : null;
+        },
+      });
+
+      activeMergedHeatmapView.pointCount = overlayPoints.length;
+    }
+
+    clearGazeHeatmapOverlay();
+  }
+
+  function viewSelectedMergedHeatmap({ auto = false } = {}) {
+    const selectedHeatmap = getSelectedMergedHeatmap();
+
+    if (!selectedHeatmap) {
+      if (!auto) {
+        setNotice('Chưa chọn heatmap tổng để xem.', true);
+      }
+      activeMergedHeatmapView = null;
+      appShell.classList.remove('is-merged-heatmap-view');
+      syncMergedHeatmapControls();
+      return;
+    }
+
+    activeMergedHeatmapView = createMergedHeatmapViewState();
+    appShell.classList.add('is-merged-heatmap-view');
+    redrawMergedHeatmapOverlay({ force: true });
+    syncMergedHeatmapControls();
+  }
+
+  function clearMergedHeatmapView() {
+    activeMergedHeatmapView = null;
+    appShell.classList.remove('is-merged-heatmap-view');
+    clearGazeHeatmapOverlay();
+    syncMergedHeatmapControls();
+  }
+
   function syncMergedHeatmapControls() {
     const groups = getMergedHeatmapGroups();
     const previousGroupKey = mergedHeatmapGroupSelect.value;
@@ -2102,21 +2180,35 @@ export function createAppController({
     }
 
     const selectedGroup = getSelectedMergedHeatmapGroup();
+    if (!selectedGroup && hasGroups) {
+      mergedHeatmapGroupSelect.value = groups[0].groupKey;
+    }
+
+    const selectedHeatmap = getSelectedMergedHeatmap();
+    if (activeMergedHeatmapView && !selectedHeatmap) {
+      activeMergedHeatmapView = null;
+      appShell.classList.remove('is-merged-heatmap-view');
+      clearGazeHeatmapOverlay();
+    }
+
     mergedHeatmapGroupSelect.disabled = !hasGroups;
     mergedHeatmapVariantSelect.disabled = !hasGroups;
     mergedHeatmapTypeSelect.disabled = !hasGroups;
+    viewMergedHeatmapButton.disabled = !selectedHeatmap;
+    clearMergedHeatmapViewButton.disabled = !activeMergedHeatmapView;
     exportMergedHeatmapJsonButton.disabled = !hasGroups;
-    exportMergedHeatmapImageButton.disabled = !hasGroups;
+    exportMergedHeatmapImageButton.disabled = !selectedHeatmap;
 
     if (!mergedHeatmapExport) {
-      heatmapMergeStatus.textContent = 'Chua tai heatmap JSON.';
+      heatmapMergeStatus.textContent = 'Chưa tải JSON heatmap.';
       return;
     }
 
-    heatmapMergeStatus.textContent = `Da tai ${mergedHeatmapExport.sourceFileCount} file, ${mergedHeatmapExport.groupCount} nhom, bo qua ${mergedHeatmapExport.skipped.length}.`;
+    heatmapMergeStatus.textContent = `Đã tải ${mergedHeatmapExport.sourceFileCount} file, ${mergedHeatmapExport.groupCount} nhóm, bỏ qua ${mergedHeatmapExport.skipped.length}.`;
 
-    if (!selectedGroup && hasGroups) {
-      mergedHeatmapGroupSelect.value = groups[0].groupKey;
+    if (activeMergedHeatmapView && selectedHeatmap) {
+      activeMergedHeatmapView = createMergedHeatmapViewState();
+      redrawMergedHeatmapOverlay({ force: true });
     }
   }
 
@@ -2140,7 +2232,7 @@ export function createAppController({
         sourceFileCount,
       });
       syncMergedHeatmapControls();
-      setNotice(`Da gop heatmap: ${mergedHeatmapExport.sourceFileCount} file, ${mergedHeatmapExport.groupCount} nhom, bo qua ${mergedHeatmapExport.skipped.length}.`, true);
+      setNotice(`Đã gộp heatmap: ${mergedHeatmapExport.sourceFileCount} file, ${mergedHeatmapExport.groupCount} nhóm, bỏ qua ${mergedHeatmapExport.skipped.length}.`, true);
     } catch (error) {
       if (loadId !== heatmapMergeLoadId) {
         return;
@@ -2148,7 +2240,40 @@ export function createAppController({
 
       mergedHeatmapExport = null;
       syncMergedHeatmapControls();
-      setNotice(`Khong the gop heatmap JSON: ${error.message}`, true);
+      setNotice(`Không thể gộp heatmap JSON: ${error.message}`, true);
+    } finally {
+      event.target.value = '';
+    }
+  }
+
+  async function loadMergedHeatmapPackageFile(event) {
+    const file = event.target.files?.[0];
+    const loadId = ++mergedHeatmapPackageLoadId;
+
+    try {
+      if (!file) {
+        return;
+      }
+
+      const { payload } = await readMergedHeatmapPackageFile(file);
+
+      if (loadId !== mergedHeatmapPackageLoadId) {
+        return;
+      }
+
+      mergedHeatmapExport = payload;
+      syncMergedHeatmapControls();
+      setNotice(`Đã tải JSON heatmap tổng: ${payload.groupCount} nhóm.`, true);
+      viewSelectedMergedHeatmap({ auto: true });
+    } catch (error) {
+      if (loadId !== mergedHeatmapPackageLoadId) {
+        return;
+      }
+
+      clearMergedHeatmapView();
+      mergedHeatmapExport = null;
+      syncMergedHeatmapControls();
+      setNotice(`Không thể tải JSON heatmap tổng: ${error.message}`, true);
     } finally {
       event.target.value = '';
     }
@@ -4857,12 +4982,12 @@ export function createAppController({
 
   function exportMergedHeatmapJson() {
     if (!mergedHeatmapExport) {
-      setNotice('Chua co heatmap tong de xuat JSON.', true);
+      setNotice('Chưa có heatmap tổng để xuất JSON.', true);
       return;
     }
 
     downloadJson(mergedHeatmapExport, buildMergedHeatmapFileName('json'));
-    setNotice('Da xuat JSON heatmap tong.', true);
+    setNotice('Đã xuất JSON heatmap tổng.', true);
   }
 
   function drawMergedHeatmapToCanvas(canvas, heatmap) {
@@ -4932,7 +5057,7 @@ export function createAppController({
     const heatmap = getSelectedMergedHeatmap();
 
     if (!heatmap) {
-      setNotice('Nhom da chon khong co heatmap hop le de xuat anh.');
+      setNotice('Nhóm đã chọn không có heatmap hợp lệ để xuất ảnh.');
       return;
     }
 
@@ -4940,7 +5065,7 @@ export function createAppController({
     const drawn = drawMergedHeatmapToCanvas(canvas, heatmap);
 
     if (!drawn) {
-      setNotice('Khong the ve heatmap tong de xuat anh.', true);
+      setNotice('Không thể vẽ heatmap tổng để xuất ảnh.', true);
       return;
     }
 
@@ -4949,12 +5074,12 @@ export function createAppController({
     try {
       dataUrl = canvas.toDataURL('image/png');
     } catch (error) {
-      setNotice('Khong the tao PNG heatmap tong de xuat anh.', true);
+      setNotice('Không thể tạo PNG heatmap tổng để xuất ảnh.', true);
       return;
     }
 
     if (!dataUrl || dataUrl === 'data:,') {
-      setNotice('Khong the tao PNG heatmap tong de xuat anh.', true);
+      setNotice('Không thể tạo PNG heatmap tổng để xuất ảnh.', true);
       return;
     }
 
@@ -4962,7 +5087,7 @@ export function createAppController({
     anchor.href = dataUrl;
     anchor.download = buildMergedHeatmapFileName('png');
     anchor.click();
-    setNotice('Da xuat anh heatmap tong.', true);
+    setNotice('Đã xuất ảnh heatmap tổng.', true);
   }
 
   function buildVideoPackageMetadata() {
@@ -6121,6 +6246,9 @@ export function createAppController({
       controlPanel.addEventListener('scroll', syncAdminWorkflowStep, { passive: true });
       recordingFileInput.addEventListener('change', loadRecordingFile);
       heatmapMergeFileInput.addEventListener('change', loadHeatmapMergeFiles);
+      mergedHeatmapPackageFileInput.addEventListener('change', loadMergedHeatmapPackageFile);
+      viewMergedHeatmapButton.addEventListener('click', () => viewSelectedMergedHeatmap());
+      clearMergedHeatmapViewButton.addEventListener('click', clearMergedHeatmapView);
       exportMergedHeatmapJsonButton.addEventListener('click', exportMergedHeatmapJson);
       exportMergedHeatmapImageButton.addEventListener('click', exportMergedHeatmapImage);
       mergedHeatmapGroupSelect.addEventListener('change', syncMergedHeatmapControls);
