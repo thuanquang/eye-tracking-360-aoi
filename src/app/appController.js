@@ -28,6 +28,10 @@ import {
 } from '../recording/recordingExport.js?v=recording-export-2';
 import { buildMergedHeatmapExport } from '../recording/heatmapMerge.js';
 import {
+  getHeatmapRenderDimensions,
+  normalizeHeatmapBins,
+} from '../recording/heatmapRender.js';
+import {
   findReviewSampleIndex,
   getReviewTimeWindow,
   prepareReviewSamples,
@@ -2058,6 +2062,20 @@ export function createAppController({
     const groups = getMergedHeatmapGroups();
 
     return groups.find((group) => group.groupKey === mergedHeatmapGroupSelect.value) ?? null;
+  }
+
+  function getSelectedMergedHeatmap() {
+    const group = getSelectedMergedHeatmapGroup();
+    const variant = mergedHeatmapVariantSelect.value;
+    const type = mergedHeatmapTypeSelect.value;
+
+    if (!group?.summary?.heatmaps) {
+      return null;
+    }
+
+    return group.summary.heatmaps.variants?.[variant]?.[type]
+      ?? group.summary.heatmaps?.[type]
+      ?? null;
   }
 
   function createMergedHeatmapGroupOption(group) {
@@ -4844,13 +4862,90 @@ export function createAppController({
     setNotice('Da xuat JSON heatmap tong.', true);
   }
 
+  function drawMergedHeatmapToCanvas(canvas, heatmap) {
+    const dimensions = getHeatmapRenderDimensions(heatmap);
+
+    canvas.width = dimensions.width;
+    canvas.height = dimensions.height;
+
+    const context = canvas.getContext('2d');
+
+    if (!context) {
+      return false;
+    }
+
+    const columns = Number.isFinite(Number(heatmap?.columns)) && Number(heatmap.columns) > 0
+      ? Number(heatmap.columns)
+      : 72;
+    const rows = Number.isFinite(Number(heatmap?.rows)) && Number(heatmap.rows) > 0
+      ? Number(heatmap.rows)
+      : 36;
+    const cellWidth = canvas.width / columns;
+    const cellHeight = canvas.height / rows;
+
+    context.globalCompositeOperation = 'source-over';
+    context.fillStyle = '#111827';
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.globalCompositeOperation = 'lighter';
+
+    normalizeHeatmapBins(heatmap).forEach((bin) => {
+      const column = Number(bin.column);
+      const row = Number(bin.row);
+      const intensity = Number(bin.intensity);
+
+      if (
+        !Number.isFinite(column)
+        || !Number.isFinite(row)
+        || !Number.isFinite(intensity)
+        || intensity <= 0
+        || column < 0
+        || row < 0
+        || column >= columns
+        || row >= rows
+      ) {
+        return;
+      }
+
+      const x = (column + 0.5) * cellWidth;
+      const y = (row + 0.5) * cellHeight;
+      const radius = Math.max(cellWidth, cellHeight) * (1.2 + intensity * 2.4);
+      const gradient = context.createRadialGradient(x, y, 0, x, y, radius);
+
+      gradient.addColorStop(0, `rgba(255, 255, 255, ${Math.min(0.95, intensity)})`);
+      gradient.addColorStop(0.18, `rgba(255, 40, 24, ${Math.min(0.85, intensity)})`);
+      gradient.addColorStop(0.45, `rgba(255, 210, 28, ${Math.min(0.65, intensity * 0.75)})`);
+      gradient.addColorStop(0.78, `rgba(0, 220, 255, ${Math.min(0.35, intensity * 0.45)})`);
+      gradient.addColorStop(1, 'rgba(0, 220, 255, 0)');
+
+      context.fillStyle = gradient;
+      context.fillRect(x - radius, y - radius, radius * 2, radius * 2);
+    });
+
+    context.globalCompositeOperation = 'source-over';
+    return true;
+  }
+
   function exportMergedHeatmapImage() {
-    if (!mergedHeatmapExport) {
-      setNotice('Chua co heatmap tong de xuat anh.', true);
+    const heatmap = getSelectedMergedHeatmap();
+
+    if (!heatmap) {
+      setNotice('Nhom da chon khong co heatmap hop le de xuat anh.');
       return;
     }
 
-    setNotice('Chua co xuat anh heatmap tong.', true);
+    const canvas = document.createElement('canvas');
+    const drawn = drawMergedHeatmapToCanvas(canvas, heatmap);
+
+    if (!drawn) {
+      setNotice('Khong the ve heatmap tong de xuat anh.', true);
+      return;
+    }
+
+    const anchor = document.createElement('a');
+    anchor.href = canvas.toDataURL('image/png');
+    anchor.download = buildMergedHeatmapFileName('png');
+    anchor.click();
+    setNotice('Da xuat anh heatmap tong.', true);
   }
 
   function buildVideoPackageMetadata() {

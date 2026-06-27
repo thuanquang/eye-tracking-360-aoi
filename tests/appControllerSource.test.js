@@ -591,6 +591,14 @@ test('batch heatmap merge imports the merge helper', () => {
   );
 });
 
+test('batch heatmap image export imports render helpers', () => {
+  assert.match(
+    controllerSource,
+    /import\s+\{[\s\S]*getHeatmapRenderDimensions[\s\S]*normalizeHeatmapBins[\s\S]*\}\s+from\s+'\.\.\/recording\/heatmapRender\.js'/,
+    'The app controller should import merged heatmap image render helpers.',
+  );
+});
+
 test('batch heatmap merge destructures DOM controls', () => {
   const domDestructure = controllerSource.match(/const\s+\{[\s\S]*?\}\s*=\s*dom;/)?.[0] || '';
 
@@ -673,6 +681,85 @@ test('batch heatmap JSON export downloads the merged package', () => {
   );
 });
 
+test('batch heatmap image export resolves the selected variant before top-level fallback', () => {
+  const getSelectedHeatmapFunction = controllerSource.match(
+    /function\s+getSelectedMergedHeatmap\(\)\s*\{[\s\S]*?\n  \}/,
+  )?.[0] || '';
+
+  assert.notEqual(getSelectedHeatmapFunction, '', 'The app controller should define getSelectedMergedHeatmap.');
+  assert.match(
+    getSelectedHeatmapFunction,
+    /getSelectedMergedHeatmapGroup\(\)/,
+    'Merged heatmap image export should use the selected merged group.',
+  );
+  assert.match(
+    getSelectedHeatmapFunction,
+    /mergedHeatmapVariantSelect\.value[\s\S]*mergedHeatmapTypeSelect\.value/,
+    'Merged heatmap image export should use the selected variant and heatmap type controls.',
+  );
+  assert.match(
+    getSelectedHeatmapFunction,
+    /summary\.heatmaps\.variants\?\.\[variant\]\?\.\[type\][\s\S]*summary\.heatmaps\?\.\[type\][\s\S]*null/,
+    'Merged heatmap selection should prefer variant heatmaps before falling back to top-level heatmaps.',
+  );
+});
+
+test('batch heatmap image export draws merged heatmaps to a canvas', () => {
+  const drawFunction = controllerSource.match(
+    /function\s+drawMergedHeatmapToCanvas\(canvas,\s*heatmap\)\s*\{[\s\S]*?\n  \}/,
+  )?.[0] || '';
+
+  assert.notEqual(drawFunction, '', 'The app controller should define drawMergedHeatmapToCanvas.');
+  assert.match(
+    drawFunction,
+    /getHeatmapRenderDimensions\(heatmap\)/,
+    'Merged heatmap canvas drawing should size the canvas from render dimensions.',
+  );
+  assert.match(
+    drawFunction,
+    /normalizeHeatmapBins\(heatmap\)/,
+    'Merged heatmap canvas drawing should normalize bins before painting.',
+  );
+  assert.match(
+    drawFunction,
+    /createRadialGradient/,
+    'Merged heatmap canvas drawing should use radial gradients for heat spots.',
+  );
+  assert.match(
+    drawFunction,
+    /globalCompositeOperation\s*=\s*'lighter'/,
+    'Merged heatmap canvas drawing should blend heat spots with a lighter composite operation.',
+  );
+});
+
+test('batch heatmap image export downloads the selected heatmap as PNG', () => {
+  const exportFunction = controllerSource.match(
+    /function\s+exportMergedHeatmapImage\(\)\s*\{[\s\S]*?\n  \}/,
+  )?.[0] || '';
+
+  assert.notEqual(exportFunction, '', 'The app controller should define exportMergedHeatmapImage.');
+  assert.match(
+    exportFunction,
+    /getSelectedMergedHeatmap\(\)/,
+    'Merged heatmap image export should use the selected heatmap instead of only checking package state.',
+  );
+  assert.match(
+    exportFunction,
+    /document\.createElement\('canvas'\)/,
+    'Merged heatmap image export should create an offscreen canvas.',
+  );
+  assert.match(
+    exportFunction,
+    /canvas\.toDataURL\('image\/png'\)/,
+    'Merged heatmap image export should serialize the canvas as PNG.',
+  );
+  assert.match(
+    exportFunction,
+    /buildMergedHeatmapFileName\('png'\)/,
+    'Merged heatmap image export should use the shared filename helper with a PNG extension.',
+  );
+});
+
 test('batch heatmap merge controls are disabled when no merged groups exist', () => {
   assert.match(
     controllerSource,
@@ -708,7 +795,7 @@ test('batch heatmap merge event listeners are wired', () => {
   assert.match(
     controllerSource,
     /exportMergedHeatmapImageButton\.addEventListener\('click',\s*exportMergedHeatmapImage\)/,
-    'The merged heatmap image export button should be wired to the Chunk 5 placeholder.',
+    'The merged heatmap image export button should stay wired to the image export handler.',
   );
   assert.match(
     controllerSource,
