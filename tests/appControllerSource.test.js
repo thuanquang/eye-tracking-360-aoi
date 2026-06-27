@@ -634,7 +634,7 @@ test('batch heatmap merge keeps merged export controller state', () => {
 
 test('batch heatmap file import reads all selected JSON files and resets the input', () => {
   const loadFunction = controllerSource.match(
-    /async\s+function\s+loadHeatmapMergeFiles\(event\)[\s\S]*?\n  }\n\n  function resize/,
+    /async\s+function\s+loadHeatmapMergeFiles\(event\)[\s\S]*?\r?\n  }\r?\n\r?\n  function resize/,
   )?.[0] || '';
 
   assert.notEqual(loadFunction, '', 'The app controller should define loadHeatmapMergeFiles.');
@@ -650,7 +650,7 @@ test('batch heatmap file import reads all selected JSON files and resets the inp
 
 test('batch heatmap file import ignores stale async completions', () => {
   const loadFunction = controllerSource.match(
-    /async\s+function\s+loadHeatmapMergeFiles\(event\)[\s\S]*?\n  }\n\n  function resize/,
+    /async\s+function\s+loadHeatmapMergeFiles\(event\)[\s\S]*?\r?\n  }\r?\n\r?\n  function resize/,
   )?.[0] || '';
 
   assert.notEqual(loadFunction, '', 'The app controller should define loadHeatmapMergeFiles.');
