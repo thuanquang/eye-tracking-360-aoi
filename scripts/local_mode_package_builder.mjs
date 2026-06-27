@@ -278,7 +278,7 @@ Video và AOI chất lượng cao đã được đóng gói cục bộ trong th�
 
 Modern bundled study media:
 - The modern 3D clip is Nguyen Hue 5:32-6:02.
-- The modern 2D clip is YouTube tCgWkNSclHQ 0:45-1:15.
+- The modern 2D clips include Nguyen Hue 5:32-6:02 (updated angle) and YouTube tCgWkNSclHQ 0:45-1:15.
 - The four culture/nature clips are still included.
 - Only the selected study videos and their matching generated AOI JSON files are bundled.
 
@@ -312,7 +312,7 @@ Video và AOI chất lượng cao đã được đóng gói cục bộ trong th�
 
 Modern bundled study media:
 - The modern 3D clip is Nguyen Hue 5:32-6:02.
-- The modern 2D clip is YouTube tCgWkNSclHQ 0:45-1:15.
+- The modern 2D clips include Nguyen Hue 5:32-6:02 (updated angle) and YouTube tCgWkNSclHQ 0:45-1:15.
 - The four culture/nature clips are still included.
 - Only the selected study videos and their matching generated AOI JSON files are bundled.
 

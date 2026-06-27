@@ -10,8 +10,8 @@ import {
   validateAoiVideoCompatibility,
 } from '../src/app/studyVideos.js';
 
-test('exposes culture, nature, modern 3D Nguyen Hue, and modern 2D YouTube study videos', () => {
-  assert.equal(STUDY_VIDEOS.length, 6);
+test('exposes culture, nature, modern 3D Nguyen Hue, updated-angle Nguyen Hue 2D, and modern 2D YouTube study videos', () => {
+  assert.equal(STUDY_VIDEOS.length, 7);
   assert.deepEqual(
     STUDY_VIDEOS.map((video) => video.name).sort(),
     [
@@ -19,6 +19,7 @@ test('exposes culture, nature, modern 3D Nguyen Hue, and modern 2D YouTube study
       'culture_thap_ba_01m19s-01m49s_2d.mp4',
       'nature_tam_coc_04m31s-05m01s.mp4',
       'nature_tam_coc_04m31s-05m01s_2d.mp4',
+      'nguyen-hue-2d-view-0532-0602-yaw-175-high.mp4',
       'nguyen-hue-360-0532-0602.mp4',
       'youtube_tCgWkNSclHQ_00m45s-01m15s_yaw-29p9-pitch-17p6_2d.mp4',
     ],
@@ -28,7 +29,7 @@ test('exposes culture, nature, modern 3D Nguyen Hue, and modern 2D YouTube study
   assert.equal(findStudyVideoByName('nguyen-hue-2d-view-0500-0530-yaw0.mp4'), null);
   assert.equal(findStudyVideoByName('nguyen-hue-360-0532-0602.mp4')?.projection, 'equirectangular');
   assert.equal(findStudyVideoByName('nguyen-hue-360-0532-0602.mp4')?.stereoLayout, 'mono');
-  assert.equal(findStudyVideoByName('nguyen-hue-2d-view-0532-0602-yaw-175-high.mp4'), null);
+  assert.equal(findStudyVideoByName('nguyen-hue-2d-view-0532-0602-yaw-175-high.mp4')?.projection, 'flat');
   assert.equal(findStudyVideoByName('nguyen-hue-2d-view-0532-0602-yaw-30p4-pitch-18p0.mp4'), null);
   assert.equal(findStudyVideoByName('culture_thap_ba_01m19s-01m49s.mp4')?.projection, 'equirectangular');
   assert.equal(findStudyVideoByName('culture_thap_ba_01m19s-01m49s.mp4')?.stereoLayout, 'mono');
@@ -47,6 +48,10 @@ test('maps study videos to surface-merged cleaned AOIs', () => {
       [
         'nguyen-hue-360-0532-0602.mp4',
         'runpod-aoi-results-absolute-quality-with-surfaces/outputs/nguyen-hue-360-0532-0602.enhanced-aois.json',
+      ],
+      [
+        'nguyen-hue-2d-view-0532-0602-yaw-175-high.mp4',
+        'runpod-aoi-results-absolute-quality-with-surfaces/outputs/nguyen-hue-2d-view-0532-0602-yaw-175-high.enhanced-aois.json',
       ],
       [
         'culture_thap_ba_01m19s-01m49s.mp4',

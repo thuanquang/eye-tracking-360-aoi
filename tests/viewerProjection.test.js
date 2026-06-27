@@ -135,11 +135,11 @@ test('browser entrypoint cache-busts viewer projection modules', async () => {
   const appSource = await readFile(new URL('../src/app.js', import.meta.url), 'utf8');
   const controllerSource = await readFile(new URL('../src/app/appController.js', import.meta.url), 'utf8');
 
-  assert.match(indexSource, /src="\.\/src\/app\.js\?v=youtube-2d-1"/);
-  assert.match(appSource, /'\.\/app\/appController\.js\?v=youtube-2d-1'/);
+  assert.match(indexSource, /src="\.\/src\/app\.js\?v=nguyen-hue-updated-angle-1"/);
+  assert.match(appSource, /'\.\/app\/appController\.js\?v=nguyen-hue-updated-angle-1'/);
   assert.match(controllerSource, /'\.\.\/aois\/aoiMath\.js\?v=aoi-active-window-1'/);
   assert.match(controllerSource, /'\.\.\/viewer\/projection\.js\?v=nguyen-hue-360-1'/);
-  assert.match(controllerSource, /'\.\/studyVideos\.js\?v=youtube-2d-1'/);
+  assert.match(controllerSource, /'\.\/studyVideos\.js\?v=nguyen-hue-updated-angle-1'/);
 });
 
 test('browser entrypoint lists finalized study videos', async () => {
@@ -151,6 +151,7 @@ test('browser entrypoint lists finalized study videos', async () => {
     'nature-tam-coc-360',
     'nature-tam-coc-2d',
     'nguyen-hue-360-0532',
+    'nguyen-hue-2d-0532-updated-angle',
     'youtube-tcgwknsclhq-2d-0045-yaw-29p9-pitch-17p6',
   ].forEach((id) => {
     assert.match(indexSource, new RegExp(`<option value="${id}"`));
@@ -170,7 +171,7 @@ test('browser entrypoint lists finalized study videos', async () => {
   }
   assert.doesNotMatch(indexSource, /<option value="nguyen-hue-360-0500"/);
   assert.doesNotMatch(indexSource, /<option value="nguyen-hue-2d-0500"/);
-  assert.doesNotMatch(indexSource, /<option value="nguyen-hue-2d-0532"/);
+  assert.doesNotMatch(indexSource, /<option value="nguyen-hue-2d-0532">/);
   assert.doesNotMatch(indexSource, /<option value="nguyen-hue-2d-0532-yaw-30p4-pitch-18p0"/);
   assert.doesNotMatch(indexSource, /<option value="youtube-tcgwknsclhq-360-0045"/);
 });

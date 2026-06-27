@@ -10,6 +10,16 @@ export const STUDY_VIDEOS = [
     stereoLayout: 'mono',
   },
   {
+    id: 'nguyen-hue-2d-0532-updated-angle',
+    label: 'Nguyen Hue 5:32-6:02 (2D - updated angle)',
+    name: 'nguyen-hue-2d-view-0532-0602-yaw-175-high.mp4',
+    path: 'assets/replacement-videos/nguyen-hue-2d-view-0532-0602-yaw-175-high.mp4',
+    aoiPath: 'runpod-aoi-results-absolute-quality-with-surfaces/outputs/nguyen-hue-2d-view-0532-0602-yaw-175-high.enhanced-aois.json',
+    type: 'video/mp4',
+    projection: 'flat',
+    stereoLayout: 'mono',
+  },
+  {
     id: 'culture-thap-ba-360',
     label: 'Thap Ba 1:19-1:49 (360)',
     name: 'culture_thap_ba_01m19s-01m49s.mp4',

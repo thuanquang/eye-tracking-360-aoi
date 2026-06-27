@@ -134,7 +134,7 @@ import {
   getDefaultStudyVideo,
   validateAoiVideoCompatibility,
   videoInfoFromStudyVideo,
-} from './studyVideos.js?v=youtube-2d-1';
+} from './studyVideos.js?v=nguyen-hue-updated-angle-1';
 import { queryAppDom } from './dom.js';
 import { createMouseProvider } from '../gaze/providers/mouseProvider.js?v=gaze-providers-1';
 import {
