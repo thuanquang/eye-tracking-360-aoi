@@ -26,6 +26,40 @@ test('maps screen heatmap bins to viewer pixel centers', () => {
   }]);
 });
 
+test('ignores screen heatmap bins with null coordinates', () => {
+  const points = buildMergedHeatmapOverlayPoints({
+    heatmap: {
+      type: 'screen',
+      columns: 4,
+      rows: 2,
+      bins: [
+        { column: null, row: 0, weightSec: 0.5, sampleCount: 1 },
+        { column: 0, row: null, weightSec: 0.5, sampleCount: 1 },
+      ],
+    },
+    dimensions: { width: 800, height: 400 },
+  });
+
+  assert.deepEqual(points, []);
+});
+
+test('ignores screen heatmap bins with empty-string coordinates', () => {
+  const points = buildMergedHeatmapOverlayPoints({
+    heatmap: {
+      type: 'screen',
+      columns: 4,
+      rows: 2,
+      bins: [
+        { column: '', row: 0, weightSec: 0.5, sampleCount: 1 },
+        { column: 0, row: '', weightSec: 0.5, sampleCount: 1 },
+      ],
+    },
+    dimensions: { width: 800, height: 400 },
+  });
+
+  assert.deepEqual(points, []);
+});
+
 test('maps panorama heatmap bin centers through the provided projector', () => {
   const centers = [];
   const points = buildMergedHeatmapOverlayPoints({
@@ -66,6 +100,40 @@ test('filters invisible panorama heatmap bins', () => {
     },
     dimensions: { width: 800, height: 400 },
     projectPanoramaPoint: () => ({ visible: false, x: 0, y: 0 }),
+  });
+
+  assert.deepEqual(points, []);
+});
+
+test('ignores panorama projections with null coordinates', () => {
+  const points = buildMergedHeatmapOverlayPoints({
+    heatmap: {
+      type: 'panorama',
+      columns: 4,
+      rows: 2,
+      yawRange: [-180, 180],
+      pitchRange: [-90, 90],
+      bins: [{ column: 0, row: 0, weightSec: 0.1, sampleCount: 1 }],
+    },
+    dimensions: { width: 800, height: 400 },
+    projectPanoramaPoint: () => ({ visible: true, x: null, y: null }),
+  });
+
+  assert.deepEqual(points, []);
+});
+
+test('ignores panorama projections with empty-string coordinates', () => {
+  const points = buildMergedHeatmapOverlayPoints({
+    heatmap: {
+      type: 'panorama',
+      columns: 4,
+      rows: 2,
+      yawRange: [-180, 180],
+      pitchRange: [-90, 90],
+      bins: [{ column: 0, row: 0, weightSec: 0.1, sampleCount: 1 }],
+    },
+    dimensions: { width: 800, height: 400 },
+    projectPanoramaPoint: () => ({ visible: true, x: '', y: '' }),
   });
 
   assert.deepEqual(points, []);
