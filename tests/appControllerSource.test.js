@@ -617,6 +617,11 @@ test('batch heatmap merge keeps merged export controller state', () => {
     /let\s+mergedHeatmapExport\s*=\s*null\s*;/,
     'The app controller should track the merged heatmap export package.',
   );
+  assert.match(
+    controllerSource,
+    /let\s+heatmapMergeLoadId\s*=\s*0\s*;/,
+    'The app controller should track the current batch heatmap file load.',
+  );
 });
 
 test('batch heatmap file import reads all selected JSON files and resets the input', () => {
@@ -635,6 +640,29 @@ test('batch heatmap file import reads all selected JSON files and resets the inp
   ].forEach(([pattern, message]) => {
     assert.match(loadFunction, pattern, `Batch heatmap import should ${message}.`);
   });
+});
+
+test('batch heatmap file import ignores stale async completions', () => {
+  const loadFunction = controllerSource.match(
+    /async\s+function\s+loadHeatmapMergeFiles\(event\)[\s\S]*?\n  }\n\n  function resize/,
+  )?.[0] || '';
+
+  assert.notEqual(loadFunction, '', 'The app controller should define loadHeatmapMergeFiles.');
+  assert.match(
+    loadFunction,
+    /const\s+loadId\s*=\s*\+\+heatmapMergeLoadId\s*;/,
+    'Batch heatmap import should capture a monotonic load id before async reads.',
+  );
+  assert.match(
+    loadFunction,
+    /const\s+entries\s*=\s*await\s+Promise\.all\([\s\S]*?if\s*\(\s*loadId\s*!==\s*heatmapMergeLoadId\s*\)\s*\{[\s\S]*?return;[\s\S]*?\}[\s\S]*?mergedHeatmapExport\s*=\s*buildMergedHeatmapExport\(entries\)/,
+    'Batch heatmap import should ignore stale successful reads before writing merged state.',
+  );
+  assert.match(
+    loadFunction,
+    /catch\s*\(error\)\s*\{[\s\S]*?if\s*\(\s*loadId\s*!==\s*heatmapMergeLoadId\s*\)\s*\{[\s\S]*?return;[\s\S]*?\}[\s\S]*?mergedHeatmapExport\s*=\s*null[\s\S]*?syncMergedHeatmapControls\(\)[\s\S]*?setNotice/,
+    'Batch heatmap import should ignore stale failures before clearing state or showing failure.',
+  );
 });
 
 test('batch heatmap JSON export downloads the merged package', () => {

@@ -159,6 +159,7 @@ export function createAppController({
   let aoiOverlayVersion = 0;
   let participantRecordingStartedAtSec = null;
   let mergedHeatmapExport = null;
+  let heatmapMergeLoadId = 0;
 
   let recordingSampleScheduler = createSampleScheduler({ intervalMs: RECORDING_SAMPLE_INTERVAL_MS });
   const GAZE_SMOOTHING_ALPHA = GAZE_SMOOTHING.alpha;
@@ -2100,6 +2101,7 @@ export function createAppController({
 
   async function loadHeatmapMergeFiles(event) {
     const files = Array.from(event.target.files || []);
+    const loadId = ++heatmapMergeLoadId;
 
     try {
       if (!files.length) {
@@ -2111,10 +2113,18 @@ export function createAppController({
         payload: JSON.parse(await file.text()),
       })));
 
+      if (loadId !== heatmapMergeLoadId) {
+        return;
+      }
+
       mergedHeatmapExport = buildMergedHeatmapExport(entries);
       syncMergedHeatmapControls();
       setNotice(`Da gop heatmap: ${mergedHeatmapExport.sourceFileCount} file, ${mergedHeatmapExport.groupCount} nhom.`, true);
     } catch (error) {
+      if (loadId !== heatmapMergeLoadId) {
+        return;
+      }
+
       mergedHeatmapExport = null;
       syncMergedHeatmapControls();
       setNotice(`Khong the gop heatmap JSON: ${error.message}`, true);
