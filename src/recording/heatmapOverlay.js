@@ -109,7 +109,7 @@ function getPanoramaBinPoint({ heatmap, bin, projectPanoramaPoint }) {
 
   const center = getHeatmapBinCenterYawPitch({ heatmap, bin });
 
-  if (!Number.isFinite(center.yaw) || !Number.isFinite(center.pitch)) {
+  if (!center || !Number.isFinite(center.yaw) || !Number.isFinite(center.pitch)) {
     return null;
   }
 
@@ -126,18 +126,30 @@ function getPanoramaBinPoint({ heatmap, bin, projectPanoramaPoint }) {
 }
 
 export function getHeatmapBinCenterYawPitch({ heatmap, bin }) {
-  const columns = Number(heatmap?.columns);
-  const rows = Number(heatmap?.rows);
-  const column = Number(bin?.column);
-  const row = Number(bin?.row);
-  const yawMin = Number(heatmap?.yawRange?.[0]);
-  const yawMax = Number(heatmap?.yawRange?.[1]);
-  const pitchMin = Number(heatmap?.pitchRange?.[0]);
-  const pitchMax = Number(heatmap?.pitchRange?.[1]);
+  const grid = getGrid(heatmap);
+
+  if (!grid) {
+    return null;
+  }
+
+  const coordinate = getBinCoordinate(bin, grid);
+
+  if (!coordinate) {
+    return null;
+  }
+
+  const yawMin = toFiniteNumber(heatmap?.yawRange?.[0]);
+  const yawMax = toFiniteNumber(heatmap?.yawRange?.[1]);
+  const pitchMin = toFiniteNumber(heatmap?.pitchRange?.[0]);
+  const pitchMax = toFiniteNumber(heatmap?.pitchRange?.[1]);
+
+  if (yawMin === null || yawMax === null || pitchMin === null || pitchMax === null) {
+    return null;
+  }
 
   return {
-    yaw: yawMin + ((column + 0.5) / columns) * (yawMax - yawMin),
-    pitch: pitchMax - ((row + 0.5) / rows) * (pitchMax - pitchMin),
+    yaw: yawMin + ((coordinate.column + 0.5) / grid.columns) * (yawMax - yawMin),
+    pitch: pitchMax - ((coordinate.row + 0.5) / grid.rows) * (pitchMax - pitchMin),
   };
 }
 

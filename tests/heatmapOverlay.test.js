@@ -194,3 +194,25 @@ test('computes panorama bin center yaw and pitch', () => {
     { yaw: -135, pitch: -45 },
   );
 });
+
+test('returns null for panorama bin centers with invalid bin coordinates', () => {
+  const heatmap = {
+    columns: 4,
+    rows: 2,
+    yawRange: [-180, 180],
+    pitchRange: [-90, 90],
+  };
+  const invalidBins = [
+    { column: null, row: 0 },
+    { column: 0, row: null },
+    { column: '', row: 0 },
+    { column: 0, row: '' },
+    { column: '0', row: 0 },
+    { column: 0, row: '0' },
+  ];
+
+  assert.deepEqual(
+    invalidBins.map((bin) => getHeatmapBinCenterYawPitch({ heatmap, bin })),
+    [null, null, null, null, null, null],
+  );
+});
