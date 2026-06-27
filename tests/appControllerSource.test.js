@@ -586,8 +586,8 @@ test('recording import ignores empty AOI arrays from incomplete participant expo
 test('batch heatmap merge imports the merge helper', () => {
   assert.match(
     controllerSource,
-    /import\s+\{[\s\S]*buildMergedHeatmapExport[\s\S]*\}\s+from\s+'\.\.\/recording\/heatmapMerge\.js'/,
-    'The app controller should import buildMergedHeatmapExport from the heatmap merge module.',
+    /import\s+\{[\s\S]*buildMergedHeatmapExport[\s\S]*readHeatmapExportFiles[\s\S]*\}\s+from\s+'\.\.\/recording\/heatmapMerge\.js'/,
+    'The app controller should import the batch heatmap merge and file reader helpers.',
   );
 });
 
@@ -639,10 +639,8 @@ test('batch heatmap file import reads all selected JSON files and resets the inp
 
   assert.notEqual(loadFunction, '', 'The app controller should define loadHeatmapMergeFiles.');
   [
-    [/Promise\.all\(/, 'read all selected files concurrently'],
-    [/file\.text\(\)/, 'read file text'],
-    [/JSON\.parse/, 'parse JSON'],
-    [/buildMergedHeatmapExport/, 'build the merge package'],
+    [/readHeatmapExportFiles\(files\)/, 'read all selected files with per-file parse diagnostics'],
+    [/buildMergedHeatmapExport\(entries,\s*\{[\s\S]*skipped[\s\S]*sourceFileCount[\s\S]*\}\)/, 'build the merge package with skipped-file diagnostics'],
     [/syncMergedHeatmapControls\(\)/, 'sync controls after load or failure'],
     [/event\.target\.value\s*=\s*''/, 'reset the file input'],
   ].forEach(([pattern, message]) => {
@@ -663,7 +661,7 @@ test('batch heatmap file import ignores stale async completions', () => {
   );
   assert.match(
     loadFunction,
-    /const\s+entries\s*=\s*await\s+Promise\.all\([\s\S]*?if\s*\(\s*loadId\s*!==\s*heatmapMergeLoadId\s*\)\s*\{[\s\S]*?return;[\s\S]*?\}[\s\S]*?mergedHeatmapExport\s*=\s*buildMergedHeatmapExport\(entries\)/,
+    /const\s+\{\s*entries,\s*skipped,\s*sourceFileCount\s*\}\s*=\s*await\s+readHeatmapExportFiles\(files\)[\s\S]*?if\s*\(\s*loadId\s*!==\s*heatmapMergeLoadId\s*\)\s*\{[\s\S]*?return;[\s\S]*?\}[\s\S]*?mergedHeatmapExport\s*=\s*buildMergedHeatmapExport\(entries,\s*\{[\s\S]*skipped[\s\S]*sourceFileCount[\s\S]*\}\)/,
     'Batch heatmap import should ignore stale successful reads before writing merged state.',
   );
   assert.match(

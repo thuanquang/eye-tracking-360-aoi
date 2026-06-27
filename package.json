@@ -17,6 +17,7 @@
     "test:stale-gaze": "node tests/staleGazeSmoke.mjs",
     "test:webcam": "node tests/webcamSmoke.mjs",
     "test:webcam-startup": "node tests/webcamStartupSmoke.mjs",
+    "test:batch-heatmap-merge": "node tests/batchHeatmapMergeSmoke.mjs",
     "serve": "node scripts/serve_dev.mjs",
     "serve:local": "node src/localServer.mjs",
     "build:pages": "node scripts/build_pages_dist.mjs",

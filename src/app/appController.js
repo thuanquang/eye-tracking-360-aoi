@@ -26,7 +26,10 @@ import {
   buildProjectPackage as createProjectPackage,
   buildVideoPackageMetadata as createVideoPackageMetadata,
 } from '../recording/recordingExport.js?v=recording-export-2';
-import { buildMergedHeatmapExport } from '../recording/heatmapMerge.js';
+import {
+  buildMergedHeatmapExport,
+  readHeatmapExportFiles,
+} from '../recording/heatmapMerge.js';
 import {
   getHeatmapRenderDimensions,
   normalizeHeatmapBins,
@@ -2126,18 +2129,18 @@ export function createAppController({
         return;
       }
 
-      const entries = await Promise.all(files.map(async (file) => ({
-        fileName: file.name,
-        payload: JSON.parse(await file.text()),
-      })));
+      const { entries, skipped, sourceFileCount } = await readHeatmapExportFiles(files);
 
       if (loadId !== heatmapMergeLoadId) {
         return;
       }
 
-      mergedHeatmapExport = buildMergedHeatmapExport(entries);
+      mergedHeatmapExport = buildMergedHeatmapExport(entries, {
+        skipped,
+        sourceFileCount,
+      });
       syncMergedHeatmapControls();
-      setNotice(`Da gop heatmap: ${mergedHeatmapExport.sourceFileCount} file, ${mergedHeatmapExport.groupCount} nhom.`, true);
+      setNotice(`Da gop heatmap: ${mergedHeatmapExport.sourceFileCount} file, ${mergedHeatmapExport.groupCount} nhom, bo qua ${mergedHeatmapExport.skipped.length}.`, true);
     } catch (error) {
       if (loadId !== heatmapMergeLoadId) {
         return;

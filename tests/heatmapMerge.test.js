@@ -6,6 +6,7 @@ import {
   getHeatmapCompatibilityKey,
   getHeatmapVideoKey,
   mergeCompatibleHeatmaps,
+  readHeatmapExportFiles,
 } from '../src/recording/heatmapMerge.js';
 
 function hasOwn(value, property) {
@@ -483,6 +484,68 @@ test('skips files with missing heatmaps and reports why', () => {
   assert.deepEqual(mergedExport.skipped, [
     { fileName: 'bad.json', reason: 'missing-summary-heatmaps' },
   ]);
+});
+
+test('skips files without stable video metadata instead of merging unknown videos', () => {
+  const mergedExport = buildMergedHeatmapExport([
+    {
+      fileName: 'unknown-a.json',
+      payload: payload({
+        video: undefined,
+        project: undefined,
+        heatmaps: { screen: screenHeatmap() },
+      }),
+    },
+    {
+      fileName: 'unknown-b.json',
+      payload: payload({
+        video: undefined,
+        project: undefined,
+        heatmaps: { screen: screenHeatmap() },
+      }),
+    },
+  ], { exportedAt: '2026-06-27T12:00:00.000Z' });
+
+  assert.equal(getHeatmapVideoKey({}), null);
+  assert.equal(mergedExport.sourceFileCount, 2);
+  assert.equal(mergedExport.groupCount, 0);
+  assert.deepEqual(mergedExport.groups, []);
+  assert.deepEqual(mergedExport.skipped, [
+    { fileName: 'unknown-a.json', reason: 'missing-video-metadata' },
+    { fileName: 'unknown-b.json', reason: 'missing-video-metadata' },
+  ]);
+});
+
+test('reads heatmap export files and reports malformed JSON without dropping valid files', async () => {
+  const result = await readHeatmapExportFiles([
+    {
+      name: 'valid-p1.json',
+      text: async () => JSON.stringify(payload({ heatmaps: { screen: screenHeatmap() } })),
+    },
+    {
+      name: 'broken.json',
+      text: async () => '{ not json',
+    },
+    {
+      name: 'valid-p2.json',
+      text: async () => JSON.stringify(payload({
+        participant: { id: 'P2' },
+        heatmaps: { screen: screenHeatmap() },
+      })),
+    },
+  ]);
+
+  assert.equal(result.sourceFileCount, 3);
+  assert.deepEqual(
+    result.entries.map((entry) => entry.fileName),
+    ['valid-p1.json', 'valid-p2.json'],
+  );
+  assert.equal(result.entries[0].payload.participant.id, 'P1');
+  assert.equal(result.entries[1].payload.participant.id, 'P2');
+  assert.equal(result.skipped.length, 1);
+  assert.equal(result.skipped[0].fileName, 'broken.json');
+  assert.equal(result.skipped[0].reason, 'invalid-json');
+  assert.match(result.skipped[0].message, /JSON|Expected|Unexpected/i);
 });
 
 test('builds stable video keys from metadata', () => {

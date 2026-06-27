@@ -190,7 +190,7 @@ export function getHeatmapVideoKey(payload) {
     ].filter(Boolean);
   }
 
-  return parts.length > 0 ? parts.join('|') : 'unknown-video';
+  return parts.length > 0 ? parts.join('|') : null;
 }
 
 function cloneVideoMetadata(video) {
@@ -354,9 +354,53 @@ export function mergeCompatibleHeatmaps(heatmaps) {
   };
 }
 
+export async function readHeatmapExportFiles(files) {
+  const sourceFiles = Array.isArray(files) ? files : Array.from(files || []);
+  const results = await Promise.all(sourceFiles.map(async (file) => {
+    const fileName = file?.name || 'heatmap.json';
+
+    try {
+      const payload = JSON.parse(await file.text());
+      return {
+        entry: {
+          fileName,
+          payload,
+        },
+      };
+    } catch (error) {
+      return {
+        skipped: {
+          fileName,
+          reason: 'invalid-json',
+          message: getMergeErrorMessage(error),
+        },
+      };
+    }
+  }));
+
+  const entries = [];
+  const skipped = [];
+
+  results.forEach((result) => {
+    if (result.entry) {
+      entries.push(result.entry);
+    } else if (result.skipped) {
+      skipped.push(result.skipped);
+    }
+  });
+
+  return {
+    sourceFileCount: sourceFiles.length,
+    entries,
+    skipped,
+  };
+}
+
 export function buildMergedHeatmapExport(entries, options = {}) {
   const sourceEntries = Array.isArray(entries) ? entries : [];
-  const skipped = [];
+  const skipped = Array.isArray(options.skipped)
+    ? options.skipped.map((entry) => ({ ...entry }))
+    : [];
   const groupsByKey = new Map();
 
   sourceEntries.forEach((entry) => {
@@ -372,6 +416,15 @@ export function buildMergedHeatmapExport(entries, options = {}) {
 
     const payload = entry.payload;
     const groupKey = getHeatmapVideoKey(payload);
+
+    if (!groupKey) {
+      skipped.push({
+        fileName: entry?.fileName,
+        reason: 'missing-video-metadata',
+      });
+      return;
+    }
+
     let group = groupsByKey.get(groupKey);
 
     if (!group) {
@@ -397,7 +450,9 @@ export function buildMergedHeatmapExport(entries, options = {}) {
     kind: 'merged-heatmaps',
     version: 1,
     exportedAt: options.exportedAt ?? new Date().toISOString(),
-    sourceFileCount: sourceEntries.length,
+    sourceFileCount: Number.isFinite(options.sourceFileCount)
+      ? options.sourceFileCount
+      : sourceEntries.length,
     groupCount: groups.length,
     groups,
     skipped,
