@@ -11,6 +11,63 @@ function rangeKey(range) {
   return Array.isArray(range) ? range.join(',') : '';
 }
 
+function hasOwn(value, property) {
+  return Object.prototype.hasOwnProperty.call(value, property);
+}
+
+function isObject(value) {
+  return value !== null && typeof value === 'object';
+}
+
+function isPositiveInteger(value) {
+  return Number.isInteger(value) && value > 0;
+}
+
+function isScreenDimension(value) {
+  return value === null || (Number.isFinite(value) && value > 0);
+}
+
+function isFiniteRange(range) {
+  return (
+    Array.isArray(range) &&
+    range.length === 2 &&
+    range.every((value) => Number.isFinite(value))
+  );
+}
+
+function assertValidHeatmap(heatmap, index) {
+  if (
+    !isObject(heatmap) ||
+    !isPositiveInteger(heatmap.columns) ||
+    !isPositiveInteger(heatmap.rows)
+  ) {
+    throw new Error(`Invalid heatmap at index ${index}`);
+  }
+
+  if (heatmap.type === 'screen') {
+    if (
+      !hasOwn(heatmap, 'width') ||
+      !hasOwn(heatmap, 'height') ||
+      !isScreenDimension(heatmap.width) ||
+      !isScreenDimension(heatmap.height)
+    ) {
+      throw new Error(`Invalid heatmap at index ${index}`);
+    }
+
+    return;
+  }
+
+  if (heatmap.type === 'panorama') {
+    if (!isFiniteRange(heatmap.yawRange) || !isFiniteRange(heatmap.pitchRange)) {
+      throw new Error(`Invalid heatmap at index ${index}`);
+    }
+
+    return;
+  }
+
+  throw new Error(`Invalid heatmap at index ${index}`);
+}
+
 export function getHeatmapCompatibilityKey(heatmap) {
   const type = heatmap?.type;
   const gridKey = `${heatmap?.columns}x${heatmap?.rows}`;
@@ -26,10 +83,21 @@ export function getHeatmapCompatibilityKey(heatmap) {
   return `${type}|${gridKey}`;
 }
 
-function addMergedBin(bins, bin) {
+function hasValidGridCoordinate(column, row, heatmap) {
+  return (
+    Number.isInteger(column) &&
+    Number.isInteger(row) &&
+    column >= 0 &&
+    row >= 0 &&
+    column < heatmap.columns &&
+    row < heatmap.rows
+  );
+}
+
+function addMergedBin(bins, bin, heatmap) {
   const { column, row } = bin || {};
 
-  if (!Number.isFinite(column) || !Number.isFinite(row)) {
+  if (!hasValidGridCoordinate(column, row, heatmap)) {
     return;
   }
 
@@ -76,16 +144,24 @@ export function mergeCompatibleHeatmaps(heatmaps) {
     throw new Error('No heatmaps to merge.');
   }
 
+  heatmaps.forEach((heatmap, index) => {
+    assertValidHeatmap(heatmap, index);
+  });
+
   const compatibilityKey = getHeatmapCompatibilityKey(heatmaps[0]);
   const bins = new Map();
 
-  heatmaps.forEach((heatmap) => {
-    if (getHeatmapCompatibilityKey(heatmap) !== compatibilityKey) {
-      throw new Error('Incompatible heatmap grids');
+  heatmaps.forEach((heatmap, index) => {
+    const actualKey = getHeatmapCompatibilityKey(heatmap);
+
+    if (actualKey !== compatibilityKey) {
+      throw new Error(
+        `Incompatible heatmap grids at index ${index}: expected ${compatibilityKey}, actual ${actualKey}`,
+      );
     }
 
     (Array.isArray(heatmap.bins) ? heatmap.bins : []).forEach((bin) => {
-      addMergedBin(bins, bin);
+      addMergedBin(bins, bin, heatmap);
     });
   });
 

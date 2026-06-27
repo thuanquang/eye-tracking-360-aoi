@@ -58,6 +58,32 @@ test('merges compatible screen heatmaps by row and column', () => {
   });
 });
 
+test('ignores out-of-grid and fractional heatmap bins', () => {
+  const merged = mergeCompatibleHeatmaps([
+    {
+      type: 'screen',
+      columns: 2,
+      rows: 2,
+      width: 100,
+      height: 80,
+      bins: [
+        { column: 0, row: 0, weightSec: 0.1, sampleCount: 1 },
+        { column: -1, row: 0, weightSec: 1, sampleCount: 10 },
+        { column: 0, row: -1, weightSec: 1, sampleCount: 10 },
+        { column: 2, row: 0, weightSec: 1, sampleCount: 10 },
+        { column: 1, row: 2, weightSec: 1, sampleCount: 10 },
+        { column: 0.5, row: 0, weightSec: 1, sampleCount: 10 },
+        { column: 1, row: 0.5, weightSec: 1, sampleCount: 10 },
+      ],
+    },
+  ]);
+
+  assert.deepEqual(merged.bins, [
+    { column: 0, row: 0, weightSec: 0.1, sampleCount: 1 },
+  ]);
+  assert.equal(merged.totalWeightSec, 0.1);
+});
+
 test('merges panorama heatmaps and preserves angular ranges', () => {
   const yawRange = [-180, 180];
   const pitchRange = [-90, 90];
@@ -129,10 +155,60 @@ test('throws when heatmap grids are incompatible', () => {
   ]), /Incompatible heatmap grids/);
 });
 
+test('includes expected and actual compatibility keys in incompatible grid errors', () => {
+  assert.throws(() => mergeCompatibleHeatmaps([
+    {
+      type: 'screen',
+      columns: 2,
+      rows: 2,
+      width: 100,
+      height: 80,
+      bins: [],
+    },
+    {
+      type: 'screen',
+      columns: 2,
+      rows: 2,
+      width: 120,
+      height: 80,
+      bins: [],
+    },
+  ]), (error) => {
+    assert.match(error.message, /Incompatible heatmap grids/);
+    assert.match(error.message, /expected screen\|2x2\|100x80/);
+    assert.match(error.message, /actual screen\|2x2\|120x80/);
+    return true;
+  });
+});
+
 test('throws when no heatmaps are provided', () => {
   assert.throws(
     () => mergeCompatibleHeatmaps([]),
     /No heatmaps to merge\./,
+  );
+});
+
+test('throws a clear error for null heatmaps', () => {
+  assert.throws(
+    () => mergeCompatibleHeatmaps([null]),
+    /Invalid heatmap at index 0/,
+  );
+});
+
+test('throws a clear error for missing grid metadata before reading bins', () => {
+  const missingHeight = {
+    type: 'screen',
+    columns: 2,
+    rows: 2,
+    width: 100,
+    get bins() {
+      throw new Error('bins should not be read');
+    },
+  };
+
+  assert.throws(
+    () => mergeCompatibleHeatmaps([missingHeight]),
+    /Invalid heatmap at index 0/,
   );
 });
 
