@@ -1,18 +1,7 @@
 import { normalizeHeatmapBins } from './heatmapRender.js';
 
 function toFiniteNumber(value) {
-  if (
-    value === null ||
-    value === undefined ||
-    (typeof value === 'string' && value.trim() === '') ||
-    (typeof value !== 'number' && typeof value !== 'string')
-  ) {
-    return null;
-  }
-
-  const number = Number(value);
-
-  return Number.isFinite(number) ? number : null;
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
 
 function isPositiveNumber(value) {

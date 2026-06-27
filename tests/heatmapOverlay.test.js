@@ -60,6 +60,23 @@ test('ignores screen heatmap bins with empty-string coordinates', () => {
   assert.deepEqual(points, []);
 });
 
+test('ignores screen heatmap bins with string coordinates', () => {
+  const points = buildMergedHeatmapOverlayPoints({
+    heatmap: {
+      type: 'screen',
+      columns: 4,
+      rows: 2,
+      bins: [
+        { column: '0', row: 0, weightSec: 0.5, sampleCount: 1 },
+        { column: 0, row: '0', weightSec: 0.5, sampleCount: 1 },
+      ],
+    },
+    dimensions: { width: 800, height: 400 },
+  });
+
+  assert.deepEqual(points, []);
+});
+
 test('maps panorama heatmap bin centers through the provided projector', () => {
   const centers = [];
   const points = buildMergedHeatmapOverlayPoints({
@@ -134,6 +151,30 @@ test('ignores panorama projections with empty-string coordinates', () => {
     },
     dimensions: { width: 800, height: 400 },
     projectPanoramaPoint: () => ({ visible: true, x: '', y: '' }),
+  });
+
+  assert.deepEqual(points, []);
+});
+
+test('ignores panorama projections with string coordinates', () => {
+  const projectedPoints = [
+    { visible: true, x: '100', y: 80 },
+    { visible: true, x: 100, y: '80' },
+  ];
+  const points = buildMergedHeatmapOverlayPoints({
+    heatmap: {
+      type: 'panorama',
+      columns: 4,
+      rows: 2,
+      yawRange: [-180, 180],
+      pitchRange: [-90, 90],
+      bins: [
+        { column: 0, row: 0, weightSec: 0.1, sampleCount: 1 },
+        { column: 1, row: 0, weightSec: 0.1, sampleCount: 1 },
+      ],
+    },
+    dimensions: { width: 800, height: 400 },
+    projectPanoramaPoint: () => projectedPoints.shift(),
   });
 
   assert.deepEqual(points, []);
