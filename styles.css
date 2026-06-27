@@ -354,7 +354,8 @@ h1 {
   transition: opacity 160ms ease;
 }
 
-.app-shell.is-analytics-mode .gaze-heatmap-overlay {
+.app-shell.is-analytics-mode .gaze-heatmap-overlay,
+.app-shell.is-merged-heatmap-view .gaze-heatmap-overlay {
   opacity: 0.78;
 }
 
@@ -381,7 +382,8 @@ h1 {
   display: none;
 }
 
-.app-shell.is-analytics-mode .heatmap-ruler:not([hidden]) {
+.app-shell.is-analytics-mode .heatmap-ruler:not([hidden]),
+.app-shell.is-merged-heatmap-view .heatmap-ruler:not([hidden]) {
   opacity: 1;
   transform: translateY(0);
 }

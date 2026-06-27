@@ -160,9 +160,10 @@ test('AOI analytics mode uses player heatmap instead of sidebar preview', () => 
   );
   assert.match(
     css,
-    /\.app-shell\.is-analytics-mode\s+\.gaze-heatmap-overlay\s*\{[\s\S]*?opacity:/,
+    /\.app-shell\.is-analytics-mode\s+\.gaze-heatmap-overlay[\s\S]*?\{\s*opacity:/,
     'Analytics mode should reveal the player heatmap overlay.',
   );
+  assert.match(css, /\.app-shell\.is-merged-heatmap-view\s+\.gaze-heatmap-overlay/);
   assert.match(
     css,
     /\.heatmap-ruler\s*\{[\s\S]*?position:\s*absolute[\s\S]*?top:\s*16px[\s\S]*?left:\s*16px/,
@@ -175,9 +176,10 @@ test('AOI analytics mode uses player heatmap instead of sidebar preview', () => 
   );
   assert.match(
     css,
-    /\.app-shell\.is-analytics-mode\s+\.heatmap-ruler:not\(\[hidden\]\)\s*\{[\s\S]*?opacity:\s*1/,
+    /\.app-shell\.is-analytics-mode\s+\.heatmap-ruler:not\(\[hidden\]\)[\s\S]*?\{\s*opacity:\s*1/,
     'Analytics mode should reveal the heatmap ruler when data exists.',
   );
+  assert.match(css, /\.app-shell\.is-merged-heatmap-view\s+\.heatmap-ruler:not\(\[hidden\]\)/);
 });
 
 test('admin recording panel includes batch heatmap merge controls', () => {

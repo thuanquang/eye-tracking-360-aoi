@@ -249,8 +249,13 @@ test('player heatmap updates a dynamic intensity ruler', () => {
   );
   assert.match(
     controllerSource,
-    /heatmapRuler\.hidden\s*=\s*analyticsMode\s*===\s*null\s*\|\|\s*!range/,
-    'The ruler should be hidden outside analytics mode or when no heatmap points draw.',
+    /activeMergedHeatmapView\s*!==\s*null/,
+    'The ruler visibility should include active merged heatmap views.',
+  );
+  assert.match(
+    controllerSource,
+    /heatmapRuler\.hidden\s*=\s*!\s*(?:hasVisibleHeatmapOverlay\(\)|hasVisibleHeatmap)\s*\|\|\s*!range/,
+    'The ruler should be hidden only when no heatmap overlay mode has data.',
   );
   assert.match(
     controllerSource,
@@ -806,16 +811,71 @@ test('merged heatmap controls select an available heatmap path before viewing', 
   );
 });
 
-test('merged heatmap overlay projector preserves panorama visibility', () => {
+test('merged heatmap viewer draws static heatmap overlay without analytics samples', () => {
+  assert.match(
+    controllerSource,
+    /function\s+viewSelectedMergedHeatmap\(\s*\{\s*auto\s*=\s*false\s*\}\s*=\s*\{\}\s*\)/,
+  );
+  assert.match(controllerSource, /function\s+drawMergedHeatmapOverlay\(/);
+  assert.match(controllerSource, /function\s+drawHeatmapPoints\(/);
+  assert.match(controllerSource, /buildMergedHeatmapOverlayPoints\(/);
+  assert.match(controllerSource, /appShell\.classList\.add\('is-merged-heatmap-view'\)/);
+  assert.doesNotMatch(
+    controllerSource.match(/function\s+viewSelectedMergedHeatmap[\s\S]*?\r?\n  \}\r?\n/)?.[0] || '',
+    /enterAnalyticsMode\(/,
+    'Merged heatmap viewing should not enter recording analytics mode.',
+  );
+});
+
+test('merged heatmap viewer auto-selects matching study video ids', () => {
+  assert.match(
+    controllerSource,
+    /function\s+syncMergedHeatmapVideoContext\(group\)[\s\S]*findStudyVideoById\(group\?\.video\?\.id\)[\s\S]*setStudyVideo\(group\.video\.id,\s*\{\s*clearAois:\s*false\s*\}\)/,
+  );
+});
+
+test('merged heatmap overlay redraws on viewer resize and camera changes', () => {
+  assert.match(controllerSource, /function\s+redrawHeatmapOverlay\(\s*\{\s*force\s*=\s*false\s*\}\s*=\s*\{\}\s*\)/);
+  assert.match(controllerSource, /function\s+resize\(\)[\s\S]*redrawHeatmapOverlay\(\)/);
+  assert.match(controllerSource, /function\s+updateCamera\(\)[\s\S]*redrawHeatmapOverlay\(\)/);
+});
+
+test('merged heatmap redraw paints built overlay points', () => {
+  const drawFunction = controllerSource.match(
+    /function\s+drawMergedHeatmapOverlay\(\)\s*\{[\s\S]*?\r?\n  \}\r?\n\r?\n  function\s+redrawMergedHeatmapOverlay/,
+  )?.[0] || '';
   const redrawFunction = controllerSource.match(
-    /function\s+redrawMergedHeatmapOverlay\([\s\S]*?\r?\n  \}\r?\n\r?\n  function viewSelectedMergedHeatmap/,
+    /function\s+redrawMergedHeatmapOverlay\(\s*\{\s*force\s*=\s*false\s*\}\s*=\s*\{\}\s*\)\s*\{[\s\S]*?\r?\n  \}/,
   )?.[0] || '';
 
-  assert.notEqual(redrawFunction, '', 'The app controller should define redrawMergedHeatmapOverlay.');
+  assert.notEqual(drawFunction, '', 'The app controller should define drawMergedHeatmapOverlay.');
+  assert.match(
+    drawFunction,
+    /buildMergedHeatmapOverlayPoints\([\s\S]*drawHeatmapPoints\(ctx,\s*points,\s*dimensions\)/,
+    'Merged heatmap drawing should build overlay points and paint them through the shared point renderer.',
+  );
   assert.match(
     redrawFunction,
-    /buildMergedHeatmapOverlayPoints\(\{[\s\S]*projectPanoramaPoint:[\s\S]*return\s+projected\.visible\s*\?\s*(?:projected|\{\s*visible:\s*true[\s\S]*x:\s*projected\.x[\s\S]*y:\s*projected\.y[\s\S]*\})\s*:\s*null/,
-    'Merged heatmap panorama projection should preserve the visible flag required by buildMergedHeatmapOverlayPoints.',
+    /drawMergedHeatmapOverlay\(\)/,
+    'Merged heatmap redraw should paint the active merged overlay.',
+  );
+  assert.doesNotMatch(
+    redrawFunction,
+    /buildMergedHeatmapOverlayPoints\([\s\S]*clearGazeHeatmapOverlay\(\)/,
+    'Merged heatmap redraw should not compute points and then clear the overlay.',
+  );
+});
+
+test('merged heatmap overlay projector preserves panorama visibility', () => {
+  const drawFunction = controllerSource.match(
+    /function\s+drawMergedHeatmapOverlay\(\)\s*\{[\s\S]*?\r?\n  \}\r?\n\r?\n  function\s+redrawMergedHeatmapOverlay/,
+  )?.[0] || '';
+
+  assert.notEqual(drawFunction, '', 'The app controller should define drawMergedHeatmapOverlay.');
+  assert.match(
+    drawFunction,
+    /projectPanoramaPoint:\s*\(\{\s*yaw,\s*pitch\s*\}\)\s*=>\s*\{[\s\S]*const\s+projected\s*=\s*panoramaPointToScreen\([\s\S]*return\s+projected;/,
+    'Merged heatmap panorama projection should return the full projection result, including visibility.',
   );
 });
 

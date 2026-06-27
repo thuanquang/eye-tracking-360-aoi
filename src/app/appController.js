@@ -2187,56 +2187,134 @@ export function createAppController({
       groupKey: group.groupKey,
       variant: mergedHeatmapVariantSelect.value,
       type: mergedHeatmapTypeSelect.value,
+      group,
       heatmap,
     };
   }
 
-  function redrawMergedHeatmapOverlay({ force = false } = {}) {
-    void force;
+  function syncMergedHeatmapVideoContext(group) {
+    const matchingStudyVideo = findStudyVideoById(group?.video?.id);
 
-    if (activeMergedHeatmapView?.heatmap) {
-      const dimensions = getViewerScreenDimensions();
-      const overlayPoints = buildMergedHeatmapOverlayPoints({
-        heatmap: activeMergedHeatmapView.heatmap,
-        dimensions,
-        projectPanoramaPoint: ({ yaw, pitch }) => {
-          const projected = panoramaPointToScreen({
-            yaw,
-            pitch,
-            width: dimensions.width,
-            height: dimensions.height,
-            cameraYaw: state.cameraYaw,
-            cameraPitch: state.cameraPitch,
-            fov: camera.fov,
-          });
-
-          return projected.visible ? projected : null;
-        },
-      });
-
-      activeMergedHeatmapView.pointCount = overlayPoints.length;
+    if (matchingStudyVideo) {
+      if (selectedStudyVideo.id !== matchingStudyVideo.id) {
+        setStudyVideo(group.video.id, { clearAois: false });
+      }
+      return true;
     }
 
-    clearGazeHeatmapOverlay();
+    if (group?.video?.projection) {
+      applyVideoMetadataControls(group.video);
+    }
+
+    return false;
+  }
+
+  function getMergedHeatmapOverlaySignature() {
+    const dimensions = getViewerScreenDimensions();
+    const view = activeMergedHeatmapView;
+
+    return [
+      'merged',
+      view?.groupKey ?? '',
+      view?.group?.video?.id ?? '',
+      view?.variant ?? '',
+      view?.type ?? '',
+      view?.heatmap?.type ?? '',
+      getCurrentProjection(),
+      state.cameraYaw.toFixed(3),
+      state.cameraPitch.toFixed(3),
+      camera.fov.toFixed(3),
+      Math.round(dimensions.width),
+      Math.round(dimensions.height),
+    ].join('|');
+  }
+
+  function drawMergedHeatmapOverlay() {
+    const ctx = gazeHeatmapOverlay.getContext('2d');
+    if (!ctx) {
+      return;
+    }
+
+    if (!activeMergedHeatmapView?.heatmap) {
+      clearGazeHeatmapOverlay();
+      return;
+    }
+
+    const dimensions = syncGazeHeatmapOverlaySize();
+    const { width, height, pixelRatio } = dimensions;
+    ctx.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+    ctx.clearRect(0, 0, width, height);
+
+    const points = buildMergedHeatmapOverlayPoints({
+      heatmap: activeMergedHeatmapView.heatmap,
+      dimensions,
+      projectPanoramaPoint: ({ yaw, pitch }) => {
+        const projected = panoramaPointToScreen({
+          yaw,
+          pitch,
+          width: dimensions.width,
+          height: dimensions.height,
+          cameraYaw: state.cameraYaw,
+          cameraPitch: state.cameraPitch,
+          fov: camera.fov,
+        });
+
+        return projected;
+      },
+    });
+
+    activeMergedHeatmapView.pointCount = points.length;
+    drawHeatmapPoints(ctx, points, dimensions);
+  }
+
+  function redrawMergedHeatmapOverlay({ force = false } = {}) {
+    if (!activeMergedHeatmapView) {
+      return;
+    }
+
+    const signature = getMergedHeatmapOverlaySignature();
+    if (!force && signature === heatmapOverlaySignature) {
+      return;
+    }
+
+    heatmapOverlaySignature = signature;
+    drawMergedHeatmapOverlay();
+  }
+
+  function redrawHeatmapOverlay({ force = false } = {}) {
+    if (activeMergedHeatmapView) {
+      redrawMergedHeatmapOverlay({ force });
+      return;
+    }
+
+    redrawAnalyticsHeatmapOverlay({ force });
   }
 
   function viewSelectedMergedHeatmap({ auto = false } = {}) {
-    const selectedHeatmap = selectAvailableMergedHeatmapPath();
+    selectAvailableMergedHeatmapPath();
+    const viewState = createMergedHeatmapViewState();
 
-    if (!selectedHeatmap) {
+    if (!viewState) {
       if (!auto) {
-        setNotice('Chưa chọn heatmap tổng để xem.', true);
+        setNotice('Chọn heatmap tổng hợp lệ để xem.', true);
       }
       activeMergedHeatmapView = null;
       appShell.classList.remove('is-merged-heatmap-view');
+      clearGazeHeatmapOverlay();
       syncMergedHeatmapControls();
       return;
     }
 
-    activeMergedHeatmapView = createMergedHeatmapViewState();
+    const hasMatchingStudyVideo = syncMergedHeatmapVideoContext(viewState.group);
+    exitAnalyticsMode({ clearOverlay: false });
+    activeMergedHeatmapView = viewState;
     appShell.classList.add('is-merged-heatmap-view');
     redrawMergedHeatmapOverlay({ force: true });
     syncMergedHeatmapControls();
+    setNotice(
+      `Đã hiển thị heatmap tổng.${hasMatchingStudyVideo ? '' : ' Hãy tải đúng video nền nếu heatmap tổng đến từ video cục bộ.'}`,
+      true,
+    );
   }
 
   function clearMergedHeatmapView() {
@@ -2262,7 +2340,7 @@ export function createAppController({
     }
 
     const selectedHeatmap = selectAvailableMergedHeatmapPath();
-    if (activeMergedHeatmapView && !selectedHeatmap) {
+    if (!mergedHeatmapExport && activeMergedHeatmapView) {
       activeMergedHeatmapView = null;
       appShell.classList.remove('is-merged-heatmap-view');
       clearGazeHeatmapOverlay();
@@ -2282,11 +2360,6 @@ export function createAppController({
     }
 
     heatmapMergeStatus.textContent = `Đã tải ${mergedHeatmapExport.sourceFileCount} file, ${mergedHeatmapExport.groupCount} nhóm, bỏ qua ${mergedHeatmapExport.skipped.length}.`;
-
-    if (activeMergedHeatmapView && selectedHeatmap) {
-      activeMergedHeatmapView = createMergedHeatmapViewState();
-      redrawMergedHeatmapOverlay({ force: true });
-    }
   }
 
   async function loadHeatmapMergeFiles(event) {
@@ -2376,7 +2449,7 @@ export function createAppController({
     camera.aspect = rect.width / rect.height;
     camera.updateProjectionMatrix();
     syncProjectionMesh(rect);
-    redrawAnalyticsHeatmapOverlay();
+    redrawHeatmapOverlay();
   }
 
   function updateCamera() {
@@ -2384,13 +2457,13 @@ export function createAppController({
     if (getCurrentProjection() === 'flat') {
       camera.rotation.y = 0;
       camera.rotation.x = 0;
-      redrawAnalyticsHeatmapOverlay();
+      redrawHeatmapOverlay();
       return;
     }
 
     camera.rotation.y = THREE.MathUtils.degToRad(state.cameraYaw);
     camera.rotation.x = THREE.MathUtils.degToRad(state.cameraPitch);
-    redrawAnalyticsHeatmapOverlay();
+    redrawHeatmapOverlay();
   }
 
   function syncProjectionMesh(rect = viewer.getBoundingClientRect()) {
@@ -5250,7 +5323,8 @@ export function createAppController({
   }
 
   function updateHeatmapRuler(range = null) {
-    heatmapRuler.hidden = analyticsMode === null || !range;
+    const hasVisibleHeatmap = analyticsMode !== null || activeMergedHeatmapView !== null;
+    heatmapRuler.hidden = !hasVisibleHeatmap || !range;
 
     if (heatmapRuler.hidden) {
       heatmapRulerMin.textContent = '--';
@@ -5390,35 +5464,7 @@ export function createAppController({
     );
   }
 
-  function drawGazeHeatmapOverlay(samples = getActiveStatsSamples()) {
-    const ctx = gazeHeatmapOverlay.getContext('2d');
-    if (!ctx) {
-      return;
-    }
-
-    if (analyticsMode === null) {
-      clearGazeHeatmapOverlay();
-      return;
-    }
-
-    const dimensions = syncGazeHeatmapOverlaySize();
-    const { width, height, pixelRatio } = dimensions;
-    ctx.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
-    ctx.clearRect(0, 0, width, height);
-
-    const heatmapPoints = samples
-      .map((sample, index) => {
-        const point = getHeatmapPointForSample(sample, dimensions);
-        return point ? {
-          ...point,
-          trusted: isTrustedHeatmapSample(sample),
-          weightMs: getHeatmapSampleWeightMs(sample, index, samples),
-        } : null;
-      })
-      .filter(Boolean);
-    const trustedPoints = heatmapPoints.filter((point) => point.trusted);
-    const points = trustedPoints.length ? trustedPoints : heatmapPoints;
-
+  function drawHeatmapPoints(ctx, points, { width, height }) {
     if (!points.length) {
       updateHeatmapRuler();
       return;
@@ -5460,6 +5506,38 @@ export function createAppController({
     ctx.restore();
   }
 
+  function drawGazeHeatmapOverlay(samples = getActiveStatsSamples()) {
+    const ctx = gazeHeatmapOverlay.getContext('2d');
+    if (!ctx) {
+      return;
+    }
+
+    if (analyticsMode === null) {
+      clearGazeHeatmapOverlay();
+      return;
+    }
+
+    const dimensions = syncGazeHeatmapOverlaySize();
+    const { width, height, pixelRatio } = dimensions;
+    ctx.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+    ctx.clearRect(0, 0, width, height);
+
+    const heatmapPoints = samples
+      .map((sample, index) => {
+        const point = getHeatmapPointForSample(sample, dimensions);
+        return point ? {
+          ...point,
+          trusted: isTrustedHeatmapSample(sample),
+          weightMs: getHeatmapSampleWeightMs(sample, index, samples),
+        } : null;
+      })
+      .filter(Boolean);
+    const trustedPoints = heatmapPoints.filter((point) => point.trusted);
+    const points = trustedPoints.length ? trustedPoints : heatmapPoints;
+
+    drawHeatmapPoints(ctx, points, dimensions);
+  }
+
   function enterAnalyticsMode(source) {
     if (state.appMode !== 'admin' || !hasSamplesForAnalytics(source)) {
       return;
@@ -5467,7 +5545,9 @@ export function createAppController({
 
     analyticsMode = source;
     activeStatsSampleSource = source;
+    activeMergedHeatmapView = null;
     appShell.classList.add('is-analytics-mode');
+    appShell.classList.remove('is-merged-heatmap-view');
     aoiStatsPanel.hidden = false;
     renderAoiStatsPanel();
   }
