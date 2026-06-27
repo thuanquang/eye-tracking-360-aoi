@@ -1401,6 +1401,48 @@ details.panel-section > summary:focus-visible {
   pointer-events: none;
 }
 
+.batch-heatmap-panel {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+  display: grid;
+  gap: 10px;
+}
+
+.batch-heatmap-heading h3 {
+  margin: 0;
+  font-size: 0.96rem;
+  line-height: 1.25;
+}
+
+.batch-heatmap-loader {
+  margin-top: 0;
+  min-height: 44px;
+}
+
+.batch-heatmap-controls {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.batch-heatmap-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.batch-heatmap-actions button {
+  flex: 1 1 150px;
+  min-width: 0;
+  white-space: normal;
+  line-height: 1.15;
+}
+
+.batch-heatmap-panel .fine-print {
+  margin: 0;
+}
+
 .wide-action {
   width: 100%;
   margin-top: 10px;
@@ -1929,9 +1971,14 @@ details.panel-section > summary:focus-visible {
 
   .toolbar-actions,
   .recording-actions,
+  .batch-heatmap-actions,
   .segmented,
   .mode-choice-grid {
     width: 100%;
+  }
+
+  .batch-heatmap-controls {
+    grid-template-columns: 1fr;
   }
 
   .app-shell.is-validation-test {

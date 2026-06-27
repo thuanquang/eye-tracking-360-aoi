@@ -59,6 +59,13 @@ const APP_SELECTORS = [
   '#saveSelectedAoiButton',
   '#deleteSelectedAoiButton',
   '#recordingFileInput',
+  '#heatmapMergeFileInput',
+  '#heatmapMergeStatus',
+  '#mergedHeatmapGroupSelect',
+  '#mergedHeatmapVariantSelect',
+  '#mergedHeatmapTypeSelect',
+  '#exportMergedHeatmapJsonButton',
+  '#exportMergedHeatmapImageButton',
   '#recordButton',
   '#reviewButton',
   '#clearButton',
@@ -178,6 +185,13 @@ test('queryAppDom resolves core app selectors', () => {
   assert.equal(dom.rawGazeDiagnosticStatus.selector, '#rawGazeDiagnosticStatus');
   assert.equal(dom.gazeQualityReadout.selector, '#gazeQualityReadout');
   assert.equal(dom.exportStatsCsvButton.selector, '#exportStatsCsvButton');
+  assert.equal(dom.heatmapMergeFileInput.selector, '#heatmapMergeFileInput');
+  assert.equal(dom.heatmapMergeStatus.selector, '#heatmapMergeStatus');
+  assert.equal(dom.mergedHeatmapGroupSelect.selector, '#mergedHeatmapGroupSelect');
+  assert.equal(dom.mergedHeatmapVariantSelect.selector, '#mergedHeatmapVariantSelect');
+  assert.equal(dom.mergedHeatmapTypeSelect.selector, '#mergedHeatmapTypeSelect');
+  assert.equal(dom.exportMergedHeatmapJsonButton.selector, '#exportMergedHeatmapJsonButton');
+  assert.equal(dom.exportMergedHeatmapImageButton.selector, '#exportMergedHeatmapImageButton');
   assert.equal(dom.aoiStatsPanel.selector, '#aoiStatsPanel');
   assert.equal(dom.exitAnalyticsButton.selector, '#exitAnalyticsButton');
   assert.equal(dom.refreshStatsButton.selector, '#refreshStatsButton');

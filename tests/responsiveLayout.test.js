@@ -176,6 +176,30 @@ test('AOI analytics mode uses player heatmap instead of sidebar preview', () => 
   );
 });
 
+test('admin recording panel includes batch heatmap merge controls', () => {
+  const adminRecordingStart = html.indexOf('id="adminRecordingPanel"');
+  const nextPanelStart = html.indexOf('id="adminReadoutPanel"');
+  const adminRecordingPanel = html.slice(adminRecordingStart, nextPanelStart);
+
+  assert.notEqual(adminRecordingStart, -1, 'The admin recording panel should exist in the page markup.');
+  assert.notEqual(nextPanelStart, -1, 'The admin readout panel should follow the recording panel.');
+  assert.match(
+    adminRecordingPanel,
+    /id="heatmapMergeFileInput"[\s\S]*multiple[\s\S]*id="exportMergedHeatmapJsonButton"[\s\S]*id="exportMergedHeatmapImageButton"/,
+    'Batch heatmap merge controls should appear in order inside the admin recording panel.',
+  );
+  assert.match(
+    css,
+    /\.batch-heatmap-panel\s*\{/,
+    'Batch heatmap controls should have a compact panel style.',
+  );
+  assert.match(
+    css,
+    /\.batch-heatmap-controls\s*\{/,
+    'Batch heatmap controls should have responsive control layout styles.',
+  );
+});
+
 test('analytics mode clears the admin sidebar to the AOI results panel', () => {
   assert.match(
     html,

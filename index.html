@@ -468,6 +468,41 @@
             <span>Tải JSON bản ghi</span>
             <input id="recordingFileInput" type="file" accept="application/json,.json" />
           </label>
+          <section class="batch-heatmap-panel" aria-labelledby="batchHeatmapHeading">
+            <div class="batch-heatmap-heading">
+              <h3 id="batchHeatmapHeading">Gop heatmap nhieu file</h3>
+            </div>
+            <label class="file-loader batch-heatmap-loader">
+              <span>Tai JSON heatmap</span>
+              <input id="heatmapMergeFileInput" type="file" accept="application/json,.json" multiple />
+            </label>
+            <div class="batch-heatmap-controls">
+              <label class="field-label compact-field">
+                <span>Nhom</span>
+                <select id="mergedHeatmapGroupSelect" disabled></select>
+              </label>
+              <label class="field-label compact-field">
+                <span>Bien the</span>
+                <select id="mergedHeatmapVariantSelect" disabled>
+                  <option value="trusted">trusted</option>
+                  <option value="likely">likely</option>
+                  <option value="possible">possible</option>
+                </select>
+              </label>
+              <label class="field-label compact-field">
+                <span>Loai</span>
+                <select id="mergedHeatmapTypeSelect" disabled>
+                  <option value="panorama">panorama</option>
+                  <option value="screen">screen</option>
+                </select>
+              </label>
+            </div>
+            <div class="batch-heatmap-actions">
+              <button id="exportMergedHeatmapJsonButton" type="button" disabled>Xuat JSON heatmap tong</button>
+              <button id="exportMergedHeatmapImageButton" type="button" disabled>Xuat anh heatmap</button>
+            </div>
+            <p id="heatmapMergeStatus" class="fine-print">Chua tai heatmap JSON.</p>
+          </section>
           <div class="status-grid">
             <div>
               <span>Mẫu</span>
