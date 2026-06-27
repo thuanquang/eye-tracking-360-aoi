@@ -580,6 +580,107 @@ test('rejects invalid merged heatmap export packages', () => {
   );
 });
 
+test('rejects merged heatmap groups with empty heatmaps', () => {
+  assert.throws(
+    () => normalizeMergedHeatmapExport({
+      kind: 'merged-heatmaps',
+      groups: [{
+        groupKey: 'clip-a',
+        summary: { heatmaps: {} },
+      }],
+    }),
+    /Invalid merged heatmap export: group 0/,
+  );
+});
+
+test('rejects merged heatmap groups with array-valued heatmaps', () => {
+  assert.throws(
+    () => normalizeMergedHeatmapExport({
+      kind: 'merged-heatmaps',
+      groups: [{
+        groupKey: 'clip-a',
+        summary: { heatmaps: [] },
+      }],
+    }),
+    /Invalid merged heatmap export: group 0/,
+  );
+});
+
+test('rejects merged heatmap groups with malformed screen or panorama heatmaps', () => {
+  assert.throws(
+    () => normalizeMergedHeatmapExport({
+      kind: 'merged-heatmaps',
+      groups: [{
+        groupKey: 'clip-a',
+        summary: {
+          heatmaps: {
+            screen: { type: 'screen', columns: 2, rows: 2 },
+          },
+        },
+      }],
+    }),
+    /Invalid merged heatmap export: group 0/,
+  );
+
+  assert.throws(
+    () => normalizeMergedHeatmapExport({
+      kind: 'merged-heatmaps',
+      groups: [{
+        groupKey: 'clip-a',
+        summary: {
+          heatmaps: {
+            panorama: { type: 'panorama', columns: 4, rows: 2 },
+          },
+        },
+      }],
+    }),
+    /Invalid merged heatmap export: group 0/,
+  );
+});
+
+test('rejects mixed valid and invalid merged heatmap group arrays', () => {
+  assert.throws(
+    () => normalizeMergedHeatmapExport({
+      kind: 'merged-heatmaps',
+      groups: [
+        {
+          groupKey: 'clip-a',
+          summary: { heatmaps: { screen: screenHeatmap() } },
+        },
+        {
+          groupKey: 'clip-b',
+          summary: { heatmaps: null },
+        },
+      ],
+    }),
+    /Invalid merged heatmap export: group 1/,
+  );
+});
+
+test('accepts merged heatmap groups with only renderable variant heatmaps', () => {
+  const mergedPackage = {
+    kind: 'merged-heatmaps',
+    groups: [{
+      groupKey: 'clip-a',
+      sourceCount: 1,
+      summary: {
+        heatmaps: {
+          variants: {
+            trusted: {
+              screen: screenHeatmap(),
+            },
+          },
+        },
+      },
+    }],
+  };
+
+  const normalized = normalizeMergedHeatmapExport(mergedPackage);
+
+  assert.equal(normalized.groupCount, 1);
+  assert.deepEqual(normalized.groups, mergedPackage.groups);
+});
+
 test('reads one merged heatmap package file', async () => {
   const payload = {
     kind: 'merged-heatmaps',

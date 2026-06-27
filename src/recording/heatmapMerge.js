@@ -404,12 +404,79 @@ export function isMergedHeatmapExport(payload) {
   );
 }
 
+function assertMergedHeatmapObject(value, groupIndex, path) {
+  if (!isObject(value) || Array.isArray(value)) {
+    throw new Error(`Invalid merged heatmap export: group ${groupIndex} has invalid ${path}.`);
+  }
+}
+
+function assertMergedHeatmapPath(heatmap, groupIndex, path) {
+  try {
+    assertValidHeatmap(heatmap, 0);
+  } catch (error) {
+    throw new Error(
+      `Invalid merged heatmap export: group ${groupIndex} has invalid ${path}: ${
+        getMergeErrorMessage(error)
+      }`,
+    );
+  }
+}
+
+function assertMergedHeatmapGroup(group, groupIndex) {
+  if (!isObject(group)) {
+    throw new Error(`Invalid merged heatmap export: group ${groupIndex} is invalid.`);
+  }
+
+  const heatmaps = group.summary?.heatmaps;
+  assertMergedHeatmapObject(heatmaps, groupIndex, 'summary.heatmaps');
+
+  let hasRenderableHeatmap = false;
+
+  ['screen', 'panorama'].forEach((type) => {
+    if (!hasOwn(heatmaps, type)) {
+      return;
+    }
+
+    assertMergedHeatmapPath(heatmaps[type], groupIndex, type);
+    hasRenderableHeatmap = true;
+  });
+
+  if (hasOwn(heatmaps, 'variants')) {
+    assertMergedHeatmapObject(heatmaps.variants, groupIndex, 'variants');
+
+    Object.entries(heatmaps.variants).forEach(([variantName, variantHeatmaps]) => {
+      assertMergedHeatmapObject(variantHeatmaps, groupIndex, `variants.${variantName}`);
+
+      ['screen', 'panorama'].forEach((type) => {
+        if (!hasOwn(variantHeatmaps, type)) {
+          return;
+        }
+
+        assertMergedHeatmapPath(
+          variantHeatmaps[type],
+          groupIndex,
+          `variants.${variantName}.${type}`,
+        );
+        hasRenderableHeatmap = true;
+      });
+    });
+  }
+
+  if (!hasRenderableHeatmap) {
+    throw new Error(`Invalid merged heatmap export: group ${groupIndex} has no renderable heatmaps.`);
+  }
+}
+
 export function normalizeMergedHeatmapExport(payload) {
   if (!isMergedHeatmapExport(payload)) {
     throw new Error('Invalid merged heatmap export.');
   }
 
-  const groups = payload.groups.filter((group) => isObject(group?.summary?.heatmaps));
+  payload.groups.forEach((group, groupIndex) => {
+    assertMergedHeatmapGroup(group, groupIndex);
+  });
+
+  const groups = payload.groups;
 
   if (groups.length === 0) {
     throw new Error('Invalid merged heatmap export: no heatmap groups.');
