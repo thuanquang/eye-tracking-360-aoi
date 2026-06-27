@@ -139,6 +139,139 @@ function cloneMetadata(heatmap) {
   return metadata;
 }
 
+function getPayloadVideo(payload) {
+  return payload?.video ?? payload?.project?.video ?? null;
+}
+
+function normalizeVideoKeyPart(value) {
+  return String(value ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+export function getHeatmapVideoKey(payload) {
+  const video = getPayloadVideo(payload);
+  const parts = [
+    normalizeVideoKeyPart(video?.name),
+    normalizeVideoKeyPart(video?.src),
+  ].filter(Boolean);
+
+  return parts.length > 0 ? parts.join('|') : 'unknown-video';
+}
+
+function cloneVideoMetadata(video) {
+  return isObject(video) ? { ...video } : null;
+}
+
+function getParticipantId(payload) {
+  return payload?.participant?.id
+    ?? payload?.participant?.participantId
+    ?? payload?.participantId
+    ?? null;
+}
+
+function getExportedAt(payload) {
+  return payload?.exportedAt ?? null;
+}
+
+function getEntryHeatmaps(entry) {
+  const heatmaps = entry?.payload?.summary?.heatmaps;
+  return isObject(heatmaps) ? heatmaps : null;
+}
+
+function getMergeErrorMessage(error) {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function addIncompatibleHeatmapSkip(skipped, groupKey, heatmapPath, error) {
+  skipped.push({
+    reason: 'incompatible-heatmap-grid',
+    groupKey,
+    heatmapPath,
+    message: getMergeErrorMessage(error),
+  });
+}
+
+function mergeHeatmapPath({ group, heatmapPath, getHeatmap, setHeatmap, skipped }) {
+  const heatmaps = group.entries
+    .map((entry) => getHeatmap(entry.heatmaps))
+    .filter(Boolean);
+
+  if (heatmaps.length === 0) {
+    return;
+  }
+
+  try {
+    setHeatmap(mergeCompatibleHeatmaps(heatmaps));
+  } catch (error) {
+    addIncompatibleHeatmapSkip(skipped, group.groupKey, heatmapPath, error);
+  }
+}
+
+function buildMergedGroupHeatmaps(group, skipped) {
+  const heatmaps = {};
+  const heatmapTypes = ['screen', 'panorama'];
+  const variantNames = ['trusted', 'likely', 'possible'];
+
+  heatmapTypes.forEach((type) => {
+    mergeHeatmapPath({
+      group,
+      heatmapPath: type,
+      getHeatmap: (sourceHeatmaps) => sourceHeatmaps?.[type],
+      setHeatmap: (mergedHeatmap) => {
+        heatmaps[type] = mergedHeatmap;
+      },
+      skipped,
+    });
+  });
+
+  const variants = {};
+
+  variantNames.forEach((variantName) => {
+    const variantHeatmaps = {};
+
+    heatmapTypes.forEach((type) => {
+      mergeHeatmapPath({
+        group,
+        heatmapPath: `variants.${variantName}.${type}`,
+        getHeatmap: (sourceHeatmaps) => sourceHeatmaps?.variants?.[variantName]?.[type],
+        setHeatmap: (mergedHeatmap) => {
+          variantHeatmaps[type] = mergedHeatmap;
+        },
+        skipped,
+      });
+    });
+
+    if (Object.keys(variantHeatmaps).length > 0) {
+      variants[variantName] = variantHeatmaps;
+    }
+  });
+
+  if (Object.keys(variants).length > 0) {
+    heatmaps.variants = variants;
+  }
+
+  return heatmaps;
+}
+
+function buildMergedGroup(group, skipped) {
+  return {
+    groupKey: group.groupKey,
+    video: group.video,
+    sourceCount: group.entries.length,
+    sources: group.entries.map((entry) => ({
+      fileName: entry.fileName,
+      exportedAt: getExportedAt(entry.payload),
+      participantId: getParticipantId(entry.payload),
+    })),
+    summary: {
+      heatmaps: buildMergedGroupHeatmaps(group, skipped),
+    },
+  };
+}
+
 export function mergeCompatibleHeatmaps(heatmaps) {
   if (!Array.isArray(heatmaps) || heatmaps.length === 0) {
     throw new Error('No heatmaps to merge.');
@@ -175,5 +308,55 @@ export function mergeCompatibleHeatmaps(heatmaps) {
     sourceHeatmapCount: heatmaps.length,
     totalWeightSec,
     bins: mergedBins,
+  };
+}
+
+export function buildMergedHeatmapExport(entries, options = {}) {
+  const sourceEntries = Array.isArray(entries) ? entries : [];
+  const skipped = [];
+  const groupsByKey = new Map();
+
+  sourceEntries.forEach((entry) => {
+    const heatmaps = getEntryHeatmaps(entry);
+
+    if (!heatmaps) {
+      skipped.push({
+        fileName: entry?.fileName,
+        reason: 'missing-summary-heatmaps',
+      });
+      return;
+    }
+
+    const payload = entry.payload;
+    const groupKey = getHeatmapVideoKey(payload);
+    let group = groupsByKey.get(groupKey);
+
+    if (!group) {
+      group = {
+        groupKey,
+        video: cloneVideoMetadata(getPayloadVideo(payload)),
+        entries: [],
+      };
+      groupsByKey.set(groupKey, group);
+    }
+
+    group.entries.push({
+      fileName: entry.fileName,
+      payload,
+      heatmaps,
+    });
+  });
+
+  const groups = [...groupsByKey.values()]
+    .map((group) => buildMergedGroup(group, skipped));
+
+  return {
+    kind: 'merged-heatmaps',
+    version: 1,
+    exportedAt: options.exportedAt ?? new Date().toISOString(),
+    sourceFileCount: sourceEntries.length,
+    groupCount: groups.length,
+    groups,
+    skipped,
   };
 }
