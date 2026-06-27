@@ -1,5 +1,7 @@
 const MAX_SCREEN_RENDER_WIDTH = 1280;
 const PANORAMA_RENDER_WIDTH = 1440;
+export const MAX_HEATMAP_RENDER_DIMENSION = 4096;
+export const MAX_HEATMAP_RENDER_AREA = MAX_HEATMAP_RENDER_DIMENSION * MAX_HEATMAP_RENDER_DIMENSION;
 const DEFAULT_GRID_COLUMNS = 72;
 const DEFAULT_GRID_ROWS = 36;
 
@@ -19,22 +21,35 @@ function roundIntensity(value) {
   return Math.round(clamp01(value) * 1000) / 1000;
 }
 
+function boundRenderDimensions(width, height) {
+  let scale = 1;
+  const maxDimension = Math.max(width, height);
+  const area = width * height;
+
+  if (maxDimension > MAX_HEATMAP_RENDER_DIMENSION) {
+    scale = Math.min(scale, MAX_HEATMAP_RENDER_DIMENSION / maxDimension);
+  }
+
+  if (area > MAX_HEATMAP_RENDER_AREA) {
+    scale = Math.min(scale, Math.sqrt(MAX_HEATMAP_RENDER_AREA / area));
+  }
+
+  return {
+    width: Math.min(MAX_HEATMAP_RENDER_DIMENSION, roundPixel(width * scale)),
+    height: Math.min(MAX_HEATMAP_RENDER_DIMENSION, roundPixel(height * scale)),
+  };
+}
+
 export function getHeatmapRenderDimensions(heatmap) {
   const width = Number(heatmap?.width);
   const height = Number(heatmap?.height);
 
   if (heatmap?.type === 'screen' && isPositiveFiniteNumber(width) && isPositiveFiniteNumber(height)) {
     if (width <= MAX_SCREEN_RENDER_WIDTH) {
-      return {
-        width: roundPixel(width),
-        height: roundPixel(height),
-      };
+      return boundRenderDimensions(width, height);
     }
 
-    return {
-      width: MAX_SCREEN_RENDER_WIDTH,
-      height: roundPixel((MAX_SCREEN_RENDER_WIDTH * height) / width),
-    };
+    return boundRenderDimensions(MAX_SCREEN_RENDER_WIDTH, (MAX_SCREEN_RENDER_WIDTH * height) / width);
   }
 
   const columns = isPositiveFiniteNumber(Number(heatmap?.columns))
@@ -44,10 +59,7 @@ export function getHeatmapRenderDimensions(heatmap) {
     ? Number(heatmap.rows)
     : DEFAULT_GRID_ROWS;
 
-  return {
-    width: PANORAMA_RENDER_WIDTH,
-    height: roundPixel((PANORAMA_RENDER_WIDTH * rows) / columns),
-  };
+  return boundRenderDimensions(PANORAMA_RENDER_WIDTH, (PANORAMA_RENDER_WIDTH * rows) / columns);
 }
 
 export function normalizeHeatmapBins(heatmap) {

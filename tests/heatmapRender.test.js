@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  MAX_HEATMAP_RENDER_AREA,
+  MAX_HEATMAP_RENDER_DIMENSION,
   getHeatmapRenderDimensions,
   normalizeHeatmapBins,
 } from '../src/recording/heatmapRender.js';
@@ -37,6 +39,34 @@ test('smaller screen heatmap keeps its source dimensions', () => {
     }),
     { width: 640, height: 360 },
   );
+});
+
+test('very tall screen heatmap render dimensions are bounded', () => {
+  const dimensions = getHeatmapRenderDimensions({
+    type: 'screen',
+    width: 100,
+    height: 100000,
+  });
+
+  assert.ok(dimensions.height <= MAX_HEATMAP_RENDER_DIMENSION);
+  assert.ok(dimensions.width * dimensions.height <= MAX_HEATMAP_RENDER_AREA);
+  assert.ok(dimensions.width >= 1);
+  assert.ok(dimensions.width < 100);
+  assert.ok(dimensions.height > dimensions.width);
+});
+
+test('very tall panorama heatmap render dimensions are bounded', () => {
+  const dimensions = getHeatmapRenderDimensions({
+    type: 'panorama',
+    columns: 1,
+    rows: 100000,
+  });
+
+  assert.ok(dimensions.height <= MAX_HEATMAP_RENDER_DIMENSION);
+  assert.ok(dimensions.width * dimensions.height <= MAX_HEATMAP_RENDER_AREA);
+  assert.ok(dimensions.width >= 1);
+  assert.ok(dimensions.width < 1440);
+  assert.ok(dimensions.height > dimensions.width);
 });
 
 test('normalizes heatmap bin intensity from the maximum weight', () => {

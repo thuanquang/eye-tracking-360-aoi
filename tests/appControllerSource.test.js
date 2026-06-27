@@ -760,6 +760,37 @@ test('batch heatmap image export downloads the selected heatmap as PNG', () => {
   );
 });
 
+test('batch heatmap image export handles PNG serialization failures', () => {
+  const exportFunction = controllerSource.match(
+    /function\s+exportMergedHeatmapImage\(\)\s*\{[\s\S]*?\n  \}/,
+  )?.[0] || '';
+
+  assert.notEqual(exportFunction, '', 'The app controller should define exportMergedHeatmapImage.');
+  assert.match(
+    exportFunction,
+    /try\s*\{[\s\S]*canvas\.toDataURL\('image\/png'\)[\s\S]*\}\s*catch\s*\(/,
+    'Merged heatmap image export should catch canvas PNG serialization failures.',
+  );
+  assert.match(
+    exportFunction,
+    /dataUrl\s*===\s*'data:,'/,
+    'Merged heatmap image export should reject empty data URLs returned by canvas serialization.',
+  );
+});
+
+test('batch heatmap image export clicks download only after a valid PNG data URL', () => {
+  const exportFunction = controllerSource.match(
+    /function\s+exportMergedHeatmapImage\(\)\s*\{[\s\S]*?\n  \}/,
+  )?.[0] || '';
+
+  assert.notEqual(exportFunction, '', 'The app controller should define exportMergedHeatmapImage.');
+  assert.match(
+    exportFunction,
+    /if\s*\(\s*!dataUrl\s*\|\|\s*dataUrl\s*===\s*'data:,'\s*\)\s*\{[\s\S]*?return;[\s\S]*?\}[\s\S]*anchor\.href\s*=\s*dataUrl[\s\S]*anchor\.click\(\)/,
+    'Merged heatmap image export should return on invalid data URLs before assigning and clicking the download anchor.',
+  );
+});
+
 test('batch heatmap merge controls are disabled when no merged groups exist', () => {
   assert.match(
     controllerSource,

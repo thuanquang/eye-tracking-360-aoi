@@ -4941,8 +4941,22 @@ export function createAppController({
       return;
     }
 
+    let dataUrl = '';
+
+    try {
+      dataUrl = canvas.toDataURL('image/png');
+    } catch (error) {
+      setNotice('Khong the tao PNG heatmap tong de xuat anh.', true);
+      return;
+    }
+
+    if (!dataUrl || dataUrl === 'data:,') {
+      setNotice('Khong the tao PNG heatmap tong de xuat anh.', true);
+      return;
+    }
+
     const anchor = document.createElement('a');
-    anchor.href = canvas.toDataURL('image/png');
+    anchor.href = dataUrl;
     anchor.download = buildMergedHeatmapFileName('png');
     anchor.click();
     setNotice('Da xuat anh heatmap tong.', true);
