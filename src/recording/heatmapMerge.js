@@ -396,6 +396,51 @@ export async function readHeatmapExportFiles(files) {
   };
 }
 
+export function isMergedHeatmapExport(payload) {
+  return (
+    isObject(payload) &&
+    payload.kind === 'merged-heatmaps' &&
+    Array.isArray(payload.groups)
+  );
+}
+
+export function normalizeMergedHeatmapExport(payload) {
+  if (!isMergedHeatmapExport(payload)) {
+    throw new Error('Invalid merged heatmap export.');
+  }
+
+  const groups = payload.groups.filter((group) => isObject(group?.summary?.heatmaps));
+
+  if (groups.length === 0) {
+    throw new Error('Invalid merged heatmap export: no heatmap groups.');
+  }
+
+  return {
+    ...payload,
+    version: Number.isFinite(payload.version) ? payload.version : 1,
+    sourceFileCount: Number.isFinite(payload.sourceFileCount) ? payload.sourceFileCount : 0,
+    groupCount: groups.length,
+    groups,
+    skipped: Array.isArray(payload.skipped) ? payload.skipped : [],
+  };
+}
+
+export async function readMergedHeatmapPackageFile(file) {
+  const fileName = file?.name || 'merged-heatmaps.json';
+  let payload;
+
+  try {
+    payload = JSON.parse(await file.text());
+  } catch (error) {
+    throw new Error(`Invalid JSON in ${fileName}: ${getMergeErrorMessage(error)}`);
+  }
+
+  return {
+    fileName,
+    payload: normalizeMergedHeatmapExport(payload),
+  };
+}
+
 export function buildMergedHeatmapExport(entries, options = {}) {
   const sourceEntries = Array.isArray(entries) ? entries : [];
   const skipped = Array.isArray(options.skipped)

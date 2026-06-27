@@ -5,8 +5,11 @@ import {
   buildMergedHeatmapExport,
   getHeatmapCompatibilityKey,
   getHeatmapVideoKey,
+  isMergedHeatmapExport,
   mergeCompatibleHeatmaps,
+  normalizeMergedHeatmapExport,
   readHeatmapExportFiles,
+  readMergedHeatmapPackageFile,
 } from '../src/recording/heatmapMerge.js';
 
 function hasOwn(value, property) {
@@ -546,6 +549,58 @@ test('reads heatmap export files and reports malformed JSON without dropping val
   assert.equal(result.skipped[0].fileName, 'broken.json');
   assert.equal(result.skipped[0].reason, 'invalid-json');
   assert.match(result.skipped[0].message, /JSON|Expected|Unexpected/i);
+});
+
+test('recognizes valid merged heatmap export packages', () => {
+  const mergedPackage = {
+    kind: 'merged-heatmaps',
+    version: 1,
+    exportedAt: '2026-06-27T12:00:00.000Z',
+    sourceFileCount: 2,
+    groupCount: 1,
+    groups: [{
+      groupKey: 'clip-a',
+      video: { id: 'clip-a', name: 'Clip A.mp4' },
+      sourceCount: 2,
+      sources: [],
+      summary: { heatmaps: { screen: screenHeatmap() } },
+    }],
+    skipped: [],
+  };
+
+  assert.equal(isMergedHeatmapExport(mergedPackage), true);
+  assert.deepEqual(normalizeMergedHeatmapExport(mergedPackage), mergedPackage);
+});
+
+test('rejects invalid merged heatmap export packages', () => {
+  assert.equal(isMergedHeatmapExport({ summary: { heatmaps: {} } }), false);
+  assert.throws(
+    () => normalizeMergedHeatmapExport({ summary: { heatmaps: {} } }),
+    /Invalid merged heatmap export/,
+  );
+});
+
+test('reads one merged heatmap package file', async () => {
+  const payload = {
+    kind: 'merged-heatmaps',
+    groups: [{
+      groupKey: 'clip-a',
+      video: { id: 'clip-a' },
+      sourceCount: 2,
+      summary: { heatmaps: { screen: screenHeatmap() } },
+    }],
+    skipped: [],
+  };
+  const file = {
+    name: 'merged.json',
+    text: async () => JSON.stringify(payload),
+  };
+
+  const result = await readMergedHeatmapPackageFile(file);
+
+  assert.equal(result.fileName, 'merged.json');
+  assert.equal(result.payload.kind, 'merged-heatmaps');
+  assert.equal(result.payload.groupCount, 1);
 });
 
 test('builds stable video keys from metadata', () => {
