@@ -1212,6 +1212,107 @@ try {
     'Loaded recording JSON should draw the player heatmap overlay.',
   );
 
+  const heatmapMergeVideo = {
+    name: 'Batch Merge Smoke.mp4',
+    src: 'assets/smoke/batch-merge-smoke.mp4',
+    projection: 'flat',
+  };
+  const createMergeScreenHeatmap = ({ weightSec, sampleCount, column }) => ({
+    type: 'screen',
+    columns: 2,
+    rows: 2,
+    width: 320,
+    height: 180,
+    dimensionSource: 'provided',
+    trustedOnly: true,
+    totalWeightSec: weightSec,
+    bins: [{ column, row: 0, weightSec, sampleCount }],
+  });
+  const firstHeatmapMergePath = join(tmpDir, 'batch-heatmap-p1.json');
+  const secondHeatmapMergePath = join(tmpDir, 'batch-heatmap-p2.json');
+  await writeFile(firstHeatmapMergePath, JSON.stringify({
+    exportedAt: '2026-06-27T10:00:00.000Z',
+    participant: { id: 'merge-smoke-p1' },
+    video: heatmapMergeVideo,
+    summary: {
+      heatmaps: {
+        screen: createMergeScreenHeatmap({ weightSec: 0.25, sampleCount: 3, column: 0 }),
+        variants: {
+          trusted: {
+            screen: createMergeScreenHeatmap({ weightSec: 0.25, sampleCount: 3, column: 0 }),
+          },
+        },
+      },
+    },
+  }, null, 2));
+  await writeFile(secondHeatmapMergePath, JSON.stringify({
+    exportedAt: '2026-06-27T10:01:00.000Z',
+    participant: { id: 'merge-smoke-p2' },
+    video: heatmapMergeVideo,
+    summary: {
+      heatmaps: {
+        screen: createMergeScreenHeatmap({ weightSec: 0.5, sampleCount: 5, column: 1 }),
+        variants: {
+          trusted: {
+            screen: createMergeScreenHeatmap({ weightSec: 0.5, sampleCount: 5, column: 1 }),
+          },
+        },
+      },
+    },
+  }, null, 2));
+  await page.locator('#heatmapMergeFileInput').setInputFiles([
+    firstHeatmapMergePath,
+    secondHeatmapMergePath,
+  ]);
+  await page.waitForFunction(() => {
+    const status = document.querySelector('#heatmapMergeStatus')?.textContent || '';
+    return /2\s+file/i.test(status) && /1\s+nhom/i.test(status);
+  });
+  assert.match(
+    await page.locator('#heatmapMergeStatus').innerText(),
+    /2\s+file[\s\S]*1\s+nhom/i,
+    'Batch heatmap merge status should report two files merged into one group.',
+  );
+  assert.equal(
+    await page.locator('#exportMergedHeatmapJsonButton').isEnabled(),
+    true,
+    'Merged heatmap JSON export should enable after compatible files load.',
+  );
+  assert.equal(
+    await page.locator('#exportMergedHeatmapImageButton').isEnabled(),
+    true,
+    'Merged heatmap image export should enable after compatible files load.',
+  );
+  const mergedHeatmapJsonDownloadPromise = page.waitForEvent('download');
+  await page.locator('#exportMergedHeatmapJsonButton').click();
+  const mergedHeatmapJsonDownload = await mergedHeatmapJsonDownloadPromise;
+  const mergedHeatmapJson = JSON.parse(await readFile(await mergedHeatmapJsonDownload.path(), 'utf8'));
+  assert.equal(mergedHeatmapJson.kind, 'merged-heatmaps');
+  assert.equal(mergedHeatmapJson.groupCount, 1);
+  assert.equal(mergedHeatmapJson.groups[0].sourceCount, 2);
+  assert.equal(
+    mergedHeatmapJson.groups[0].summary.heatmaps.screen.totalWeightSec,
+    0.75,
+    'Merged heatmap JSON should sum compatible screen heatmap weight.',
+  );
+
+  await page.locator('#mergedHeatmapTypeSelect').selectOption('screen');
+  const mergedHeatmapImageDownloadPromise = page.waitForEvent('download');
+  await page.locator('#exportMergedHeatmapImageButton').click();
+  const mergedHeatmapImageDownload = await mergedHeatmapImageDownloadPromise;
+  const mergedHeatmapImagePath = await mergedHeatmapImageDownload.path();
+  assert.equal(
+    typeof mergedHeatmapImagePath,
+    'string',
+    'Merged heatmap PNG download should produce a local path.',
+  );
+  const mergedHeatmapImage = await readFile(mergedHeatmapImagePath);
+  assert.equal(
+    mergedHeatmapImage.length > 0,
+    true,
+    'Merged heatmap PNG download should write a non-empty file.',
+  );
+
   await page.locator('#analyticsClearButton').click();
   await page.waitForFunction(() => document.querySelector('#sampleCount')?.textContent === '0');
   assert.equal(

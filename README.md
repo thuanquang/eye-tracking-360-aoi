@@ -139,6 +139,14 @@ For the MVP demo, prefer `likelyAoiDwellSec` when webcam accuracy is noisy. Use 
 
 The recommended stakeholder output is `statReport.perAoiRows` for table display, `namedAoiMetrics` for raw machine-readable metrics, `summary.heatmaps` for heatmap rendering, and the AOI stats CSV for spreadsheet analysis. See `docs/aoi-stat-definitions.md` for which metrics should be primary, secondary, or exploratory.
 
+### Batch Heatmap Merge
+
+Participant heatmap export writes compact JSON heatmap data, not just a screenshot. In Admin mode, the batch heatmap control can import multiple participant heatmap JSON files or full recording JSON files.
+
+Compatible inputs from the same video and heatmap grid merge into one final group. Files from different videos stay in separate groups so the app does not create misleading overlays across unrelated footage.
+
+Use the merged JSON as the research-grade artifact. The PNG export is a convenience visualization for the selected group, variant, and heatmap type.
+
 ## Reviewing A Past Recording
 
 Use the same video that was used for recording. For the bundled test video this happens automatically.
