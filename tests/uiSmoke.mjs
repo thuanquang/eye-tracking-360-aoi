@@ -1212,6 +1212,19 @@ try {
     'Loaded recording JSON should draw the player heatmap overlay.',
   );
 
+  await page.locator('#analyticsClearButton').click();
+  await page.waitForFunction(() => document.querySelector('#sampleCount')?.textContent === '0');
+  assert.equal(
+    await page.locator('#appShell').evaluate((shell) => shell.classList.contains('is-analytics-mode')),
+    false,
+    'Clearing samples should leave analytics mode.',
+  );
+  assert.equal(
+    await page.locator('#aoiStatsPanel').isVisible(),
+    false,
+    'Clearing samples should hide the analytics stats panel.',
+  );
+
   const heatmapMergeVideo = {
     name: 'Batch Merge Smoke.mp4',
     src: 'assets/smoke/batch-merge-smoke.mp4',
@@ -1260,6 +1273,12 @@ try {
       },
     },
   }, null, 2));
+  await page.locator('#heatmapMergeFileInput').scrollIntoViewIfNeeded();
+  assert.equal(
+    await page.locator('#heatmapMergeFileInput').isVisible(),
+    true,
+    'Batch heatmap merge file input should be visible outside analytics mode.',
+  );
   await page.locator('#heatmapMergeFileInput').setInputFiles([
     firstHeatmapMergePath,
     secondHeatmapMergePath,
@@ -1313,18 +1332,6 @@ try {
     'Merged heatmap PNG download should write a non-empty file.',
   );
 
-  await page.locator('#analyticsClearButton').click();
-  await page.waitForFunction(() => document.querySelector('#sampleCount')?.textContent === '0');
-  assert.equal(
-    await page.locator('#appShell').evaluate((shell) => shell.classList.contains('is-analytics-mode')),
-    false,
-    'Clearing samples should leave analytics mode.',
-  );
-  assert.equal(
-    await page.locator('#aoiStatsPanel').isVisible(),
-    false,
-    'Clearing samples should hide the analytics stats panel.',
-  );
   const dynamicPolygonSidecarPath = join(tmpDir, 'dynamic-polygon-video.aoi.json');
   const dynamicTopLevelPoints = [
     { x: 0.18, y: 0.18 },
