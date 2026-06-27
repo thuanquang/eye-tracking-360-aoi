@@ -171,6 +171,7 @@ export function createAppController({
   let activeMergedHeatmapView = null;
   let heatmapMergeLoadId = 0;
   let mergedHeatmapPackageLoadId = 0;
+  let mergedHeatmapImportToken = 0;
 
   let recordingSampleScheduler = createSampleScheduler({ intervalMs: RECORDING_SAMPLE_INTERVAL_MS });
   const GAZE_SMOOTHING_ALPHA = GAZE_SMOOTHING.alpha;
@@ -2088,6 +2089,82 @@ export function createAppController({
       ?? null;
   }
 
+  const MERGED_HEATMAP_VARIANT_FALLBACKS = ['trusted', 'likely', 'possible'];
+  const MERGED_HEATMAP_TYPE_FALLBACKS = ['panorama', 'screen'];
+
+  function uniquePreferredMergedHeatmapValues(currentValue, fallbackValues) {
+    return [currentValue, ...fallbackValues].filter((value, index, values) => (
+      value && values.indexOf(value) === index
+    ));
+  }
+
+  function getAvailableMergedHeatmapPath(group = getSelectedMergedHeatmapGroup()) {
+    const heatmaps = group?.summary?.heatmaps;
+
+    if (!heatmaps) {
+      return null;
+    }
+
+    const currentVariant = mergedHeatmapVariantSelect.value;
+    const currentType = mergedHeatmapTypeSelect.value;
+    const currentHeatmap = heatmaps.variants?.[currentVariant]?.[currentType]
+      ?? heatmaps?.[currentType]
+      ?? null;
+
+    if (currentHeatmap) {
+      return {
+        variant: currentVariant,
+        type: currentType,
+        heatmap: currentHeatmap,
+      };
+    }
+
+    const variantPreference = uniquePreferredMergedHeatmapValues(
+      currentVariant,
+      MERGED_HEATMAP_VARIANT_FALLBACKS,
+    );
+    const typePreference = uniquePreferredMergedHeatmapValues(
+      currentType,
+      MERGED_HEATMAP_TYPE_FALLBACKS,
+    );
+
+    for (const variant of variantPreference) {
+      for (const type of typePreference) {
+        const heatmap = heatmaps.variants?.[variant]?.[type] ?? null;
+
+        if (heatmap) {
+          return { variant, type, heatmap };
+        }
+      }
+    }
+
+    for (const type of typePreference) {
+      const heatmap = heatmaps?.[type] ?? null;
+
+      if (heatmap) {
+        return {
+          variant: currentVariant || variantPreference[0] || MERGED_HEATMAP_VARIANT_FALLBACKS[0],
+          type,
+          heatmap,
+        };
+      }
+    }
+
+    return null;
+  }
+
+  function selectAvailableMergedHeatmapPath() {
+    const path = getAvailableMergedHeatmapPath();
+
+    if (!path) {
+      return null;
+    }
+
+    mergedHeatmapVariantSelect.value = path.variant;
+    mergedHeatmapTypeSelect.value = path.type;
+    return path.heatmap;
+  }
+
   function createMergedHeatmapGroupOption(group) {
     const option = document.createElement('option');
     const sourceCount = Number.isFinite(group.sourceCount) ? group.sourceCount : 0;
@@ -2133,7 +2210,7 @@ export function createAppController({
             fov: camera.fov,
           });
 
-          return projected.visible ? { x: projected.x, y: projected.y } : null;
+          return projected.visible ? projected : null;
         },
       });
 
@@ -2144,7 +2221,7 @@ export function createAppController({
   }
 
   function viewSelectedMergedHeatmap({ auto = false } = {}) {
-    const selectedHeatmap = getSelectedMergedHeatmap();
+    const selectedHeatmap = selectAvailableMergedHeatmapPath();
 
     if (!selectedHeatmap) {
       if (!auto) {
@@ -2184,7 +2261,7 @@ export function createAppController({
       mergedHeatmapGroupSelect.value = groups[0].groupKey;
     }
 
-    const selectedHeatmap = getSelectedMergedHeatmap();
+    const selectedHeatmap = selectAvailableMergedHeatmapPath();
     if (activeMergedHeatmapView && !selectedHeatmap) {
       activeMergedHeatmapView = null;
       appShell.classList.remove('is-merged-heatmap-view');
@@ -2215,6 +2292,7 @@ export function createAppController({
   async function loadHeatmapMergeFiles(event) {
     const files = Array.from(event.target.files || []);
     const loadId = ++heatmapMergeLoadId;
+    const importToken = ++mergedHeatmapImportToken;
 
     try {
       if (!files.length) {
@@ -2226,6 +2304,9 @@ export function createAppController({
       if (loadId !== heatmapMergeLoadId) {
         return;
       }
+      if (importToken !== mergedHeatmapImportToken) {
+        return;
+      }
 
       mergedHeatmapExport = buildMergedHeatmapExport(entries, {
         skipped,
@@ -2235,6 +2316,9 @@ export function createAppController({
       setNotice(`Đã gộp heatmap: ${mergedHeatmapExport.sourceFileCount} file, ${mergedHeatmapExport.groupCount} nhóm, bỏ qua ${mergedHeatmapExport.skipped.length}.`, true);
     } catch (error) {
       if (loadId !== heatmapMergeLoadId) {
+        return;
+      }
+      if (importToken !== mergedHeatmapImportToken) {
         return;
       }
 
@@ -2249,6 +2333,7 @@ export function createAppController({
   async function loadMergedHeatmapPackageFile(event) {
     const file = event.target.files?.[0];
     const loadId = ++mergedHeatmapPackageLoadId;
+    const importToken = ++mergedHeatmapImportToken;
 
     try {
       if (!file) {
@@ -2260,6 +2345,9 @@ export function createAppController({
       if (loadId !== mergedHeatmapPackageLoadId) {
         return;
       }
+      if (importToken !== mergedHeatmapImportToken) {
+        return;
+      }
 
       mergedHeatmapExport = payload;
       syncMergedHeatmapControls();
@@ -2267,6 +2355,9 @@ export function createAppController({
       viewSelectedMergedHeatmap({ auto: true });
     } catch (error) {
       if (loadId !== mergedHeatmapPackageLoadId) {
+        return;
+      }
+      if (importToken !== mergedHeatmapImportToken) {
         return;
       }
 

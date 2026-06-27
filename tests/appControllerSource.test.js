@@ -651,6 +651,11 @@ test('batch heatmap merge keeps merged export controller state', () => {
     /let\s+mergedHeatmapPackageLoadId\s*=\s*0\s*;/,
     'The app controller should track the current merged heatmap package load.',
   );
+  assert.match(
+    controllerSource,
+    /let\s+mergedHeatmapImportToken\s*=\s*0\s*;/,
+    'The app controller should use one freshness token for every merged heatmap import writer.',
+  );
 });
 
 test('batch heatmap file import reads all selected JSON files and resets the input', () => {
@@ -690,6 +695,30 @@ test('batch heatmap file import ignores stale async completions', () => {
     /catch\s*\(error\)\s*\{[\s\S]*?if\s*\(\s*loadId\s*!==\s*heatmapMergeLoadId\s*\)\s*\{[\s\S]*?return;[\s\S]*?\}[\s\S]*?mergedHeatmapExport\s*=\s*null[\s\S]*?syncMergedHeatmapControls\(\)[\s\S]*?setNotice/,
     'Batch heatmap import should ignore stale failures before clearing state or showing failure.',
   );
+});
+
+test('merged heatmap import loaders share one stale-write guard', () => {
+  const batchLoadFunction = controllerSource.match(
+    /async\s+function\s+loadHeatmapMergeFiles\(event\)[\s\S]*?\r?\n  \}\r?\n\r?\n  async\s+function\s+loadMergedHeatmapPackageFile/,
+  )?.[0] || '';
+  const packageLoadFunction = controllerSource.match(
+    /async\s+function\s+loadMergedHeatmapPackageFile\(event\)[\s\S]*?\r?\n  \}\r?\n\r?\n  function resize/,
+  )?.[0] || '';
+
+  assert.notEqual(batchLoadFunction, '', 'The app controller should define loadHeatmapMergeFiles.');
+  assert.notEqual(packageLoadFunction, '', 'The app controller should define loadMergedHeatmapPackageFile.');
+  [batchLoadFunction, packageLoadFunction].forEach((loadFunction) => {
+    assert.match(
+      loadFunction,
+      /const\s+importToken\s*=\s*\+\+mergedHeatmapImportToken\s*;/,
+      'Each merged heatmap loader should claim the shared import freshness token before async work.',
+    );
+    assert.match(
+      loadFunction,
+      /if\s*\(\s*importToken\s*!==\s*mergedHeatmapImportToken\s*\)\s*\{[\s\S]*?return;[\s\S]*?\}[\s\S]*?mergedHeatmapExport\s*=/,
+      'Each merged heatmap loader should check the shared token before writing mergedHeatmapExport.',
+    );
+  });
 });
 
 test('merged heatmap package file import validates and loads final packages', () => {
@@ -733,6 +762,60 @@ test('batch heatmap image export resolves the selected variant before top-level 
     getSelectedHeatmapFunction,
     /summary\.heatmaps\.variants\?\.\[variant\]\?\.\[type\][\s\S]*summary\.heatmaps\?\.\[type\][\s\S]*null/,
     'Merged heatmap selection should prefer variant heatmaps before falling back to top-level heatmaps.',
+  );
+});
+
+test('merged heatmap controls select an available heatmap path before viewing', () => {
+  const selectorHelpers = controllerSource.match(
+    /const\s+MERGED_HEATMAP_VARIANT_FALLBACKS[\s\S]*?\r?\n  function createMergedHeatmapGroupOption/,
+  )?.[0] || '';
+  const syncFunction = controllerSource.match(
+    /function\s+syncMergedHeatmapControls\(\)[\s\S]*?\r?\n  \}\r?\n\r?\n  async\s+function\s+loadHeatmapMergeFiles/,
+  )?.[0] || '';
+
+  assert.notEqual(selectorHelpers, '', 'The app controller should define merged heatmap selector fallback helpers.');
+  assert.match(
+    selectorHelpers,
+    /MERGED_HEATMAP_VARIANT_FALLBACKS\s*=\s*\[[\s\S]*'trusted'[\s\S]*'likely'[\s\S]*'possible'[\s\S]*\]/,
+    'Merged heatmap selection should deterministically prefer trusted, likely, then possible variants.',
+  );
+  assert.match(
+    selectorHelpers,
+    /MERGED_HEATMAP_TYPE_FALLBACKS\s*=\s*\[[\s\S]*'panorama'[\s\S]*'screen'[\s\S]*\]/,
+    'Merged heatmap selection should fall back to screen heatmaps when panorama is unavailable.',
+  );
+  assert.match(
+    selectorHelpers,
+    /heatmaps\.variants\?\.\[variant\]\?\.\[type\]/,
+    'Merged heatmap selection should inspect variant heatmaps by variant and type.',
+  );
+  assert.match(
+    selectorHelpers,
+    /heatmaps\?\.\[type\]/,
+    'Merged heatmap selection should also inspect top-level heatmaps by type.',
+  );
+  assert.match(
+    selectorHelpers,
+    /mergedHeatmapVariantSelect\.value\s*=\s*path\.variant[\s\S]*mergedHeatmapTypeSelect\.value\s*=\s*path\.type/,
+    'Merged heatmap selection should update the controls to the available heatmap path.',
+  );
+  assert.match(
+    syncFunction,
+    /selectAvailableMergedHeatmapPath\(\)/,
+    'Control sync should choose an available heatmap path before enabling view/export buttons.',
+  );
+});
+
+test('merged heatmap overlay projector preserves panorama visibility', () => {
+  const redrawFunction = controllerSource.match(
+    /function\s+redrawMergedHeatmapOverlay\([\s\S]*?\r?\n  \}\r?\n\r?\n  function viewSelectedMergedHeatmap/,
+  )?.[0] || '';
+
+  assert.notEqual(redrawFunction, '', 'The app controller should define redrawMergedHeatmapOverlay.');
+  assert.match(
+    redrawFunction,
+    /buildMergedHeatmapOverlayPoints\(\{[\s\S]*projectPanoramaPoint:[\s\S]*return\s+projected\.visible\s*\?\s*(?:projected|\{\s*visible:\s*true[\s\S]*x:\s*projected\.x[\s\S]*y:\s*projected\.y[\s\S]*\})\s*:\s*null/,
+    'Merged heatmap panorama projection should preserve the visible flag required by buildMergedHeatmapOverlayPoints.',
   );
 });
 
