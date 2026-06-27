@@ -582,3 +582,119 @@ test('recording import ignores empty AOI arrays from incomplete participant expo
     'A participant export with aois: [] should still load review samples instead of failing AOI registration.',
   );
 });
+
+test('batch heatmap merge imports the merge helper', () => {
+  assert.match(
+    controllerSource,
+    /import\s+\{[\s\S]*buildMergedHeatmapExport[\s\S]*\}\s+from\s+'\.\.\/recording\/heatmapMerge\.js'/,
+    'The app controller should import buildMergedHeatmapExport from the heatmap merge module.',
+  );
+});
+
+test('batch heatmap merge destructures DOM controls', () => {
+  const domDestructure = controllerSource.match(/const\s+\{[\s\S]*?\}\s*=\s*dom;/)?.[0] || '';
+
+  [
+    'heatmapMergeFileInput',
+    'heatmapMergeStatus',
+    'mergedHeatmapGroupSelect',
+    'mergedHeatmapVariantSelect',
+    'mergedHeatmapTypeSelect',
+    'exportMergedHeatmapJsonButton',
+    'exportMergedHeatmapImageButton',
+  ].forEach((nodeName) => {
+    assert.match(
+      domDestructure,
+      new RegExp(`\\b${nodeName}\\b`),
+      `The app controller should destructure ${nodeName} from queryAppDom().`,
+    );
+  });
+});
+
+test('batch heatmap merge keeps merged export controller state', () => {
+  assert.match(
+    controllerSource,
+    /let\s+mergedHeatmapExport\s*=\s*null\s*;/,
+    'The app controller should track the merged heatmap export package.',
+  );
+});
+
+test('batch heatmap file import reads all selected JSON files and resets the input', () => {
+  const loadFunction = controllerSource.match(
+    /async\s+function\s+loadHeatmapMergeFiles\(event\)[\s\S]*?\n  }\n\n  function resize/,
+  )?.[0] || '';
+
+  assert.notEqual(loadFunction, '', 'The app controller should define loadHeatmapMergeFiles.');
+  [
+    [/Promise\.all\(/, 'read all selected files concurrently'],
+    [/file\.text\(\)/, 'read file text'],
+    [/JSON\.parse/, 'parse JSON'],
+    [/buildMergedHeatmapExport/, 'build the merge package'],
+    [/syncMergedHeatmapControls\(\)/, 'sync controls after load or failure'],
+    [/event\.target\.value\s*=\s*''/, 'reset the file input'],
+  ].forEach(([pattern, message]) => {
+    assert.match(loadFunction, pattern, `Batch heatmap import should ${message}.`);
+  });
+});
+
+test('batch heatmap JSON export downloads the merged package', () => {
+  assert.match(
+    controllerSource,
+    /function\s+exportMergedHeatmapJson\(\)[\s\S]*downloadJson\(mergedHeatmapExport,\s*buildMergedHeatmapFileName\('json'\)\)/,
+    'Merged heatmap JSON export should download the current merged package with the shared filename helper.',
+  );
+});
+
+test('batch heatmap merge controls are disabled when no merged groups exist', () => {
+  assert.match(
+    controllerSource,
+    /function\s+syncMergedHeatmapControls\(\)[\s\S]*mergedHeatmapGroupSelect\.disabled[\s\S]*mergedHeatmapVariantSelect\.disabled[\s\S]*mergedHeatmapTypeSelect\.disabled[\s\S]*exportMergedHeatmapJsonButton\.disabled[\s\S]*exportMergedHeatmapImageButton\.disabled/,
+    'Merged heatmap controls should set disabled state for selectors and export buttons.',
+  );
+});
+
+test('batch heatmap merge status summarizes files groups and skips', () => {
+  assert.match(
+    controllerSource,
+    /heatmapMergeStatus\.textContent[\s\S]*sourceFileCount[\s\S]*groupCount[\s\S]*skipped\.length/,
+    'Merged heatmap status should summarize source files, merged groups, and skipped items.',
+  );
+  assert.match(
+    controllerSource,
+    /Chua tai heatmap JSON\./,
+    'Merged heatmap status should show an initial no-data message.',
+  );
+});
+
+test('batch heatmap merge event listeners are wired', () => {
+  assert.match(
+    controllerSource,
+    /heatmapMergeFileInput\.addEventListener\('change',\s*loadHeatmapMergeFiles\)/,
+    'The heatmap merge file input should load selected files.',
+  );
+  assert.match(
+    controllerSource,
+    /exportMergedHeatmapJsonButton\.addEventListener\('click',\s*exportMergedHeatmapJson\)/,
+    'The merged heatmap JSON export button should be wired.',
+  );
+  assert.match(
+    controllerSource,
+    /exportMergedHeatmapImageButton\.addEventListener\('click',\s*exportMergedHeatmapImage\)/,
+    'The merged heatmap image export button should be wired to the Chunk 5 placeholder.',
+  );
+  assert.match(
+    controllerSource,
+    /mergedHeatmapGroupSelect\.addEventListener\('change',\s*syncMergedHeatmapControls\)/,
+    'The merged heatmap group selector should resync controls.',
+  );
+  assert.match(
+    controllerSource,
+    /mergedHeatmapVariantSelect\.addEventListener\('change',\s*syncMergedHeatmapControls\)/,
+    'The merged heatmap variant selector should resync controls.',
+  );
+  assert.match(
+    controllerSource,
+    /mergedHeatmapTypeSelect\.addEventListener\('change',\s*syncMergedHeatmapControls\)/,
+    'The merged heatmap type selector should resync controls.',
+  );
+});

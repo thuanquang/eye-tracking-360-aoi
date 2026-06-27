@@ -26,6 +26,7 @@ import {
   buildProjectPackage as createProjectPackage,
   buildVideoPackageMetadata as createVideoPackageMetadata,
 } from '../recording/recordingExport.js?v=recording-export-2';
+import { buildMergedHeatmapExport } from '../recording/heatmapMerge.js';
 import {
   findReviewSampleIndex,
   getReviewTimeWindow,
@@ -157,6 +158,7 @@ export function createAppController({
   let shouldAutoStartSeeSoGazeAfterCalibrationReturn = false;
   let aoiOverlayVersion = 0;
   let participantRecordingStartedAtSec = null;
+  let mergedHeatmapExport = null;
 
   let recordingSampleScheduler = createSampleScheduler({ intervalMs: RECORDING_SAMPLE_INTERVAL_MS });
   const GAZE_SMOOTHING_ALPHA = GAZE_SMOOTHING.alpha;
@@ -243,6 +245,13 @@ export function createAppController({
     saveSelectedAoiButton,
     deleteSelectedAoiButton,
     recordingFileInput,
+    heatmapMergeFileInput,
+    heatmapMergeStatus,
+    mergedHeatmapGroupSelect,
+    mergedHeatmapVariantSelect,
+    mergedHeatmapTypeSelect,
+    exportMergedHeatmapJsonButton,
+    exportMergedHeatmapImageButton,
     recordButton,
     reviewButton,
     clearButton,
@@ -2035,6 +2044,80 @@ export function createAppController({
       setNotice(`Đã tải JSON bản ghi: ${file.name}. Nhấp Xem lại bản ghi để phát lại mẫu bộ theo dõi.`, true);
     } catch (error) {
       setNotice(`Không thể tải JSON bản ghi: ${error.message}`);
+    } finally {
+      event.target.value = '';
+    }
+  }
+
+  function getMergedHeatmapGroups() {
+    return Array.isArray(mergedHeatmapExport?.groups) ? mergedHeatmapExport.groups : [];
+  }
+
+  function getSelectedMergedHeatmapGroup() {
+    const groups = getMergedHeatmapGroups();
+
+    return groups.find((group) => group.groupKey === mergedHeatmapGroupSelect.value) ?? null;
+  }
+
+  function createMergedHeatmapGroupOption(group) {
+    const option = document.createElement('option');
+    const sourceCount = Number.isFinite(group.sourceCount) ? group.sourceCount : 0;
+    const videoName = group.video?.name || group.groupKey || 'heatmap';
+
+    option.value = group.groupKey;
+    option.textContent = `${videoName} (${sourceCount} file)`;
+    return option;
+  }
+
+  function syncMergedHeatmapControls() {
+    const groups = getMergedHeatmapGroups();
+    const previousGroupKey = mergedHeatmapGroupSelect.value;
+    const hasGroups = groups.length > 0;
+
+    mergedHeatmapGroupSelect.replaceChildren(...groups.map(createMergedHeatmapGroupOption));
+    if (groups.some((group) => group.groupKey === previousGroupKey)) {
+      mergedHeatmapGroupSelect.value = previousGroupKey;
+    }
+
+    const selectedGroup = getSelectedMergedHeatmapGroup();
+    mergedHeatmapGroupSelect.disabled = !hasGroups;
+    mergedHeatmapVariantSelect.disabled = !hasGroups;
+    mergedHeatmapTypeSelect.disabled = !hasGroups;
+    exportMergedHeatmapJsonButton.disabled = !hasGroups;
+    exportMergedHeatmapImageButton.disabled = !hasGroups;
+
+    if (!mergedHeatmapExport) {
+      heatmapMergeStatus.textContent = 'Chua tai heatmap JSON.';
+      return;
+    }
+
+    heatmapMergeStatus.textContent = `Da tai ${mergedHeatmapExport.sourceFileCount} file, ${mergedHeatmapExport.groupCount} nhom, bo qua ${mergedHeatmapExport.skipped.length}.`;
+
+    if (!selectedGroup && hasGroups) {
+      mergedHeatmapGroupSelect.value = groups[0].groupKey;
+    }
+  }
+
+  async function loadHeatmapMergeFiles(event) {
+    const files = Array.from(event.target.files || []);
+
+    try {
+      if (!files.length) {
+        return;
+      }
+
+      const entries = await Promise.all(files.map(async (file) => ({
+        fileName: file.name,
+        payload: JSON.parse(await file.text()),
+      })));
+
+      mergedHeatmapExport = buildMergedHeatmapExport(entries);
+      syncMergedHeatmapControls();
+      setNotice(`Da gop heatmap: ${mergedHeatmapExport.sourceFileCount} file, ${mergedHeatmapExport.groupCount} nhom.`, true);
+    } catch (error) {
+      mergedHeatmapExport = null;
+      syncMergedHeatmapControls();
+      setNotice(`Khong the gop heatmap JSON: ${error.message}`, true);
     } finally {
       event.target.value = '';
     }
@@ -4737,6 +4820,29 @@ export function createAppController({
     return `aoi-heatmap-${videoId}-${participantId}-${Date.now()}.json`;
   }
 
+  function buildMergedHeatmapFileName(extension = 'json') {
+    return `merged-heatmaps-${Date.now()}.${extension}`;
+  }
+
+  function exportMergedHeatmapJson() {
+    if (!mergedHeatmapExport) {
+      setNotice('Chua co heatmap tong de xuat JSON.', true);
+      return;
+    }
+
+    downloadJson(mergedHeatmapExport, buildMergedHeatmapFileName('json'));
+    setNotice('Da xuat JSON heatmap tong.', true);
+  }
+
+  function exportMergedHeatmapImage() {
+    if (!mergedHeatmapExport) {
+      setNotice('Chua co heatmap tong de xuat anh.', true);
+      return;
+    }
+
+    setNotice('Chua co xuat anh heatmap tong.', true);
+  }
+
   function buildVideoPackageMetadata() {
     syncSourceVideoMetadataFromControls();
 
@@ -5892,6 +5998,12 @@ export function createAppController({
       });
       controlPanel.addEventListener('scroll', syncAdminWorkflowStep, { passive: true });
       recordingFileInput.addEventListener('change', loadRecordingFile);
+      heatmapMergeFileInput.addEventListener('change', loadHeatmapMergeFiles);
+      exportMergedHeatmapJsonButton.addEventListener('click', exportMergedHeatmapJson);
+      exportMergedHeatmapImageButton.addEventListener('click', exportMergedHeatmapImage);
+      mergedHeatmapGroupSelect.addEventListener('change', syncMergedHeatmapControls);
+      mergedHeatmapVariantSelect.addEventListener('change', syncMergedHeatmapControls);
+      mergedHeatmapTypeSelect.addEventListener('change', syncMergedHeatmapControls);
       participantIdInput.addEventListener('input', handleParticipantMetadataChange);
       participantNameInput.addEventListener('input', handleParticipantMetadataChange);
       participantAgeInput.addEventListener('input', handleParticipantMetadataChange);
@@ -5935,6 +6047,7 @@ export function createAppController({
       }
       syncSelectedCalibrationProfileState();
       syncSelectedValidationPolicyState();
+      syncMergedHeatmapControls();
       resize();
       updateCamera();
       selectWebcamMode();
