@@ -5,9 +5,15 @@ import { join } from 'node:path';
 
 import { chromium } from 'playwright';
 
+import { STUDY_VIDEOS } from '../src/app/studyVideos.js';
+
 const TARGET_URL = process.env.AOI_PROTOTYPE_URL || 'http://127.0.0.1:5179?mode=admin';
 
 const tmpDir = await mkdtemp(join(tmpdir(), 'batch-heatmap-smoke-'));
+const defaultPanoramaStudyVideo = STUDY_VIDEOS.find((video) => video.projection === 'equirectangular');
+if (!defaultPanoramaStudyVideo) {
+  throw new Error('Batch heatmap smoke requires one panorama study video.');
+}
 const heatmapMergeVideo = {
   name: 'Batch Merge Smoke.mp4',
   src: 'assets/smoke/batch-merge-smoke.mp4',
@@ -28,6 +34,19 @@ function createMergeScreenHeatmap({ weightSec, sampleCount, column }) {
   };
 }
 
+function createMergePanoramaHeatmap({ weightSec, sampleCount }) {
+  return {
+    type: 'panorama',
+    columns: 2,
+    rows: 2,
+    yawRange: [-40, 40],
+    pitchRange: [-20, 20],
+    trustedOnly: true,
+    totalWeightSec: weightSec,
+    bins: [{ column: 1, row: 0, weightSec, sampleCount }],
+  };
+}
+
 async function writeHeatmapExport(fileName, { participantId, weightSec, sampleCount, column }) {
   const filePath = join(tmpDir, fileName);
 
@@ -42,9 +61,50 @@ async function writeHeatmapExport(fileName, { participantId, weightSec, sampleCo
           trusted: {
             screen: createMergeScreenHeatmap({ weightSec, sampleCount, column }),
           },
+          likely: {
+            screen: createMergeScreenHeatmap({ weightSec: weightSec * 2, sampleCount, column }),
+          },
         },
       },
     },
+  }, null, 2));
+
+  return filePath;
+}
+
+async function writeMergedPanoramaPackage(fileName) {
+  const filePath = join(tmpDir, fileName);
+  const heatmap = createMergePanoramaHeatmap({ weightSec: 0.8, sampleCount: 6 });
+
+  await writeFile(filePath, JSON.stringify({
+    kind: 'merged-heatmaps',
+    version: 1,
+    exportedAt: '2026-06-27T10:05:00.000Z',
+    sourceFileCount: 1,
+    groupCount: 1,
+    skipped: [],
+    groups: [{
+      groupKey: defaultPanoramaStudyVideo.id,
+      video: {
+        id: defaultPanoramaStudyVideo.id,
+        name: defaultPanoramaStudyVideo.name,
+        src: defaultPanoramaStudyVideo.path,
+        projection: defaultPanoramaStudyVideo.projection,
+        stereoLayout: defaultPanoramaStudyVideo.stereoLayout,
+      },
+      sourceCount: 1,
+      sources: [{ fileName: 'panorama-source.json', participantId: 'merge-smoke-p3' }],
+      summary: {
+        heatmaps: {
+          panorama: heatmap,
+          variants: {
+            trusted: {
+              panorama: heatmap,
+            },
+          },
+        },
+      },
+    }],
   }, null, 2));
 
   return filePath;
@@ -64,6 +124,7 @@ const secondHeatmapMergePath = await writeHeatmapExport('batch-heatmap-p2.json',
   sampleCount: 5,
   column: 1,
 });
+const panoramaMergedPackagePath = await writeMergedPanoramaPackage('batch-heatmap-panorama-package.json');
 
 const browser = await chromium.launch();
 
@@ -94,11 +155,11 @@ try {
   ]);
   await page.waitForFunction(() => {
     const status = document.querySelector('#heatmapMergeStatus')?.textContent || '';
-    return /3\s+file/i.test(status) && /1\s+nhom/i.test(status) && /bo qua\s+1/i.test(status);
+    return /3\s+file/i.test(status) && /1\s+nhóm/i.test(status) && /bỏ qua\s+1/i.test(status);
   });
   assert.match(
     await page.locator('#heatmapMergeStatus').innerText(),
-    /3\s+file[\s\S]*1\s+nhom[\s\S]*bo qua\s+1/i,
+    /3\s+file[\s\S]*1\s+nhóm[\s\S]*bỏ qua\s+1/i,
     'Batch heatmap merge status should report valid groups and skipped malformed files.',
   );
   assert.equal(
@@ -115,7 +176,13 @@ try {
   const mergedHeatmapJsonDownloadPromise = page.waitForEvent('download');
   await page.locator('#exportMergedHeatmapJsonButton').click();
   const mergedHeatmapJsonDownload = await mergedHeatmapJsonDownloadPromise;
-  const mergedHeatmapJson = JSON.parse(await readFile(await mergedHeatmapJsonDownload.path(), 'utf8'));
+  const mergedHeatmapJsonPath = await mergedHeatmapJsonDownload.path();
+  assert.equal(
+    typeof mergedHeatmapJsonPath,
+    'string',
+    'Merged heatmap JSON download should produce a local path.',
+  );
+  const mergedHeatmapJson = JSON.parse(await readFile(mergedHeatmapJsonPath, 'utf8'));
 
   assert.equal(mergedHeatmapJson.kind, 'merged-heatmaps');
   assert.equal(mergedHeatmapJson.sourceFileCount, 3);
@@ -129,6 +196,56 @@ try {
     0.75,
     'Merged heatmap JSON should sum compatible screen heatmap weight.',
   );
+
+  await page.locator('#mergedHeatmapPackageFileInput').setInputFiles(mergedHeatmapJsonPath);
+  await page.waitForFunction(() => (
+    document.querySelector('.app-shell')?.classList.contains('is-merged-heatmap-view') &&
+    document.querySelector('#viewer')?.classList.contains('is-flat-video') &&
+    document.querySelector('#heatmapRuler')?.hidden === false &&
+    document.querySelector('#heatmapRulerMax')?.textContent === '500ms'
+  ));
+  assert.equal(
+    await page.locator('#clearMergedHeatmapViewButton').isEnabled(),
+    true,
+    'Loading final merged heatmap JSON should enable clearing the active merged view.',
+  );
+  assert.equal(
+    await page.locator('#mergedHeatmapTypeSelect').inputValue(),
+    'screen',
+    'Loading final merged heatmap JSON should select the renderable screen heatmap type.',
+  );
+  const overlayStats = await page.locator('#gazeHeatmapOverlay').evaluate((canvas) => {
+    const context = canvas.getContext('2d');
+    if (!context || canvas.width <= 0 || canvas.height <= 0) {
+      return { hasDrawnPixels: false };
+    }
+
+    const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
+    for (let index = 3; index < pixels.length; index += 4) {
+      if (pixels[index] > 0) {
+        return { hasDrawnPixels: true };
+      }
+    }
+
+    return { hasDrawnPixels: false };
+  });
+  assert.equal(
+    overlayStats.hasDrawnPixels,
+    true,
+    'Loading final merged heatmap JSON should draw non-empty heatmap pixels in the player overlay.',
+  );
+
+  await page.locator('#mergedHeatmapVariantSelect').selectOption('likely');
+  await page.waitForFunction(() => document.querySelector('#heatmapRulerMax')?.textContent === '1.0s');
+
+  await page.locator('#mergedHeatmapPackageFileInput').setInputFiles(panoramaMergedPackagePath);
+  await page.waitForFunction(() => (
+    document.querySelector('.app-shell')?.classList.contains('is-merged-heatmap-view') &&
+    !document.querySelector('#viewer')?.classList.contains('is-flat-video') &&
+    document.querySelector('#mergedHeatmapTypeSelect')?.value === 'panorama' &&
+    document.querySelector('#heatmapRuler')?.hidden === false &&
+    document.querySelector('#heatmapRulerMax')?.textContent === '800ms'
+  ));
 
   await page.locator('#mergedHeatmapTypeSelect').selectOption('screen');
   const mergedHeatmapImageDownloadPromise = page.waitForEvent('download');

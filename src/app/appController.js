@@ -809,6 +809,12 @@ export function createAppController({
     syncSourceVideoMetadataFromControls();
   }
 
+  function syncViewerProjectionState() {
+    viewer.classList.toggle('is-flat-video', getCurrentProjection() === 'flat');
+    syncProjectionMesh();
+    updateCamera();
+  }
+
   function setStudyVideo(videoId, { clearAois = true } = {}) {
     const video = findStudyVideoById(videoId) || getDefaultStudyVideo();
     selectedStudyVideo = video;
@@ -828,7 +834,7 @@ export function createAppController({
     applyVideoMetadataControls(sourceVideoInfo);
     projectionSelect.disabled = true;
     stereoLayoutSelect.disabled = true;
-    viewer.classList.toggle('is-flat-video', getCurrentProjection() === 'flat');
+    syncViewerProjectionState();
     playVideoButton.textContent = 'Phát';
 
     if (clearAois) {
@@ -2196,17 +2202,40 @@ export function createAppController({
     const matchingStudyVideo = findStudyVideoById(group?.video?.id);
 
     if (matchingStudyVideo) {
-      if (selectedStudyVideo.id !== matchingStudyVideo.id) {
+      const expectedVideoInfo = videoInfoFromStudyVideo(matchingStudyVideo);
+      const shouldLoadStudyVideo = (
+        selectedStudyVideo.id !== matchingStudyVideo.id ||
+        sourceVideoInfo.kind !== expectedVideoInfo.kind ||
+        sourceVideoInfo.id !== expectedVideoInfo.id ||
+        sourceVideoInfo.path !== expectedVideoInfo.path ||
+        getCurrentProjection() !== normalizeVideoProjection(expectedVideoInfo.projection) ||
+        getCurrentStereoLayout() !== normalizeStereoLayout(expectedVideoInfo.stereoLayout)
+      );
+
+      if (shouldLoadStudyVideo) {
         setStudyVideo(group.video.id, { clearAois: false });
+      } else {
+        syncViewerProjectionState();
       }
       return true;
     }
 
-    if (group?.video?.projection) {
+    if (group?.video?.projection || group?.video?.stereoLayout) {
       applyVideoMetadataControls(group.video);
+      syncViewerProjectionState();
     }
 
     return false;
+  }
+
+  function hasMergedHeatmapVideoMetadata(group) {
+    return Boolean(
+      group?.video?.id ||
+      group?.video?.name ||
+      group?.video?.src ||
+      group?.video?.projection ||
+      group?.video?.stereoLayout
+    );
   }
 
   function getMergedHeatmapOverlaySignature() {
@@ -2298,33 +2327,57 @@ export function createAppController({
       if (!auto) {
         setNotice('Chọn heatmap tổng hợp lệ để xem.', true);
       }
-      activeMergedHeatmapView = null;
-      appShell.classList.remove('is-merged-heatmap-view');
-      clearGazeHeatmapOverlay();
+      clearActiveMergedHeatmapView();
       syncMergedHeatmapControls();
       return;
     }
 
     const hasMatchingStudyVideo = syncMergedHeatmapVideoContext(viewState.group);
+    const shouldWarnMissingVideo = !hasMatchingStudyVideo && hasMergedHeatmapVideoMetadata(viewState.group);
     exitAnalyticsMode({ clearOverlay: false });
     activeMergedHeatmapView = viewState;
     appShell.classList.add('is-merged-heatmap-view');
     redrawMergedHeatmapOverlay({ force: true });
-    syncMergedHeatmapControls();
+    syncMergedHeatmapControls({ refreshActiveView: false });
     setNotice(
-      `Đã hiển thị heatmap tổng.${hasMatchingStudyVideo ? '' : ' Hãy tải đúng video nền nếu heatmap tổng đến từ video cục bộ.'}`,
+      `Đã hiển thị heatmap tổng.${shouldWarnMissingVideo ? ' Hãy tải đúng video nền nếu heatmap tổng đến từ video cục bộ.' : ''}`,
       true,
     );
   }
 
   function clearMergedHeatmapView() {
-    activeMergedHeatmapView = null;
-    appShell.classList.remove('is-merged-heatmap-view');
-    clearGazeHeatmapOverlay();
+    clearActiveMergedHeatmapView();
     syncMergedHeatmapControls();
   }
 
-  function syncMergedHeatmapControls() {
+  function clearActiveMergedHeatmapView() {
+    activeMergedHeatmapView = null;
+    appShell.classList.remove('is-merged-heatmap-view');
+    clearGazeHeatmapOverlay();
+  }
+
+  function refreshActiveMergedHeatmapView(selectedHeatmap) {
+    if (!activeMergedHeatmapView) {
+      return;
+    }
+
+    if (!selectedHeatmap) {
+      clearActiveMergedHeatmapView();
+      return;
+    }
+
+    activeMergedHeatmapView = createMergedHeatmapViewState();
+    if (!activeMergedHeatmapView) {
+      clearActiveMergedHeatmapView();
+      return;
+    }
+
+    syncMergedHeatmapVideoContext(activeMergedHeatmapView.group);
+    appShell.classList.add('is-merged-heatmap-view');
+    redrawMergedHeatmapOverlay({ force: true });
+  }
+
+  function syncMergedHeatmapControls({ refreshActiveView = true } = {}) {
     const groups = getMergedHeatmapGroups();
     const previousGroupKey = mergedHeatmapGroupSelect.value;
     const hasGroups = groups.length > 0;
@@ -2340,10 +2393,8 @@ export function createAppController({
     }
 
     const selectedHeatmap = selectAvailableMergedHeatmapPath();
-    if (!mergedHeatmapExport && activeMergedHeatmapView) {
-      activeMergedHeatmapView = null;
-      appShell.classList.remove('is-merged-heatmap-view');
-      clearGazeHeatmapOverlay();
+    if (refreshActiveView) {
+      refreshActiveMergedHeatmapView(selectedHeatmap);
     }
 
     mergedHeatmapGroupSelect.disabled = !hasGroups;
@@ -2423,7 +2474,7 @@ export function createAppController({
       }
 
       mergedHeatmapExport = payload;
-      syncMergedHeatmapControls();
+      syncMergedHeatmapControls({ refreshActiveView: false });
       setNotice(`Đã tải JSON heatmap tổng: ${payload.groupCount} nhóm.`, true);
       viewSelectedMergedHeatmap({ auto: true });
     } catch (error) {

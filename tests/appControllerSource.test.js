@@ -775,7 +775,7 @@ test('merged heatmap controls select an available heatmap path before viewing', 
     /const\s+MERGED_HEATMAP_VARIANT_FALLBACKS[\s\S]*?\r?\n  function createMergedHeatmapGroupOption/,
   )?.[0] || '';
   const syncFunction = controllerSource.match(
-    /function\s+syncMergedHeatmapControls\(\)[\s\S]*?\r?\n  \}\r?\n\r?\n  async\s+function\s+loadHeatmapMergeFiles/,
+    /function\s+syncMergedHeatmapControls\(\s*(?:\{[\s\S]*?\}\s*=\s*\{\}\s*)?\)[\s\S]*?\r?\n  \}\r?\n\r?\n  async\s+function\s+loadHeatmapMergeFiles/,
   )?.[0] || '';
 
   assert.notEqual(selectorHelpers, '', 'The app controller should define merged heatmap selector fallback helpers.');
@@ -811,6 +811,38 @@ test('merged heatmap controls select an available heatmap path before viewing', 
   );
 });
 
+test('active merged heatmap view refreshes when controls change', () => {
+  const syncFunction = controllerSource.match(
+    /function\s+syncMergedHeatmapControls\(\s*(?:\{[\s\S]*?\}\s*=\s*\{\}\s*)?\)[\s\S]*?\r?\n  \}\r?\n\r?\n  async\s+function\s+loadHeatmapMergeFiles/,
+  )?.[0] || '';
+  const refreshFunction = controllerSource.match(
+    /function\s+refreshActiveMergedHeatmapView\(selectedHeatmap\)\s*\{[\s\S]*?\r?\n  \}\r?\n\r?\n  function\s+syncMergedHeatmapControls/,
+  )?.[0] || '';
+
+  assert.notEqual(syncFunction, '', 'The app controller should define merged heatmap control sync.');
+  assert.notEqual(refreshFunction, '', 'The app controller should define an active merged heatmap refresh helper.');
+  assert.match(
+    syncFunction,
+    /refreshActiveMergedHeatmapView\(selectedHeatmap\)/,
+    'Control sync should refresh an active merged view after selecting the available heatmap path.',
+  );
+  assert.match(
+    refreshFunction,
+    /activeMergedHeatmapView\s*=\s*createMergedHeatmapViewState\(\)/,
+    'Refreshing an active merged view should rebuild view state from the current controls.',
+  );
+  assert.match(
+    refreshFunction,
+    /syncMergedHeatmapVideoContext\(activeMergedHeatmapView\.group\)/,
+    'Refreshing an active merged view should keep video metadata in sync with the selected group.',
+  );
+  assert.match(
+    refreshFunction,
+    /redrawMergedHeatmapOverlay\(\{\s*force:\s*true\s*\}\)/,
+    'Refreshing an active merged view should force the overlay to repaint.',
+  );
+});
+
 test('merged heatmap viewer draws static heatmap overlay without analytics samples', () => {
   assert.match(
     controllerSource,
@@ -831,6 +863,34 @@ test('merged heatmap viewer auto-selects matching study video ids', () => {
   assert.match(
     controllerSource,
     /function\s+syncMergedHeatmapVideoContext\(group\)[\s\S]*findStudyVideoById\(group\?\.video\?\.id\)[\s\S]*setStudyVideo\(group\.video\.id,\s*\{\s*clearAois:\s*false\s*\}\)/,
+  );
+  assert.match(
+    controllerSource,
+    /const\s+expectedVideoInfo\s*=\s*videoInfoFromStudyVideo\(matchingStudyVideo\)[\s\S]*sourceVideoInfo\.id\s*!==\s*expectedVideoInfo\.id[\s\S]*getCurrentProjection\(\)\s*!==\s*normalizeVideoProjection\(expectedVideoInfo\.projection\)[\s\S]*getCurrentStereoLayout\(\)\s*!==\s*normalizeStereoLayout\(expectedVideoInfo\.stereoLayout\)/,
+    'Matching study-video packages should reload when the current viewer projection/source context is stale.',
+  );
+});
+
+test('merged heatmap metadata-only video context refreshes projection state', () => {
+  assert.match(
+    controllerSource,
+    /function\s+syncViewerProjectionState\(\)[\s\S]*viewer\.classList\.toggle\('is-flat-video',\s*getCurrentProjection\(\)\s*===\s*'flat'\)[\s\S]*syncProjectionMesh\(\)[\s\S]*updateCamera\(\)/,
+    'The controller should centralize projection class, mesh, and camera refreshes.',
+  );
+  assert.match(
+    controllerSource,
+    /function\s+syncMergedHeatmapVideoContext\(group\)[\s\S]*applyVideoMetadataControls\(group\.video\)[\s\S]*syncViewerProjectionState\(\)/,
+    'Merged heatmap video metadata should prepare the viewer projection before drawing.',
+  );
+  assert.match(
+    controllerSource,
+    /function\s+hasMergedHeatmapVideoMetadata\(group\)[\s\S]*group\?\.video\?\.projection[\s\S]*group\?\.video\?\.stereoLayout/,
+    'The missing-video warning should be tied to actual package video metadata.',
+  );
+  assert.match(
+    controllerSource,
+    /const\s+shouldWarnMissingVideo\s*=\s*!\s*hasMatchingStudyVideo\s*&&\s*hasMergedHeatmapVideoMetadata\(viewState\.group\)/,
+    'Merged heatmap viewing should warn only when package video metadata could not be auto-matched.',
   );
 });
 
@@ -969,7 +1029,7 @@ test('batch heatmap image export clicks download only after a valid PNG data URL
 test('batch heatmap merge controls are disabled when no merged groups exist', () => {
   assert.match(
     controllerSource,
-    /function\s+syncMergedHeatmapControls\(\)[\s\S]*mergedHeatmapGroupSelect\.disabled[\s\S]*mergedHeatmapVariantSelect\.disabled[\s\S]*mergedHeatmapTypeSelect\.disabled[\s\S]*exportMergedHeatmapJsonButton\.disabled[\s\S]*exportMergedHeatmapImageButton\.disabled/,
+    /function\s+syncMergedHeatmapControls\(\s*(?:\{[\s\S]*?\}\s*=\s*\{\}\s*)?\)[\s\S]*mergedHeatmapGroupSelect\.disabled[\s\S]*mergedHeatmapVariantSelect\.disabled[\s\S]*mergedHeatmapTypeSelect\.disabled[\s\S]*exportMergedHeatmapJsonButton\.disabled[\s\S]*exportMergedHeatmapImageButton\.disabled/,
     'Merged heatmap controls should set disabled state for selectors and export buttons.',
   );
 });

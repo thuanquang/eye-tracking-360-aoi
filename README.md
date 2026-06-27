@@ -145,9 +145,16 @@ Participant heatmap export writes compact JSON heatmap data, not just a screensh
 
 Compatible inputs from the same video and heatmap grid merge into one final group. Files from different videos stay in separate groups so the app does not create misleading overlays across unrelated footage.
 
-Files without stable video metadata or with malformed JSON are skipped and reported in the merged export diagnostics; valid files in the same batch still merge. With the dev server running, `npm run test:batch-heatmap-merge` runs the focused browser smoke for this workflow.
+Files without stable video metadata or with malformed JSON are skipped and reported in the merged export diagnostics; valid files in the same batch still merge.
 
-Use the merged JSON as the research-grade artifact. The PNG export is a convenience visualization for the selected group, variant, and heatmap type.
+There are two separate JSON paths:
+
+1. Use `Tải JSON bản ghi` for one participant/session recording. This drives replay, AOI stats, and the normal analytics heatmap from recorded samples.
+2. Use `Tải JSON heatmap tổng để xem lại` for a final `kind: "merged-heatmaps"` package. This does not create fake replay samples; it draws the selected aggregate heatmap as a static overlay in the player.
+
+Use `Tải file nguồn để gộp` when building a new combined heatmap from many source JSON files, then `Xuất JSON heatmap tổng` to save the final research artifact. Load that saved artifact back with `Tải JSON heatmap tổng để xem lại`, choose `Nhóm`, `Biến thể`, and `Loại`, then click `Xem heatmap tổng` if it is not already visible. `Xuất ảnh heatmap` is a convenience PNG for the currently selected group, variant, and heatmap type.
+
+With the dev server running, `npm run test:batch-heatmap-merge` runs the focused browser smoke for this workflow.
 
 ## Reviewing A Past Recording
 
