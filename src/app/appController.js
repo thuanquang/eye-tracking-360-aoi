@@ -5137,7 +5137,7 @@ export function createAppController({
   }
 
   function downloadJson(payload, fileName) {
-    downloadText(JSON.stringify(payload, null, 2), fileName, 'application/json');
+    downloadText(JSON.stringify(payload), fileName, 'application/json');
   }
 
   function normalizeDownloadSegment(value, fallback) {

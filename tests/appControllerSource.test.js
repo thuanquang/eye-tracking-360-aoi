@@ -330,6 +330,22 @@ test('participant export downloads local CSV instead of uploading study data', (
   );
 });
 
+test('JSON downloads use compact serialization to keep recording exports small', () => {
+  const match = /function\s+downloadJson\(payload,\s*fileName\)\s*\{([\s\S]*?)\n  \}/.exec(controllerSource);
+
+  assert.ok(match, 'The app controller should define the shared JSON download helper.');
+  assert.match(
+    match[1],
+    /downloadText\(JSON\.stringify\(payload\),\s*fileName,\s*'application\/json'\)/,
+    'JSON downloads should avoid pretty-print whitespace because recording payloads can be very large.',
+  );
+  assert.doesNotMatch(
+    match[1],
+    /JSON\.stringify\(payload,\s*null,\s*2\)/,
+    'JSON downloads should not pretty-print full recording payloads.',
+  );
+});
+
 test('participant recording focus mode hides chrome while recording', () => {
   assert.match(
     controllerSource,
