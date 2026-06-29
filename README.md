@@ -131,6 +131,8 @@ Exported JSON contains:
 - `accuracyValidated`: whether webcam data was trusted for recording.
 - `gazeUncertainty`: per-sample webcam uncertainty; after validation it grows near player regions that had larger local error or capture dispersion.
 
+Full recording exports can be saved as plain `.json` or optional `.json.gz`. The `.json.gz` variant is the same JSON structure compressed with gzip for storage/transfer; load it through the same recording import control. Heatmap-only exports remain plain JSON because they are already the compact merge artifact.
+
 `namedAoiMetrics.perAoi` is keyed by AOI id and keeps the human AOI label from the AOI JSON. Each AOI includes hit counts, likely/possible/ambiguous counts, dwell seconds, first hit time, fixation count, average fixation duration, time to first fixation, and percentage of viewing time. When exported samples include finite `screen.x/y` coordinates, fixation metrics use explicit dispersion-based detection and then map each fixation window back to its primary AOI. Legacy or no-screen recordings fall back to the earlier consecutive-AOI approximation.
 
 `namedAoiMetrics.session` includes total samples, total duration, total AOI-mapped fixations, average fixation duration, unique AOI ids fixated, average number of AOIs fixated, AOI coverage percent, overall processing efficiency fields, and exploratory `averageSaccadeDurationMs` values summarized from `namedAoiMetrics.transitions`. `overallProcessingEfficiency` is a transparent MVP composite, not a validated cognitive score. Report its formula and components with any result table. Transitions are webcam-derived fixation-gap estimates for scanpath debugging and pilot comparison; they are not validated saccade physiology. Dispersion-based fixation metrics are still bounded by webcam accuracy and should be validated in a pilot before being treated as final research measures; fallback fixation metrics are approximations for older exports.
@@ -162,7 +164,7 @@ Use the same video that was used for recording. For the bundled test video this 
 
 1. Open `http://localhost:5179`.
 2. Load the matching video first if the recording used a local video.
-3. Use `Load recording JSON` and choose an exported `aoi-samples-*.json` file.
+3. Use `Load recording JSON` and choose an exported `aoi-samples-*.json` or `.json.gz` file.
 4. Click `Review Recording`.
 5. Press `Play` to replay over time, or scrub the video timeline to inspect individual moments.
 

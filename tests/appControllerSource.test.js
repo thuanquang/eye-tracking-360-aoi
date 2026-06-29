@@ -346,6 +346,57 @@ test('JSON downloads use compact serialization to keep recording exports small',
   );
 });
 
+test('recording JSON imports accept gzip-compressed recordings', () => {
+  assert.match(
+    controllerSource,
+    /import\s+\{[\s\S]*gunzipBlobToText[\s\S]*isGzipFile[\s\S]*\}\s+from\s+'\.\.\/recording\/jsonCompression\.js'/,
+    'The app controller should import gzip helpers for compressed recording imports.',
+  );
+  assert.match(
+    controllerSource,
+    /async function\s+readJsonFileText\(file\)[\s\S]*isGzipFile\(file\)[\s\S]*gunzipBlobToText\(file\)[\s\S]*file\.text\(\)/,
+    'Recording import should decompress gzip files before JSON.parse and keep plain JSON unchanged.',
+  );
+  assert.match(
+    controllerSource,
+    /registerRecording\(JSON\.parse\(await readJsonFileText\(file\)\),\s*file\.name\)/,
+    'Load recording should parse the shared plain-or-gzip file text helper.',
+  );
+});
+
+test('full recording exports offer optional gzip downloads', () => {
+  assert.match(
+    controllerSource,
+    /async function\s+downloadCompressedJson\(payload,\s*fileName\)[\s\S]*gzipTextToBlob\(JSON\.stringify\(payload\)\)[\s\S]*downloadBlob\([^)]*'application\/gzip'[^)]*\)/,
+    'Compressed recording export should gzip the same compact JSON payload before download.',
+  );
+  assert.match(
+    controllerSource,
+    /async function\s+exportParticipantJsonGzip\(\)[\s\S]*buildCurrentExportPayload\(\)[\s\S]*downloadCompressedJson\(payload,\s*buildGzipFileName\(buildParticipantJsonFileName\(\)\)\)/,
+    'Participant mode should offer a compressed full recording JSON export.',
+  );
+  assert.match(
+    controllerSource,
+    /async function\s+exportCompressedSamples\(\)[\s\S]*exportSamples\(\{\s*compressed:\s*true\s*\}\)/,
+    'Admin and analytics recording export controls should share a compressed sample export path.',
+  );
+  assert.match(
+    controllerSource,
+    /exportCompressedButton\.addEventListener\('click',\s*exportCompressedSamples\)/,
+    'Admin recording controls should wire the compressed export button.',
+  );
+  assert.match(
+    controllerSource,
+    /analyticsExportCompressedButton\.addEventListener\('click',\s*exportCompressedSamples\)/,
+    'Analytics results should wire the compressed export button.',
+  );
+  assert.match(
+    controllerSource,
+    /participantExportJsonGzipButton\.addEventListener\('click',\s*exportParticipantJsonGzip\)/,
+    'Participant results should wire the compressed JSON export button.',
+  );
+});
+
 test('participant recording focus mode hides chrome while recording', () => {
   assert.match(
     controllerSource,

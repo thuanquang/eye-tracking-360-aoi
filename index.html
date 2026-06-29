@@ -182,6 +182,7 @@
             <div class="participant-result-actions">
               <button id="participantExportCsvButton" type="button">Xuất CSV</button>
               <button id="participantExportJsonButton" type="button">Xuất JSON</button>
+              <button id="participantExportJsonGzipButton" type="button">Xuất JSON.gz</button>
               <button id="participantExportHeatmapButton" type="button">Xuất heatmap</button>
             </div>
           </section>
@@ -425,6 +426,7 @@
             <button id="reviewButton" type="button" disabled>Xem lại bản ghi</button>
             <button id="clearButton" type="button">Xóa</button>
             <button id="exportButton" type="button">Xuất JSON</button>
+            <button id="exportCompressedButton" type="button">Xuất JSON.gz</button>
             <button id="exportStatsCsvButton" type="button">Xuất CSV thống kê</button>
           </div>
           <section id="aoiStatsPanel" class="aoi-stats-panel" aria-labelledby="aoiStatsHeading" hidden>
@@ -441,6 +443,7 @@
             <div class="aoi-stats-actions" aria-label="Hành động kết quả phân tích">
               <button id="analyticsClearButton" type="button">Xóa</button>
               <button id="analyticsExportButton" type="button">Xuất JSON</button>
+              <button id="analyticsExportCompressedButton" type="button">Xuất JSON.gz</button>
               <button id="analyticsExportStatsCsvButton" type="button">Xuất CSV thống kê</button>
             </div>
             <div id="aoiStatsSummary" class="aoi-stats-summary" aria-label="Tóm tắt phiên AOI"></div>
@@ -468,7 +471,7 @@
           </section>
           <label class="file-loader">
             <span>Tải JSON bản ghi</span>
-            <input id="recordingFileInput" type="file" accept="application/json,.json" />
+            <input id="recordingFileInput" type="file" accept="application/json,.json,application/gzip,.json.gz" />
           </label>
           <section class="batch-heatmap-panel" aria-labelledby="batchHeatmapHeading">
             <div class="batch-heatmap-heading">

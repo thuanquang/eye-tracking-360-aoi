@@ -74,6 +74,14 @@ test('admin view removes Google Colab auto-AOI controls', () => {
   assert.equal(html.includes('Export Colab Job'), false);
 });
 
+test('recording import accepts plain and gzip JSON files', () => {
+  assert.match(
+    html,
+    /id="recordingFileInput"[^>]*accept="[^"]*application\/json[^"]*\.json[^"]*application\/gzip[^"]*\.json\.gz[^"]*"/,
+    'Recording import should advertise support for .json and .json.gz files.',
+  );
+});
+
 test('admin setup exposes only the study video choice', () => {
   const setupSection = /<section id="adminSetupPanel"[\s\S]*?<\/section>/.exec(html)?.[0] || '';
 

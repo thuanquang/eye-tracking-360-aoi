@@ -73,12 +73,14 @@ const APP_SELECTORS = [
   '#reviewButton',
   '#clearButton',
   '#exportButton',
+  '#exportCompressedButton',
   '#exportStatsCsvButton',
   '#aoiStatsPanel',
   '#exitAnalyticsButton',
   '#refreshStatsButton',
   '#analyticsClearButton',
   '#analyticsExportButton',
+  '#analyticsExportCompressedButton',
   '#analyticsExportStatsCsvButton',
   '#aoiStatsSummary',
   '#aoiStatsCards',
@@ -118,6 +120,7 @@ const APP_SELECTORS = [
   '#participantResultSummary',
   '#participantExportCsvButton',
   '#participantExportJsonButton',
+  '#participantExportJsonGzipButton',
   '#participantExportHeatmapButton',
   '#participantUploadStatus',
   '#participantFlowRail .flow-step',
@@ -188,6 +191,7 @@ test('queryAppDom resolves core app selectors', () => {
   assert.equal(dom.rawGazeDiagnosticStatus.selector, '#rawGazeDiagnosticStatus');
   assert.equal(dom.gazeQualityReadout.selector, '#gazeQualityReadout');
   assert.equal(dom.exportStatsCsvButton.selector, '#exportStatsCsvButton');
+  assert.equal(dom.exportCompressedButton.selector, '#exportCompressedButton');
   assert.equal(dom.heatmapMergeFileInput.selector, '#heatmapMergeFileInput');
   assert.equal(dom.mergedHeatmapPackageFileInput.selector, '#mergedHeatmapPackageFileInput');
   assert.equal(dom.heatmapMergeStatus.selector, '#heatmapMergeStatus');
@@ -203,6 +207,7 @@ test('queryAppDom resolves core app selectors', () => {
   assert.equal(dom.refreshStatsButton.selector, '#refreshStatsButton');
   assert.equal(dom.analyticsClearButton.selector, '#analyticsClearButton');
   assert.equal(dom.analyticsExportButton.selector, '#analyticsExportButton');
+  assert.equal(dom.analyticsExportCompressedButton.selector, '#analyticsExportCompressedButton');
   assert.equal(dom.analyticsExportStatsCsvButton.selector, '#analyticsExportStatsCsvButton');
   assert.equal(dom.aoiStatsSummary.selector, '#aoiStatsSummary');
   assert.equal(dom.aoiStatsCards.selector, '#aoiStatsCards');
@@ -212,6 +217,7 @@ test('queryAppDom resolves core app selectors', () => {
   assert.equal(dom.participantResultSummary.selector, '#participantResultSummary');
   assert.equal(dom.participantExportCsvButton.selector, '#participantExportCsvButton');
   assert.equal(dom.participantExportJsonButton.selector, '#participantExportJsonButton');
+  assert.equal(dom.participantExportJsonGzipButton.selector, '#participantExportJsonGzipButton');
   assert.equal(dom.participantExportHeatmapButton.selector, '#participantExportHeatmapButton');
   assert.equal(dom.gazeHeatmapOverlay.selector, '#gazeHeatmapOverlay');
   assert.equal(dom.heatmapRuler.selector, '#heatmapRuler');

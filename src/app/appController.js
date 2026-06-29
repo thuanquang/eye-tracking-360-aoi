@@ -17,6 +17,11 @@ import { buildAoiStatsViewModel } from '../recording/aoiStatsViewModel.js';
 import { buildAoiStatsCsv } from '../recording/csvExport.js?v=aoi-stats-csv-1';
 import { buildRecordingSample } from '../recording/sampleBuilder.js?v=recording-export-1';
 import {
+  gzipTextToBlob,
+  gunzipBlobToText,
+  isGzipFile,
+} from '../recording/jsonCompression.js';
+import {
   createSampleScheduler,
   shouldRecordSample,
 } from '../recording/sampleScheduler.js?v=sample-scheduler-1';
@@ -272,11 +277,13 @@ export function createAppController({
     reviewButton,
     clearButton,
     exportButton,
+    exportCompressedButton,
     exportStatsCsvButton,
     exitAnalyticsButton,
     refreshStatsButton,
     analyticsClearButton,
     analyticsExportButton,
+    analyticsExportCompressedButton,
     analyticsExportStatsCsvButton,
     aoiStatsSummary,
     aoiStatsCards,
@@ -316,6 +323,7 @@ export function createAppController({
     participantResultSummary,
     participantExportCsvButton,
     participantExportJsonButton,
+    participantExportJsonGzipButton,
     participantExportHeatmapButton,
     participantUploadStatus,
     participantFlowSteps,
@@ -1037,6 +1045,7 @@ export function createAppController({
     participantResultPanel.hidden = !hasResults;
     participantExportCsvButton.disabled = !hasResults;
     participantExportJsonButton.disabled = !hasResults;
+    participantExportJsonGzipButton.disabled = !hasResults;
     participantExportHeatmapButton.disabled = !hasResults;
 
     if (!hasResults) {
@@ -2053,6 +2062,12 @@ export function createAppController({
     enterAnalyticsMode('review');
   }
 
+  async function readJsonFileText(file) {
+    return isGzipFile(file)
+      ? gunzipBlobToText(file)
+      : file.text();
+  }
+
   async function loadRecordingFile(event) {
     const file = event.target.files?.[0];
 
@@ -2062,7 +2077,7 @@ export function createAppController({
 
     try {
       generatedAoiLoadId += 1;
-      registerRecording(JSON.parse(await file.text()), file.name);
+      registerRecording(JSON.parse(await readJsonFileText(file)), file.name);
       setNotice(`Đã tải JSON bản ghi: ${file.name}. Nhấp Xem lại bản ghi để phát lại mẫu bộ theo dõi.`, true);
     } catch (error) {
       setNotice(`Không thể tải JSON bản ghi: ${error.message}`);
@@ -5126,9 +5141,11 @@ export function createAppController({
     });
   }
 
-  function downloadText(text, fileName, type = 'text/plain') {
-    const blob = new Blob([text], { type });
-    const url = URL.createObjectURL(blob);
+  function downloadBlob(blob, fileName, type = blob.type || 'application/octet-stream') {
+    const downloadBlobPayload = blob.type === type
+      ? blob
+      : new Blob([blob], { type });
+    const url = URL.createObjectURL(downloadBlobPayload);
     const link = document.createElement('a');
     link.href = url;
     link.download = fileName;
@@ -5136,8 +5153,21 @@ export function createAppController({
     URL.revokeObjectURL(url);
   }
 
+  function downloadText(text, fileName, type = 'text/plain') {
+    downloadBlob(new Blob([text], { type }), fileName, type);
+  }
+
   function downloadJson(payload, fileName) {
     downloadText(JSON.stringify(payload), fileName, 'application/json');
+  }
+
+  async function downloadCompressedJson(payload, fileName) {
+    const compressedBlob = await gzipTextToBlob(JSON.stringify(payload));
+    downloadBlob(compressedBlob, fileName, 'application/gzip');
+  }
+
+  function buildGzipFileName(fileName) {
+    return fileName.endsWith('.gz') ? fileName : `${fileName}.gz`;
   }
 
   function normalizeDownloadSegment(value, fallback) {
@@ -5871,6 +5901,24 @@ export function createAppController({
     renderAoiStatsPanel();
   }
 
+  async function exportParticipantJsonGzip() {
+    if (!ensureLoadedStudyAois()) {
+      return;
+    }
+
+    const payload = buildCurrentExportPayload();
+
+    try {
+      await downloadCompressedJson(payload, buildGzipFileName(buildParticipantJsonFileName()));
+      setParticipantUploadStatus('downloaded');
+      setNotice(PARTICIPANT_EXPORT_SUCCESS_MESSAGE, true);
+      renderParticipantResultPanel();
+      renderAoiStatsPanel();
+    } catch (error) {
+      setNotice(`Không thể nén JSON bản ghi: ${error.message}`, true);
+    }
+  }
+
   function exportParticipantHeatmap() {
     if (!ensureLoadedStudyAois()) {
       return;
@@ -5893,7 +5941,7 @@ export function createAppController({
     renderAoiStatsPanel();
   }
 
-  async function exportSamples() {
+  async function exportSamples({ compressed = false } = {}) {
     if (!ensureLoadedStudyAois()) {
       return;
     }
@@ -5904,9 +5952,25 @@ export function createAppController({
     }
 
     const payload = buildCurrentExportPayload();
+    const fileName = `aoi-samples-${Date.now()}.json`;
 
-    downloadJson(payload, `aoi-samples-${Date.now()}.json`);
+    if (compressed) {
+      try {
+        await downloadCompressedJson(payload, buildGzipFileName(fileName));
+        setNotice('Đã xuất JSON.gz bản ghi.', true);
+      } catch (error) {
+        setNotice(`Không thể nén JSON bản ghi: ${error.message}`, true);
+        return;
+      }
+    } else {
+      downloadJson(payload, fileName);
+    }
+
     renderAoiStatsPanel();
+  }
+
+  async function exportCompressedSamples() {
+    await exportSamples({ compressed: true });
   }
 
   function exportStatsCsv() {
@@ -6440,10 +6504,12 @@ export function createAppController({
       reviewButton.addEventListener('click', toggleReviewMode);
       clearButton.addEventListener('click', clearSamples);
       exportButton.addEventListener('click', exportSamples);
+      exportCompressedButton.addEventListener('click', exportCompressedSamples);
       exportStatsCsvButton.addEventListener('click', exportStatsCsv);
       exitAnalyticsButton.addEventListener('click', () => exitAnalyticsMode());
       analyticsClearButton.addEventListener('click', clearSamples);
       analyticsExportButton.addEventListener('click', exportSamples);
+      analyticsExportCompressedButton.addEventListener('click', exportCompressedSamples);
       analyticsExportStatsCsvButton.addEventListener('click', exportStatsCsv);
       refreshStatsButton.addEventListener('click', renderAoiStatsPanel);
       studyVideoSelect.addEventListener('change', handleStudyVideoChange);
@@ -6489,6 +6555,7 @@ export function createAppController({
       participantRecordButton.addEventListener('click', toggleParticipantRecording);
       participantExportCsvButton.addEventListener('click', exportParticipantStatsCsv);
       participantExportJsonButton.addEventListener('click', exportParticipantJson);
+      participantExportJsonGzipButton.addEventListener('click', exportParticipantJsonGzip);
       participantExportHeatmapButton.addEventListener('click', exportParticipantHeatmap);
       validationTestCalibrateButton.addEventListener('click', startCalibration);
       validationTestAccuracyButton.addEventListener('click', startAccuracyCheck);
